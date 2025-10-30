@@ -1,0 +1,28 @@
+[package]
+name = "component-runtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+component-manifest = { path = "../component-manifest" }
+component-store = { path = "../component-store" }
+futures.workspace = true
+greentic-interfaces = "0.4"
+greentic-types = "0.1"
+jsonschema.workspace = true
+once_cell.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+wasmtime.workspace = true
+wasmtime-wasi.workspace = true
+wit-component.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
