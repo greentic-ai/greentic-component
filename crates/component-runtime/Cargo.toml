@@ -3,6 +3,12 @@ name = "component-runtime"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "Wasmtime-based runtime for executing Greentic components"
+repository = "https://github.com/greentic-ai/greentic-component"
+homepage = "https://github.com/greentic-ai/greentic-component"
+documentation = "https://github.com/greentic-ai/greentic-component"
+keywords = ["greentic", "component", "wasm"]
+categories = ["wasm"]
 
 [features]
 default = []

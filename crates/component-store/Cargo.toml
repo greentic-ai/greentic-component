@@ -3,6 +3,12 @@ name = "component-store"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "Store abstraction and verification for Greentic components"
+repository = "https://github.com/greentic-ai/greentic-component"
+homepage = "https://github.com/greentic-ai/greentic-component"
+documentation = "https://github.com/greentic-ai/greentic-component"
+keywords = ["greentic", "component", "store"]
+categories = ["wasm"]
 
 [features]
 default = ["http", "fs"]
