@@ -20,39 +20,54 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Extract crate version
-        id: metadata
-        run: |
-          version=$(cargo metadata --no-deps --format-version 1 | python3 -c "import json,sys; print(json.load(sys.stdin)['packages'][0]['version'])")
-          echo "crate_version=$version" >> "$GITHUB_OUTPUT"
-      - name: Publish crate
+      - name: Publish crates
         id: publish
         run: |
-          set -o pipefail
-          temp_log="$(mktemp)"
-          cleanup() { rm -f "$temp_log"; }
-          trap cleanup EXIT
-          if cargo publish --locked 2>&1 | tee "$temp_log"; then
-            echo "published=true" >> "$GITHUB_OUTPUT"
-          else
-            if grep -Ei "already (uploaded|published)|has already been published|already exists" "$temp_log"; then
-              echo "crate version already published, skipping upload"
-              echo "published=false" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+
+          publish_crate() {
+            local manifest_path="$1"
+            local crate_name="$2"
+            local output_key="$3"
+
+            local version
+            version=$(cargo metadata --no-deps --format-version 1 --manifest-path "$manifest_path" \
+              | python3 -c "import json,sys; print(json.load(sys.stdin)['packages'][0]['version'])")
+
+            echo "Publishing $crate_name v$version"
+
+            local temp_log
+            temp_log="$(mktemp)"
+            trap 'rm -f "$temp_log"' RETURN
+
+            if cargo publish --locked --manifest-path "$manifest_path" 2>&1 | tee "$temp_log"; then
+              echo "$output_key=true" >> "$GITHUB_OUTPUT"
+              echo "${output_key}_version=$version" >> "$GITHUB_OUTPUT"
             else
-              cat "$temp_log"
-              exit 1
+              if grep -Ei "already (uploaded|published)|has already been published|already exists" "$temp_log"; then
+                echo "crate version already published, skipping upload"
+                echo "$output_key=false" >> "$GITHUB_OUTPUT"
+                echo "${output_key}_version=$version" >> "$GITHUB_OUTPUT"
+              else
+                cat "$temp_log"
+                exit 1
+              fi
             fi
-          fi
+          }
+
+          publish_crate crates/component-manifest/Cargo.toml component-manifest manifest
+          publish_crate crates/component-store/Cargo.toml component-store store
+          publish_crate crates/component-runtime/Cargo.toml component-runtime runtime
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
       - name: Create GitHub release
-        if: steps.publish.outputs.published == 'true'
+        if: steps.publish.outputs.runtime == 'true'
         uses: actions/create-release@v1
         with:
-          tag_name: v${{ steps.metadata.outputs.crate_version }}
-          release_name: greentic-types v${{ steps.metadata.outputs.crate_version }}
+          tag_name: v${{ steps.publish.outputs.runtime_version }}
+          release_name: greentic-component v${{ steps.publish.outputs.runtime_version }}
           body: |
-            Automated release for greentic-types v${{ steps.metadata.outputs.crate_version }}.
+            Automated release for greentic-component v${{ steps.publish.outputs.runtime_version }}.
           commitish: ${{ github.sha }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
