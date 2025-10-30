@@ -1,6 +1,8 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::convert::TryFrom;
 
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+use base64::Engine as _;
 use greentic_interfaces::component_v0_4::{self, exports::greentic::component::node, ControlHost};
 use greentic_interfaces::host_import_v0_4::{
     self,
@@ -8,8 +10,10 @@ use greentic_interfaces::host_import_v0_4::{
     greentic::types_core::types as core_types,
 };
 use greentic_types::TenantCtx;
-use serde_json::Value;
-use tracing::{debug, warn};
+use reqwest::blocking::Client as HttpClient;
+use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
+use serde_json::{Map, Value};
+use tracing::debug;
 use wasmtime::component::Linker;
 use wasmtime::Engine;
 
@@ -23,6 +27,7 @@ pub struct HostState {
     _config: Value,
     secrets: HashMap<String, String>,
     policy: HostPolicy,
+    http_client: HttpClient,
 }
 
 impl HostState {
@@ -32,6 +37,7 @@ impl HostState {
             _config: Value::Null,
             secrets: HashMap::new(),
             policy,
+            http_client: HttpClient::new(),
         }
     }
 
@@ -46,6 +52,7 @@ impl HostState {
             _config: config,
             secrets,
             policy,
+            http_client: HttpClient::new(),
         }
     }
 }
@@ -96,14 +103,83 @@ impl telemetry::Host for HostState {
 impl http::Host for HostState {
     fn fetch(
         &mut self,
-        _req: http::HttpRequest,
+        req: http::HttpRequest,
         _ctx: Option<core_types::TenantCtx>,
     ) -> Result<http::HttpResponse, core_types::IfaceError> {
         if !self.policy.allow_http_fetch {
             return Err(core_types::IfaceError::Denied);
         }
-        warn!("http.fetch host import is not implemented; returning unavailable");
-        Err(core_types::IfaceError::Unavailable)
+
+        let method = reqwest::Method::from_bytes(req.method.as_bytes())
+            .map_err(|_| core_types::IfaceError::InvalidArg)?;
+        let url = req
+            .url
+            .parse::<reqwest::Url>()
+            .map_err(|_| core_types::IfaceError::InvalidArg)?;
+
+        let mut builder = self.http_client.request(method, url);
+
+        if let Some(headers_json) = req.headers_json.as_ref() {
+            let headers_value: Value = serde_json::from_str(headers_json)
+                .map_err(|_| core_types::IfaceError::InvalidArg)?;
+            let headers_map = headers_value
+                .as_object()
+                .ok_or(core_types::IfaceError::InvalidArg)?;
+            let mut header_map = HeaderMap::new();
+            for (key, value) in headers_map {
+                let header_name = HeaderName::from_bytes(key.as_bytes())
+                    .map_err(|_| core_types::IfaceError::InvalidArg)?;
+                match value {
+                    Value::Array(values) => {
+                        let mut queue: VecDeque<&Value> = values.iter().collect();
+                        while let Some(entry) = queue.pop_front() {
+                            if let Some(s) = entry.as_str() {
+                                let header_value = HeaderValue::from_str(s)
+                                    .map_err(|_| core_types::IfaceError::InvalidArg)?;
+                                header_map.append(header_name.clone(), header_value);
+                            } else {
+                                return Err(core_types::IfaceError::InvalidArg);
+                            }
+                        }
+                    }
+                    Value::String(single) => {
+                        let header_value = HeaderValue::from_str(single)
+                            .map_err(|_| core_types::IfaceError::InvalidArg)?;
+                        header_map.append(header_name, header_value);
+                    }
+                    _ => return Err(core_types::IfaceError::InvalidArg),
+                }
+            }
+            builder = builder.headers(header_map);
+        }
+
+        if let Some(body) = req.body {
+            let bytes = decode_body(body);
+            builder = builder.body(bytes);
+        }
+
+        let response = builder.send().map_err(|err| {
+            debug!("http.fetch request failed: {}", err);
+            core_types::IfaceError::Unavailable
+        })?;
+
+        let status = response.status().as_u16();
+        let headers_json = serialize_headers(response.headers());
+        let body_bytes = response.bytes().map_err(|err| {
+            debug!("http.fetch failed to read body: {}", err);
+            core_types::IfaceError::Unavailable
+        })?;
+        let body_base64 = if body_bytes.is_empty() {
+            None
+        } else {
+            Some(BASE64_STANDARD.encode(&body_bytes))
+        };
+
+        Ok(http::HttpResponse {
+            status,
+            headers_json,
+            body: body_base64,
+        })
     }
 }
 
@@ -112,6 +188,38 @@ pub fn make_exec_ctx(cref: &ComponentRef, tenant: &TenantCtx) -> node::ExecCtx {
         tenant: make_component_tenant_ctx(tenant),
         flow_id: cref.name.clone(),
         node_id: None,
+    }
+}
+
+fn decode_body(body: String) -> Vec<u8> {
+    BASE64_STANDARD
+        .decode(body.as_bytes())
+        .unwrap_or_else(|_| body.into_bytes())
+}
+
+fn serialize_headers(headers: &HeaderMap) -> Option<String> {
+    if headers.is_empty() {
+        return None;
+    }
+
+    let mut map = Map::new();
+    for (name, value) in headers.iter() {
+        let entry = map
+            .entry(name.as_str().to_string())
+            .or_insert_with(|| Value::Array(Vec::new()));
+        let Value::Array(arr) = entry else {
+            continue;
+        };
+        match value.to_str() {
+            Ok(text) => arr.push(Value::String(text.to_string())),
+            Err(_) => arr.push(Value::String(BASE64_STANDARD.encode(value.as_bytes()))),
+        }
+    }
+
+    if map.is_empty() {
+        None
+    } else {
+        Some(serde_json::to_string(&map).unwrap_or_default())
     }
 }
 
@@ -132,5 +240,83 @@ pub fn make_component_tenant_ctx(tenant: &TenantCtx) -> node::TenantCtx {
         }),
         attempt: tenant.attempt,
         idempotency_key: tenant.idempotency_key.clone(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use greentic_interfaces::host_import_v0_4::greentic::host_import::http::Host as HttpHost;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::thread;
+
+    fn spawn_http_server() -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind http listener");
+        let addr = listener.local_addr().expect("local addr");
+        thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buffer = [0u8; 512];
+                let _ = stream.read(&mut buffer);
+                let response = "\
+                    HTTP/1.1 200 OK\r\n\
+                    Content-Type: text/plain\r\n\
+                    X-Custom: value\r\n\
+                    Content-Length: 5\r\n\
+                    \r\n\
+                    hello";
+                let _ = stream.write_all(response.as_bytes());
+            }
+        });
+
+        format!("http://{}:{}/test", addr.ip(), addr.port())
+    }
+
+    fn host_state(allow_http: bool) -> HostState {
+        HostState {
+            _tenant: None,
+            _config: Value::Null,
+            secrets: HashMap::new(),
+            policy: HostPolicy {
+                allow_http_fetch: allow_http,
+                allow_telemetry: true,
+            },
+            http_client: HttpClient::new(),
+        }
+    }
+
+    #[test]
+    fn http_fetch_denied_by_policy() {
+        let mut host = host_state(false);
+        let req = http::HttpRequest {
+            method: "GET".into(),
+            url: "http://localhost".into(),
+            headers_json: None,
+            body: None,
+        };
+
+        let result = HttpHost::fetch(&mut host, req, None);
+        assert!(matches!(result, Err(core_types::IfaceError::Denied)));
+    }
+
+    #[test]
+    fn http_fetch_success() {
+        let url = spawn_http_server();
+        let mut host = host_state(true);
+        let req = http::HttpRequest {
+            method: "GET".into(),
+            url,
+            headers_json: None,
+            body: None,
+        };
+
+        let response = HttpHost::fetch(&mut host, req, None).expect("http fetch succeeds");
+        assert_eq!(response.status, 200);
+        let body = response.body.expect("body present");
+        let decoded = BASE64_STANDARD
+            .decode(body.as_bytes())
+            .expect("decode body");
+        assert_eq!(decoded, b"hello");
+        assert!(response.headers_json.is_some());
     }
 }
