@@ -11,8 +11,8 @@ serde = []
 [dependencies]
 anyhow.workspace = true
 async-trait.workspace = true
-component-manifest = { path = "../component-manifest" }
-component-store = { path = "../component-store" }
+component-manifest.workspace = true
+component-store.workspace = true
 futures.workspace = true
 greentic-interfaces = "0.4"
 greentic-types = "0.1"

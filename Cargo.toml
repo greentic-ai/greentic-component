@@ -40,3 +40,5 @@ url = "2.5"
 wasmtime = { version = "38.0", features = ["component-model", "async"] }
 wasmtime-wasi = "38.0"
 wit-component = "0.240.0"
+component-manifest = { version = "0.1.0", path = "crates/component-manifest" }
+component-store = { version = "0.1.0", path = "crates/component-store" }
