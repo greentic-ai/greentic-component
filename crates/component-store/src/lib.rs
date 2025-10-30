@@ -1,10 +1,10 @@
 use std::fs as std_fs;
 use std::path::{Path, PathBuf};
 
+use percent_encoding::percent_decode_str;
 use sha2::{Digest as _, Sha256};
 use thiserror::Error;
 use tracing::debug;
-use percent_encoding::percent_decode_str;
 use url::Url;
 
 pub mod fs;
@@ -172,7 +172,11 @@ impl ComponentStore {
             .join(format!("{}.wasm", self.compute_cache_key(locator)));
         if locator_cache != path {
             if let Err(err) = std_fs::write(&locator_cache, bytes) {
-                debug!("failed to update locator cache at {}: {}", locator_cache.display(), err);
+                debug!(
+                    "failed to update locator cache at {}: {}",
+                    locator_cache.display(),
+                    err
+                );
             }
         }
 
@@ -210,12 +214,10 @@ impl StoreLocator {
                     })
                 }
                 "file" => {
-                    let path = url
-                        .to_file_path()
-                        .map_err(|_| StoreError::InvalidLocator {
-                            locator: raw.to_string(),
-                            reason: "unable to convert file URL to path".into(),
-                        })?;
+                    let path = url.to_file_path().map_err(|_| StoreError::InvalidLocator {
+                        locator: raw.to_string(),
+                        reason: "unable to convert file URL to path".into(),
+                    })?;
                     Ok(StoreLocator::Fs {
                         path,
                         locator: raw.to_string(),

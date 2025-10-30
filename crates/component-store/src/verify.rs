@@ -55,9 +55,7 @@ impl DigestPolicy {
 #[derive(Debug, Clone)]
 pub enum SignaturePolicy {
     Disabled,
-    Cosign {
-        required: bool,
-    },
+    Cosign { required: bool },
 }
 
 impl SignaturePolicy {

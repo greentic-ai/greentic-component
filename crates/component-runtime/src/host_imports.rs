@@ -19,8 +19,8 @@ use crate::policy::HostPolicy;
 
 #[derive(Debug, Clone)]
 pub struct HostState {
-    tenant: Option<TenantCtx>,
-    config: Value,
+    _tenant: Option<TenantCtx>,
+    _config: Value,
     secrets: HashMap<String, String>,
     policy: HostPolicy,
 }
@@ -28,8 +28,8 @@ pub struct HostState {
 impl HostState {
     pub fn empty(policy: HostPolicy) -> Self {
         Self {
-            tenant: None,
-            config: Value::Null,
+            _tenant: None,
+            _config: Value::Null,
             secrets: HashMap::new(),
             policy,
         }
@@ -42,19 +42,11 @@ impl HostState {
         policy: HostPolicy,
     ) -> Self {
         Self {
-            tenant: Some(tenant),
-            config,
+            _tenant: Some(tenant),
+            _config: config,
             secrets,
             policy,
         }
-    }
-
-    pub fn tenant(&self) -> Option<&TenantCtx> {
-        self.tenant.as_ref()
-    }
-
-    pub fn config(&self) -> &Value {
-        &self.config
     }
 }
 
@@ -89,13 +81,12 @@ impl secrets::Host for HostState {
 }
 
 impl telemetry::Host for HostState {
-    fn emit(
-        &mut self,
-        span_json: String,
-        _ctx: Option<core_types::TenantCtx>,
-    ) {
+    fn emit(&mut self, span_json: String, _ctx: Option<core_types::TenantCtx>) {
         if !self.policy.allow_telemetry {
-            debug!("dropping telemetry event because policy denies telemetry: {}", span_json);
+            debug!(
+                "dropping telemetry event because policy denies telemetry: {}",
+                span_json
+            );
             return;
         }
         debug!("component telemetry: {}", span_json);
@@ -116,10 +107,7 @@ impl http::Host for HostState {
     }
 }
 
-pub fn make_exec_ctx(
-    cref: &ComponentRef,
-    tenant: &TenantCtx,
-) -> node::ExecCtx {
+pub fn make_exec_ctx(cref: &ComponentRef, tenant: &TenantCtx) -> node::ExecCtx {
     node::ExecCtx {
         tenant: make_component_tenant_ctx(tenant),
         flow_id: cref.name.clone(),
@@ -127,9 +115,7 @@ pub fn make_exec_ctx(
     }
 }
 
-pub fn make_component_tenant_ctx(
-    tenant: &TenantCtx,
-) -> node::TenantCtx {
+pub fn make_component_tenant_ctx(tenant: &TenantCtx) -> node::TenantCtx {
     node::TenantCtx {
         tenant: tenant.tenant.as_str().to_string(),
         team: tenant.team.as_ref().map(|t| t.as_str().to_string()),
@@ -146,22 +132,5 @@ pub fn make_component_tenant_ctx(
         }),
         attempt: tenant.attempt,
         idempotency_key: tenant.idempotency_key.clone(),
-    }
-}
-
-pub fn make_host_tenant_ctx(
-    tenant: &TenantCtx,
-) -> core_types::TenantCtx {
-    core_types::TenantCtx {
-        tenant: tenant.tenant.as_str().to_string(),
-        team: tenant.team.as_ref().map(|t| t.as_str().to_string()),
-        user: tenant.user.as_ref().map(|u| u.as_str().to_string()),
-        deployment: core_types::DeploymentCtx {
-            cloud: core_types::Cloud::Other,
-            region: None,
-            platform: core_types::Platform::Other,
-            runtime: None,
-        },
-        trace_id: tenant.trace_id.clone(),
     }
 }

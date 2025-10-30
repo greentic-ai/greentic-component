@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 
 use regex::Regex;
-use schemars::schema::RootSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use thiserror::Error;
@@ -84,8 +83,8 @@ impl ComponentManifest {
 pub struct CompiledExportSchema {
     pub operation: String,
     pub description: Option<String>,
-    pub input_schema: Option<RootSchema>,
-    pub output_schema: Option<RootSchema>,
+    pub input_schema: Option<Value>,
+    pub output_schema: Option<Value>,
 }
 
 #[derive(Debug, Clone)]
@@ -94,7 +93,7 @@ pub struct ComponentInfo {
     pub description: Option<String>,
     pub capabilities: Vec<CapabilityRef>,
     pub exports: Vec<CompiledExportSchema>,
-    pub config_schema: RootSchema,
+    pub config_schema: Value,
     pub secrets: Vec<String>,
     pub wit_compat: WitCompat,
     pub metadata: Map<String, Value>,
@@ -110,10 +109,7 @@ pub enum ManifestError {
     #[error("invalid config schema: {0}")]
     InvalidConfigSchema(String),
     #[error("invalid export schema for `{operation}`: {reason}")]
-    InvalidExportSchema {
-        operation: String,
-        reason: String,
-    },
+    InvalidExportSchema { operation: String, reason: String },
     #[error("capabilities must not be empty")]
     MissingCapabilities,
     #[error("exports must not be empty")]
@@ -140,12 +136,6 @@ pub enum ManifestError {
     },
     #[error("field `{0}` is required and cannot be empty")]
     EmptyField(&'static str),
-}
-
-#[derive(Debug)]
-pub struct CompiledSchemas {
-    pub config: RootSchema,
-    pub exports: Vec<CompiledExportSchema>,
 }
 
 pub(crate) fn ensure_unique<T, F>(

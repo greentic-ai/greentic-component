@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use component_manifest::{ManifestValidator, ComponentInfo};
-use jsonschema::JSONSchema;
+use component_manifest::{ComponentInfo, ManifestValidator};
+use jsonschema::{validator_for, Validator};
 use serde_json::Value;
-use wasmtime::{Config, Engine};
 use wasmtime::component::Component as WasmComponent;
+use wasmtime::{Config, Engine};
 
 use crate::error::CompError;
 use crate::host_imports::{build_linker, HostState};
@@ -38,14 +38,12 @@ impl Loader {
         let engine = create_engine()?;
         let component = WasmComponent::from_binary(&engine, &artifact.bytes)?;
 
-        let mut linker = build_linker(&engine, &policy.host)?;
+        let linker = build_linker(&engine, &policy.host)?;
         let host_state = HostState::empty(policy.host.clone());
         let mut store = wasmtime::Store::new(&engine, host_state);
 
         let instance = greentic_interfaces::component_v0_4::Component::instantiate(
-            &mut store,
-            &component,
-            &mut linker,
+            &mut store, &component, &linker,
         )?;
         let manifest_json = instance
             .greentic_component_node()
@@ -57,7 +55,8 @@ impl Loader {
         let config_schema_value = manifest_value
             .get("config_schema")
             .ok_or(CompError::InvalidManifest("config_schema"))?;
-        let config_schema = JSONSchema::compile(config_schema_value)?;
+        let config_schema = validator_for(config_schema_value)
+            .map_err(|err| CompError::SchemaValidation(err.to_string()))?;
 
         Ok(ComponentHandle {
             inner: Arc::new(ComponentInner {
@@ -92,7 +91,7 @@ pub struct ComponentHandle {
 pub(crate) struct ComponentInner {
     pub(crate) cref: ComponentRef,
     pub(crate) info: ComponentInfo,
-    pub(crate) config_schema: Arc<JSONSchema>,
+    pub(crate) config_schema: Arc<Validator>,
     pub(crate) engine: Engine,
     pub(crate) component: WasmComponent,
     pub(crate) host_policy: crate::policy::HostPolicy,

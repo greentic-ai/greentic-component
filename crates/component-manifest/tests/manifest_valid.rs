@@ -1,4 +1,4 @@
-use component_manifest::{ManifestValidator, ManifestError};
+use component_manifest::{ManifestError, ManifestValidator};
 use serde_json::json;
 
 fn good_manifest() -> serde_json::Value {
@@ -50,7 +50,9 @@ fn good_manifest() -> serde_json::Value {
 fn validate_good_manifest() {
     let manifest = good_manifest();
     let validator = ManifestValidator::new();
-    let info = validator.validate_value(manifest.clone()).expect("manifest should be valid");
+    let info = validator
+        .validate_value(manifest.clone())
+        .expect("manifest should be valid");
 
     assert_eq!(info.name.as_deref(), Some("example"));
     assert_eq!(info.capabilities.len(), 2);
@@ -67,7 +69,8 @@ fn reject_duplicate_capabilities() {
     let err = ManifestValidator::new()
         .validate_value(manifest)
         .expect_err("duplicate capability should be rejected");
-    matches!(err, ManifestError::DuplicateCapability(_)).then_some(())
+    matches!(err, ManifestError::DuplicateCapability(_))
+        .then_some(())
         .expect("expected duplicate capability error");
 }
 
@@ -78,6 +81,7 @@ fn reject_invalid_secret() {
     let err = ManifestValidator::new()
         .validate_value(manifest)
         .expect_err("invalid secret name should be rejected");
-    matches!(err, ManifestError::InvalidSecret(_)).then_some(())
+    matches!(err, ManifestError::InvalidSecret(_))
+        .then_some(())
         .expect("expected invalid secret error");
 }

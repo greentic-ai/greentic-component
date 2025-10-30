@@ -1,7 +1,7 @@
+use jsonschema::validator_for;
 use regex::Regex;
-use schemars::schema::RootSchema;
-use serde_json::Value;
 use semver::VersionReq;
+use serde_json::Value;
 
 use crate::types::{
     CompiledExportSchema, ComponentExport, ComponentInfo, ComponentManifest, ManifestError,
@@ -45,10 +45,9 @@ impl ManifestValidator {
         for capability in &manifest.capabilities {
             capability.validate(&self.capability_pattern)?;
         }
-        crate::types::ensure_unique(
-            manifest.capabilities.iter().cloned(),
-            |capability| ManifestError::DuplicateCapability(capability.0),
-        )?;
+        crate::types::ensure_unique(manifest.capabilities.iter().cloned(), |capability| {
+            ManifestError::DuplicateCapability(capability.0)
+        })?;
 
         if manifest.exports.is_empty() {
             return Err(ManifestError::MissingExports);
@@ -91,12 +90,12 @@ impl ManifestValidator {
     }
 }
 
-pub fn validate_config_schema(schema: &Value) -> Result<RootSchema, ManifestError> {
+pub fn validate_config_schema(schema: &Value) -> Result<Value, ManifestError> {
     if !schema.is_object() {
         return Err(ManifestError::ConfigSchemaNotObject);
     }
-    serde_json::from_value(schema.clone())
-        .map_err(|err| ManifestError::InvalidConfigSchema(err.to_string()))
+    validator_for(schema).map_err(|err| ManifestError::InvalidConfigSchema(err.to_string()))?;
+    Ok(schema.clone())
 }
 
 fn compile_export_schema(export: &ComponentExport) -> Result<CompiledExportSchema, ManifestError> {
@@ -123,17 +122,18 @@ fn parse_schema(
     schema: &Value,
     export: &ComponentExport,
     field: &str,
-) -> Result<RootSchema, ManifestError> {
+) -> Result<Value, ManifestError> {
     if !schema.is_object() {
         return Err(ManifestError::InvalidExportSchema {
             operation: export.operation.clone(),
             reason: format!("{field} must be an object"),
         });
     }
-    serde_json::from_value(schema.clone()).map_err(|err| ManifestError::InvalidExportSchema {
+    validator_for(schema).map_err(|err| ManifestError::InvalidExportSchema {
         operation: export.operation.clone(),
         reason: err.to_string(),
-    })
+    })?;
+    Ok(schema.clone())
 }
 
 fn validate_wit_compat(wit: &WitCompat) -> Result<(), ManifestError> {

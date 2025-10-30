@@ -34,7 +34,7 @@ pub fn invoke(
             .ok_or_else(|| CompError::BindingNotFound(key.clone()))?
     };
 
-    let mut linker = build_linker(&inner.engine, &inner.host_policy)?;
+    let linker = build_linker(&inner.engine, &inner.host_policy)?;
     let host_state = HostState::from_binding(
         tenant.clone(),
         binding.config.clone(),
@@ -42,25 +42,20 @@ pub fn invoke(
         inner.host_policy.clone(),
     );
     let mut store = Store::new(&inner.engine, host_state);
-    let instance = component_v0_4::Component::instantiate(&mut store, &inner.component, &mut linker)?;
+    let instance = component_v0_4::Component::instantiate(&mut store, &inner.component, &linker)?;
     let exports = instance.greentic_component_node();
 
     let exec_ctx = make_exec_ctx(&inner.cref, tenant);
     let input = serde_json::to_string(input_json)?;
-    let result = exports.call_invoke(&mut store, exec_ctx, operation.to_string(), input)?;
+    let result = exports.call_invoke(&mut store, &exec_ctx, operation, &input)?;
 
     use greentic_interfaces::component_v0_4::exports::greentic::component::node::InvokeResult;
 
     match result {
-        InvokeResult::Ok(output_json) => {
-            Ok(serde_json::from_str(&output_json)?)
-        }
-        InvokeResult::Err(err) => {
-            Err(CompError::Runtime(format!(
-                "component error {}: {}",
-                err.code,
-                err.message
-            )))
-        }
+        InvokeResult::Ok(output_json) => Ok(serde_json::from_str(&output_json)?),
+        InvokeResult::Err(err) => Err(CompError::Runtime(format!(
+            "component error {}: {}",
+            err.code, err.message
+        ))),
     }
 }

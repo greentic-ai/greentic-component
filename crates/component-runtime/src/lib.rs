@@ -13,15 +13,14 @@ pub use error::CompError;
 pub use loader::{ComponentHandle, ComponentRef, Loader};
 pub use policy::{HostPolicy, LoadPolicy};
 
-pub fn load(
-    cref: &ComponentRef,
-    policy: &LoadPolicy,
-) -> Result<ComponentHandle, CompError> {
-    Loader::default().load(cref, policy)
+pub fn load(cref: &ComponentRef, policy: &LoadPolicy) -> Result<ComponentHandle, CompError> {
+    let loader = Loader;
+    loader.load(cref, policy)
 }
 
 pub fn describe(handle: &ComponentHandle) -> Result<ComponentManifestInfo, CompError> {
-    Loader::default().describe(handle)
+    let loader = Loader;
+    loader.describe(handle)
 }
 
 pub fn bind(
@@ -30,7 +29,8 @@ pub fn bind(
     bindings: &Bindings,
     secret_resolver: &mut dyn FnMut(&str, &TenantCtx) -> Result<String, CompError>,
 ) -> Result<(), CompError> {
-    Binder::default().bind(handle, tenant, bindings, secret_resolver)
+    let binder = Binder;
+    binder.bind(handle, tenant, bindings, secret_resolver)
 }
 
 pub fn invoke(
