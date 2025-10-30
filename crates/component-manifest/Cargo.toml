@@ -3,6 +3,12 @@ name = "component-manifest"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "Manifest validation helpers for Greentic components"
+repository = "https://github.com/greentic-ai/greentic-component"
+homepage = "https://github.com/greentic-ai/greentic-component"
+documentation = "https://github.com/greentic-ai/greentic-component"
+keywords = ["greentic", "component", "manifest"]
+categories = ["wasm"]
 
 [features]
 default = []
