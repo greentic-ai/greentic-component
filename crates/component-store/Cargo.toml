@@ -10,6 +10,7 @@ fs = []
 http = ["dep:reqwest"]
 oci = []
 warg = []
+serde = []
 
 [dependencies]
 anyhow.workspace = true
