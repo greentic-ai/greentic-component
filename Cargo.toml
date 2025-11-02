@@ -45,3 +45,5 @@ component-store = { version = "0.1", path = "crates/component-store" }
 
 [patch.crates-io]
 greentic-interfaces = { path = "vendor/greentic-interfaces-0.4.3" }
+component-manifest = { path = "crates/component-manifest" }
+component-store = { path = "crates/component-store" }

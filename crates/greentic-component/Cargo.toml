@@ -3,6 +3,12 @@ name = "greentic-component"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
+description = "High-level component loader and store for Greentic components"
+repository = "https://github.com/greentic-ai/greentic-component"
+homepage = "https://github.com/greentic-ai/greentic-component"
+documentation = "https://docs.rs/greentic-component"
+keywords = ["greentic", "component", "wasm"]
+categories = ["wasm"]
 
 [lib]
 path = "src/lib.rs"
@@ -16,8 +22,6 @@ schema = ["dep:schemars"]
 anyhow = { workspace = true }
 bytes = { workspace = true }
 directories = "5"
-greentic-interfaces = "^0.4"
-greentic-types = "^0.1"
 hex = { workspace = true }
 ignore = "0.4"
 oci-distribution = { version = "0.10", optional = true }
