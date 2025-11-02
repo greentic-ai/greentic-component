@@ -26,6 +26,37 @@ cargo clippy --all-targets --all-features
 cargo test
 ```
 
+## Releases & Publishing
+
+- Versions are sourced directly from each crate's `Cargo.toml`.
+- Pushing to `master` tags any crate whose version changed as `<crate-name>-v<semver>`.
+- The publish workflow then attempts to release updated crates to crates.io.
+- Publishing is idempotent: reruns succeed even when the crate version already exists.
+
+## Component Store
+
+The new `greentic-component` crate exposes a `ComponentStore` that can register filesystem paths and OCI references, materialise component bytes, and persist them in a content-addressed cache (`~/.greentic/components` by default).
+
+```rust
+use greentic_component::{CompatPolicy, ComponentStore};
+
+let policy = CompatPolicy {
+    required_abi_prefix: "greentic-abi-0".into(),
+    required_capabilities: vec!["messaging".into()],
+};
+
+let mut store = ComponentStore::with_cache_dir(None, policy);
+store.add_fs("local", "./build/my_component.wasm");
+store.add_oci("remote", "ghcr.io/acme/greentic-tools:1.2.3");
+
+let component = store.get("local").await?;
+println!("id={} size={}", component.id.0, component.meta.size);
+```
+
+- Cache keys are `sha256:<digest>`; a locator index speeds up repeated fetches.
+- OCI layers are selected when the media type advertises `application/wasm` or `application/octet-stream`.
+- Capability and ABI compatibility checks are enforced before cache writes succeed.
+
 ## Testing Overview
 
 Automated tests cover multiple layers:

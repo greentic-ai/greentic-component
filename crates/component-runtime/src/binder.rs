@@ -147,17 +147,7 @@ mod tests {
     }
 
     fn tenant_ctx() -> TenantCtx {
-        TenantCtx {
-            env: EnvId("dev".into()),
-            tenant: TenantId("tenant".into()),
-            team: None,
-            user: None,
-            trace_id: None,
-            correlation_id: None,
-            deadline: None,
-            attempt: 0,
-            idempotency_key: None,
-        }
+        TenantCtx::new(EnvId("dev".into()), TenantId("tenant".into()))
     }
 
     #[test]

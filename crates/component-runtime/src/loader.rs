@@ -79,7 +79,6 @@ impl Loader {
 fn create_engine() -> Result<Engine, CompError> {
     let mut config = Config::new();
     config.wasm_component_model(true);
-    config.async_support(false);
     config.wasm_backtrace_details(wasmtime::WasmBacktraceDetails::Enable);
     Engine::new(&config).map_err(|err| CompError::Runtime(err.to_string()))
 }
