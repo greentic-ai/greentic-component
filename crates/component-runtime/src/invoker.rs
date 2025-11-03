@@ -1,11 +1,10 @@
-use greentic_interfaces::component_v0_4;
 use greentic_types::TenantCtx;
 use serde_json::Value;
 use wasmtime::Store;
 
 use crate::binder::binding_key;
 use crate::error::CompError;
-use crate::host_imports::{build_linker, make_exec_ctx, HostState};
+use crate::host_imports::{make_exec_ctx, HostState};
 use crate::loader::ComponentHandle;
 
 pub fn invoke(
@@ -34,7 +33,6 @@ pub fn invoke(
             .ok_or_else(|| CompError::BindingNotFound(key.clone()))?
     };
 
-    let linker = build_linker(&inner.engine, &inner.host_policy)?;
     let host_state = HostState::from_binding(
         tenant.clone(),
         binding.config.clone(),
@@ -42,8 +40,8 @@ pub fn invoke(
         inner.host_policy.clone(),
     );
     let mut store = Store::new(&inner.engine, host_state);
-    let instance = component_v0_4::Component::instantiate(&mut store, &inner.component, &linker)?;
-    let exports = instance.greentic_component_node();
+    let instance = inner.instance_pre.instantiate(&mut store)?;
+    let exports = inner.guest_indices.load(&mut store, &instance)?;
 
     let exec_ctx = make_exec_ctx(&inner.cref, tenant);
     let input = serde_json::to_string(input_json)?;

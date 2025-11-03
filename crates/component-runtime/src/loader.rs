@@ -2,9 +2,10 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use component_manifest::{ComponentInfo, ManifestValidator};
+use greentic_interfaces::component_v0_4::exports::greentic::component::node::GuestIndices;
 use jsonschema::{validator_for, Validator};
 use serde_json::Value;
-use wasmtime::component::Component as WasmComponent;
+use wasmtime::component::{Component as WasmComponent, InstancePre};
 use wasmtime::{Config, Engine};
 
 use crate::error::CompError;
@@ -39,15 +40,14 @@ impl Loader {
         let component = WasmComponent::from_binary(&engine, &artifact.bytes)?;
 
         let linker = build_linker(&engine, &policy.host)?;
+        let instance_pre = linker.instantiate_pre(&component)?;
+        let guest_indices = GuestIndices::new(&instance_pre)?;
         let host_state = HostState::empty(policy.host.clone());
         let mut store = wasmtime::Store::new(&engine, host_state);
 
-        let instance = greentic_interfaces::component_v0_4::Component::instantiate(
-            &mut store, &component, &linker,
-        )?;
-        let manifest_json = instance
-            .greentic_component_node()
-            .call_get_manifest(&mut store)?;
+        let instance = instance_pre.instantiate(&mut store)?;
+        let guest = guest_indices.load(&mut store, &instance)?;
+        let manifest_json = guest.call_get_manifest(&mut store)?;
         let manifest_value: Value = serde_json::from_str(&manifest_json)?;
         let validator = ManifestValidator::new();
         let info = validator.validate_value(manifest_value.clone())?;
@@ -64,7 +64,8 @@ impl Loader {
                 info,
                 config_schema: Arc::new(config_schema),
                 engine,
-                component,
+                instance_pre,
+                guest_indices,
                 host_policy: policy.host.clone(),
                 bindings: Mutex::new(HashMap::new()),
             }),
@@ -92,7 +93,8 @@ pub(crate) struct ComponentInner {
     pub(crate) info: ComponentInfo,
     pub(crate) config_schema: Arc<Validator>,
     pub(crate) engine: Engine,
-    pub(crate) component: WasmComponent,
+    pub(crate) instance_pre: InstancePre<HostState>,
+    pub(crate) guest_indices: GuestIndices,
     pub(crate) host_policy: crate::policy::HostPolicy,
     pub(crate) bindings: Mutex<HashMap<String, TenantBinding>>,
 }

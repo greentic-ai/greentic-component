@@ -15,7 +15,7 @@ use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde_json::{Map, Value};
 use tracing::debug;
 use wasmtime::component::Linker;
-use wasmtime::Engine;
+use wasmtime::{Engine, Result as WasmtimeResult};
 
 use crate::error::CompError;
 use crate::loader::ComponentRef;
@@ -59,7 +59,7 @@ impl HostState {
 
 pub fn build_linker(engine: &Engine, _policy: &HostPolicy) -> Result<Linker<HostState>, CompError> {
     let mut linker = Linker::<HostState>::new(engine);
-    host_import_v0_4::add_to_linker(&mut linker)?;
+    host_import_v0_4::add_to_linker(&mut linker, |state: &mut HostState| state)?;
     component_v0_4::add_control_to_linker(&mut linker, |state: &mut HostState| state)?;
     Ok(linker)
 }
@@ -180,6 +180,33 @@ impl http::Host for HostState {
             headers_json,
             body: body_base64,
         })
+    }
+}
+
+impl host_import_v0_4::HostImports for HostState {
+    fn secrets_get(
+        &mut self,
+        key: String,
+        ctx: Option<core_types::TenantCtx>,
+    ) -> WasmtimeResult<Result<String, core_types::IfaceError>> {
+        Ok(<Self as secrets::Host>::get(self, key, ctx))
+    }
+
+    fn telemetry_emit(
+        &mut self,
+        span_json: String,
+        ctx: Option<core_types::TenantCtx>,
+    ) -> WasmtimeResult<()> {
+        <Self as telemetry::Host>::emit(self, span_json, ctx);
+        Ok(())
+    }
+
+    fn http_fetch(
+        &mut self,
+        req: http::HttpRequest,
+        ctx: Option<core_types::TenantCtx>,
+    ) -> WasmtimeResult<Result<http::HttpResponse, core_types::IfaceError>> {
+        Ok(<Self as http::Host>::fetch(self, req, ctx))
     }
 }
 
