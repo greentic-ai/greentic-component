@@ -3,13 +3,13 @@ use std::sync::{Arc, Mutex};
 
 use component_manifest::{ComponentInfo, ManifestValidator};
 use greentic_interfaces::component_v0_4::exports::greentic::component::node::GuestIndices;
-use jsonschema::{validator_for, Validator};
+use jsonschema::{Validator, validator_for};
 use serde_json::Value;
 use wasmtime::component::{Component as WasmComponent, InstancePre};
 use wasmtime::{Config, Engine};
 
 use crate::error::CompError;
-use crate::host_imports::{build_linker, HostState};
+use crate::host_imports::{HostState, build_linker};
 use crate::policy::LoadPolicy;
 
 #[derive(Debug, Clone)]

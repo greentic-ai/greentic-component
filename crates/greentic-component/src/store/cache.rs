@@ -7,7 +7,7 @@ use sha2::{Digest, Sha256};
 use tokio::fs as tfs;
 use tokio::io::AsyncWriteExt;
 
-use super::{meta, ComponentBytes, ComponentId, ComponentLocator};
+use super::{ComponentBytes, ComponentId, ComponentLocator, meta};
 
 #[derive(Clone, Debug)]
 pub struct Cache {

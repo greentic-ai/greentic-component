@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 #[cfg(not(feature = "oci"))]
 use anyhow::bail;
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use tracing::instrument;

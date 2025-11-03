@@ -1,15 +1,15 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use bytes::Bytes;
+use oci_distribution::Reference;
 use oci_distribution::client::{Client, ClientConfig};
 use oci_distribution::secrets::RegistryAuth;
-use oci_distribution::Reference;
 
 pub async fn fetch(reference: &str) -> Result<Bytes> {
     let reference: Reference = reference
         .parse()
         .map_err(|err| anyhow!("invalid OCI reference '{reference}': {err}"))?;
 
-    let mut client = Client::new(ClientConfig::default());
+    let client = Client::new(ClientConfig::default());
     let auth = RegistryAuth::Anonymous;
     let accepted_media_types = vec![
         "application/wasm",

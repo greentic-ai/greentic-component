@@ -99,7 +99,7 @@ mod tests {
     use component_manifest::{CapabilityRef, ComponentInfo, WitCompat};
     use greentic_types::{EnvId, TenantCtx, TenantId};
     use jsonschema::validator_for;
-    use serde_json::{json, Map};
+    use serde_json::{Map, json};
 
     fn component_fixture() -> (ComponentInfo, Validator) {
         let manifest_json = json!({

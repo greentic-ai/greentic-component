@@ -170,14 +170,14 @@ impl ComponentStore {
         let locator_cache = self
             .cache_root
             .join(format!("{}.wasm", self.compute_cache_key(locator)));
-        if locator_cache != path {
-            if let Err(err) = std_fs::write(&locator_cache, bytes) {
-                debug!(
-                    "failed to update locator cache at {}: {}",
-                    locator_cache.display(),
-                    err
-                );
-            }
+        if locator_cache != path
+            && let Err(err) = std_fs::write(&locator_cache, bytes)
+        {
+            debug!(
+                "failed to update locator cache at {}: {}",
+                locator_cache.display(),
+                err
+            );
         }
 
         debug!("cached artifact {:?} at {}", locator, path.display());
@@ -273,11 +273,9 @@ pub enum StoreError {
 
 fn decode_fs_path(url: &Url) -> Result<PathBuf, StoreError> {
     let mut path = String::new();
-    if let Some(host) = url.host_str() {
-        if !host.is_empty() {
-            path.push_str("//");
-            path.push_str(host);
-        }
+    if let Some(host) = url.host_str().filter(|host| !host.is_empty()) {
+        path.push_str("//");
+        path.push_str(host);
     }
     path.push_str(url.path());
     let decoded = percent_decode_str(&path)

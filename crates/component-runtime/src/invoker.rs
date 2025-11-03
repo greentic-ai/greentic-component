@@ -4,7 +4,7 @@ use wasmtime::Store;
 
 use crate::binder::binding_key;
 use crate::error::CompError;
-use crate::host_imports::{make_exec_ctx, HostState};
+use crate::host_imports::{HostState, make_exec_ctx};
 use crate::loader::ComponentHandle;
 
 pub fn invoke(

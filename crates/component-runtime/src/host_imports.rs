@@ -1,9 +1,9 @@
 use std::collections::{HashMap, VecDeque};
 use std::convert::TryFrom;
 
-use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine as _;
-use greentic_interfaces::component_v0_4::{self, exports::greentic::component::node, ControlHost};
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+use greentic_interfaces::component_v0_4::{self, ControlHost, exports::greentic::component::node};
 use greentic_interfaces::host_import_v0_4::{
     self,
     greentic::host_import::{http, secrets, telemetry},
