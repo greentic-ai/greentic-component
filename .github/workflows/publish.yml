@@ -14,6 +14,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.87.0
+          components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
       - name: Lint & Test
         run: |
@@ -41,6 +42,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.87.0
+          components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
       - name: Publish changed crates
         uses: katyo/publish-crates@v2
