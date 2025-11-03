@@ -38,7 +38,7 @@ impl Cache {
     fn key_for_locator(loc: &ComponentLocator) -> String {
         match loc {
             ComponentLocator::Fs { path } => format!("fs:{}", path.to_string_lossy()),
-            ComponentLocator::Oci { reference } => format!("oci:{}", reference),
+            ComponentLocator::Oci { reference } => format!("oci:{reference}"),
         }
     }
 
