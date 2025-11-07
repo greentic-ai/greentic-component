@@ -90,7 +90,7 @@ fn walk(
 
         if let Some(Value::Object(pattern_props)) = map.get("patternProperties") {
             for (key, child) in pattern_props {
-                let next = format!("{}.patternProperties[{}]", path, key);
+                let next = format!("{path}.patternProperties[{key}]");
                 walk(child, &next, visitor);
             }
         }
