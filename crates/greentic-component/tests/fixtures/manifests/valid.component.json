@@ -1,0 +1,58 @@
+{
+  "id": "com.greentic.demo.echo",
+  "name": "Echo Component",
+  "version": "0.3.0",
+  "world": "greentic:component/echo",
+  "describe_export": "describe",
+  "capabilities": {
+    "http": {
+      "domains": ["api.greentic.dev"],
+      "allow_insecure": false
+    },
+    "secrets": {
+      "scopes": ["kv/api"]
+    },
+    "kv": {
+      "buckets": ["config"],
+      "read": true,
+      "write": false
+    },
+    "fs": {
+      "paths": ["./assets"],
+      "read_only": true
+    },
+    "net": {
+      "hosts": ["api.greentic.dev"],
+      "allow_tcp": true,
+      "allow_udp": false
+    },
+    "tools": {
+      "allow": ["greentic-dev"]
+    }
+  },
+  "limits": {
+    "memory_mb": 128,
+    "wall_time_ms": 60000,
+    "fuel": 1000,
+    "files": 16
+  },
+  "telemetry": {
+    "span_prefix": "component.echo",
+    "attributes": {
+      "component": "echo"
+    },
+    "emit_node_spans": true
+  },
+  "provenance": {
+    "builder": "greentic-dev@0.5.0",
+    "git_commit": "abcdef1",
+    "toolchain": "rustc 1.80.0",
+    "built_at_utc": "2024-05-01T12:00:00Z"
+  },
+  "artifacts": {
+    "component_wasm": "bin/component.wasm"
+  },
+  "hashes": {
+    "component_wasm": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  }
+}

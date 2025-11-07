@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: fmt
+        run: cargo fmt --all -- --check
+      - name: clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: tests
+        run: cargo test --all
+      - name: feature tests (prepare + cli)
+        run: cargo test -p greentic-component --features "prepare,cli"
+      - name: Verify published schema $id
+        if: github.event_name == 'push'
+        run: |
+          curl -sSfo /tmp/published.json https://greentic-ai.github.io/greentic-component/schemas/v1/component.manifest.schema.json
+          remote_id=$(jq -r '."$id"' /tmp/published.json)
+          local_id=$(jq -r '."$id"' crates/greentic-component/schemas/v1/component.manifest.schema.json)
+          if [ "$remote_id" != "$local_id" ]; then
+            echo "Schema drift detected: remote=$remote_id local=$local_id"
+            exit 1
+          fi
+          echo "Schema IDs match: $remote_id"

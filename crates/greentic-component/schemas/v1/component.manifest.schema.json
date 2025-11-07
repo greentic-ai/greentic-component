@@ -1,0 +1,245 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://greentic-ai.github.io/greentic-component/schemas/v1/component.manifest.schema.json",
+  "title": "Greentic Component Manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "name",
+    "version",
+    "world",
+    "describe_export",
+    "artifacts",
+    "hashes"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^([a-zA-Z0-9-]+\\.)+[a-zA-Z0-9-]+$",
+      "description": "Reverse DNS identifier for the component"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][A-Za-z0-9\\.-]+)?$"
+    },
+    "world": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9:_./@-]+$"
+    },
+    "describe_export": {
+      "type": "string",
+      "minLength": 1
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "http": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["domains"],
+          "properties": {
+            "domains": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string"
+              },
+              "x-capability": "http"
+            },
+            "allow_insecure": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        },
+        "secrets": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["scopes"],
+          "properties": {
+            "scopes": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string"
+              },
+              "x-redact": true,
+              "x-capability": "secrets"
+            }
+          }
+        },
+        "kv": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["buckets"],
+          "properties": {
+            "buckets": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "read": {
+              "type": "boolean",
+              "default": true
+            },
+            "write": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        },
+        "fs": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["paths"],
+          "properties": {
+            "paths": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "x-capability": "fs"
+            },
+            "read_only": {
+              "type": "boolean",
+              "default": true
+            }
+          }
+        },
+        "net": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "hosts": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "x-capability": "net"
+            },
+            "allow_tcp": {
+              "type": "boolean",
+              "default": true
+            },
+            "allow_udp": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        },
+        "tools": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "allow": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "x-capability": "tools"
+            }
+          }
+        }
+      }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["memory_mb", "wall_time_ms"],
+      "properties": {
+        "memory_mb": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "wall_time_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "fuel": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "files": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "telemetry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["span_prefix"],
+      "properties": {
+        "span_prefix": {
+          "type": "string",
+          "minLength": 1,
+          "x-default-applied": "provider_scope"
+        },
+        "attributes": {
+          "type": "object",
+          "x-redact": false,
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "emit_node_spans": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["builder", "git_commit", "toolchain", "built_at_utc"],
+      "properties": {
+        "builder": {
+          "type": "string",
+          "minLength": 1
+        },
+        "git_commit": {
+          "type": "string",
+          "minLength": 7
+        },
+        "toolchain": {
+          "type": "string",
+          "minLength": 1
+        },
+        "built_at_utc": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["component_wasm"],
+      "properties": {
+        "component_wasm": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "hashes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["component_wasm"],
+      "properties": {
+        "component_wasm": {
+          "type": "string",
+          "pattern": "^blake3:[0-9a-fA-F]{64}$",
+          "x-capability": "signing"
+        }
+      }
+    }
+  }
+}
