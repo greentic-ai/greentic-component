@@ -5,8 +5,6 @@ use clap::Parser;
 #[cfg(feature = "cli")]
 use greentic_component::{ComponentError, PreparedComponent, prepare_component};
 #[cfg(feature = "cli")]
-use serde_json;
-#[cfg(feature = "cli")]
 #[derive(Parser, Debug)]
 #[command(about = "Inspect a Greentic component artifact")]
 struct Args {

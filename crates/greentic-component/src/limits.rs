@@ -60,10 +60,10 @@ pub fn merge(user: Option<&LimitOverrides>, defaults: &Limits) -> Limits {
         if let Some(wall_time_ms) = overrides.wall_time_ms {
             merged.wall_time_ms = wall_time_ms;
         }
-        if let Some(fuel) = overrides.fuel.clone() {
+        if let Some(fuel) = overrides.fuel {
             merged.fuel = fuel;
         }
-        if let Some(files) = overrides.files.clone() {
+        if let Some(files) = overrides.files {
             merged.files = files;
         }
     }
