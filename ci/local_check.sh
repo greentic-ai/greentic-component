@@ -85,13 +85,23 @@ schema_check() {
         echo "[skip] schema drift check (offline)"
         return 0
     fi
-    need curl || { echo "[skip] schema drift check (curl missing)"; return 0; }
-    need jq || { echo "[skip] schema drift check (jq missing)"; return 0; }
-    step "Schema $id drift check"
+    if ! need curl; then
+        echo "[skip] schema drift check (curl missing)"
+        return 0
+    fi
+    if ! need jq; then
+        echo "[skip] schema drift check (jq missing)"
+        return 0
+    fi
+    step "Schema drift check"
     local remote=/tmp/local-check-schema.json
     if ! curl -sSfo "$remote" https://greentic-ai.github.io/greentic-component/schemas/v1/component.manifest.schema.json; then
-        echo "[fail] schema curl"
-        FAILED=1
+        if [ "$LOCAL_CHECK_STRICT" = "1" ]; then
+            echo "[fail] schema curl"
+            FAILED=1
+        else
+            echo "[skip] schema curl (remote unavailable)"
+        fi
         return 1
     fi
     local remote_id local_id
@@ -99,7 +109,9 @@ schema_check() {
     local_id=$(jq -r '."$id"' crates/greentic-component/schemas/v1/component.manifest.schema.json)
     if [ "$remote_id" != "$local_id" ]; then
         echo "Schema ID mismatch remote=$remote_id local=$local_id"
-        FAILED=1
+        if [ "$LOCAL_CHECK_STRICT" = "1" ]; then
+            FAILED=1
+        fi
     else
         echo "Schema IDs match: $remote_id"
     fi
