@@ -52,6 +52,23 @@ cargo clippy --all-targets --all-features
 cargo test
 ```
 
+### Local Checks
+
+Run `ci/local_check.sh` to mirror CI locally:
+
+```bash
+# Default: offline, non-strict
+ci/local_check.sh
+
+# Enable online-only checks & strict mode
+LOCAL_CHECK_ONLINE=1 LOCAL_CHECK_STRICT=1 ci/local_check.sh
+
+# Show every command
+LOCAL_CHECK_VERBOSE=1 ci/local_check.sh
+```
+
+The script gracefully skips network-dependent steps unless `LOCAL_CHECK_ONLINE=1` and will fail fast when `LOCAL_CHECK_STRICT=1` is set.
+
 ## Releases & Publishing
 
 - Versions are sourced directly from each crate's `Cargo.toml`.
