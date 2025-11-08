@@ -6,6 +6,82 @@ This workspace houses the core pieces needed to load, validate, and execute Gree
 - `component-store` — fetches component artifacts from supported stores (filesystem, HTTP, OCI/Warg placeholders) with caching and digest/signature policy enforcement.
 - `component-runtime` — uses Wasmtime’s component model to load components, bind tenant configuration/secrets, and invoke exported operations via the generic Greentic interfaces.
 
+## Component CLI
+
+Enable the `cli` feature to access the unified `greentic-component` binary, which now bundles scaffolding helpers alongside the existing doctor/inspect tools.
+
+Quick examples:
+
+```bash
+# List built-in templates (user-provided templates live in ~/.greentic/templates/component)
+cargo run -p greentic-component --features cli --bin greentic-component -- templates
+
+# Scaffold a new component (runs cargo check --target wasm32-wasip2)
+cargo run -p greentic-component --features cli --bin greentic-component -- \\
+    new --name hello-world --org ai.greentic
+```
+
+`greentic-component new --help`:
+
+```text
+Scaffold a new Greentic component project
+
+Usage: greentic-component new [OPTIONS] --name <kebab_or_snake>
+
+Options:
+      --name <kebab_or_snake>  Name for the component (kebab-or-snake case)
+      --path <dir>             Path to create the component (defaults to ./<name>)
+      --template <id>          Template identifier to scaffold from [default: rust-wasi-p2-min]
+      --org <reverse.dns>      Reverse DNS-style organisation identifier [default: ai.greentic]
+      --version <semver>       Initial component version [default: 0.1.0]
+      --license <id>           License to embed into generated sources [default: MIT]
+      --wit-world <name>       Exported WIT world name [default: component]
+      --non-interactive        Run without prompting for confirmation
+      --json                   Emit JSON instead of human-readable output
+  -h, --help                   Print help
+```
+
+`greentic-component templates --help`:
+
+```text
+List available component templates
+
+Usage: greentic-component templates [OPTIONS]
+
+Options:
+      --json  Emit JSON instead of a table
+  -h, --help  Print help
+```
+
+### Templates
+
+`greentic-component templates` ships with the `rust-wasi-p2-min` starter. It renders:
+
+- A Rust 2024 `cdylib` crate wired to `wit-bindgen` and the WASI-P2 target.
+- WIT, JSON Schemas, and a manifest skeleton that passes the workspace validators.
+- CI + Makefile boilerplate so the generated project can build/test on any runner.
+
+The `new` subcommand renders Handlebars templates with variables such as `name`,
+`org`, `version`, `license`, `wit_world`, `year`, and the sanitized snake-case
+variant used for package/world identifiers. After generation it automatically
+runs `cargo check --target wasm32-wasip2` (skip with the hidden `--no-check`
+flag if you need to avoid the compile step). Once the scaffold lands, jump into
+the component directory and run:
+
+```bash
+rustup target add wasm32-wasip2
+cargo fmt && cargo clippy --all-targets
+cargo check --target wasm32-wasip2
+```
+
+Finally, update `component.manifest.json` with the real `blake3` hash for the
+compiled wasm (`greentic-component inspect --json target/wasm32-wasip2/release/<name>.wasm`).
+
+`component-doctor` now recognizes fresh scaffolds too: pointing it at the root
+directory prints a checklist for `component.manifest.json`, `Cargo.toml`,
+`src/`, `wit/`, and `schemas/`, so you get immediate feedback before compiling
+the wasm.
+
 ## Development
 
 ### Prerequisites & MSRV

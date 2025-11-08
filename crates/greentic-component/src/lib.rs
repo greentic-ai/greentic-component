@@ -21,6 +21,13 @@ pub mod telemetry;
 
 pub mod store;
 
+#[cfg(feature = "cli")]
+pub mod cli;
+#[cfg(feature = "cli")]
+pub mod cmd;
+#[cfg(feature = "cli")]
+pub mod scaffold;
+
 #[cfg(feature = "abi")]
 pub use abi::{AbiError, check_world, has_lifecycle};
 pub use capabilities::{Capabilities, CapabilityError};

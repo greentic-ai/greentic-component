@@ -1,0 +1,61 @@
+mod bindings {
+    wit_bindgen::generate!({
+        path: "wit/world.wit",
+        world: "{{ wit_world }}",
+    });
+}
+
+use bindings::Guest;
+
+struct Component;
+
+impl Guest for Component {
+    fn describe() -> String {
+        describe_payload()
+    }
+
+    fn handle(input: String) -> String {
+        handle_message(&input)
+    }
+}
+
+bindings::export!(Component with_types_in bindings);
+
+pub fn describe_payload() -> String {
+    serde_json::json!({
+        "component": {
+            "name": "{{ name }}",
+            "org": "{{ org }}",
+            "version": "{{ version }}",
+            "world": "{{ wit_world }}",
+            "schemas": {
+                "component": "schemas/component.schema.json",
+                "input": "schemas/io/input.schema.json",
+                "output": "schemas/io/output.schema.json"
+            }
+        }
+    })
+    .to_string()
+}
+
+pub fn handle_message(input: &str) -> String {
+    format!("{{ name }}::handle => {}", input.trim())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn describe_payload_is_json() {
+        let payload = describe_payload();
+        let json: serde_json::Value = serde_json::from_str(&payload).expect("valid json");
+        assert_eq!(json["component"]["name"], "{{ name }}");
+    }
+
+    #[test]
+    fn handle_message_round_trips() {
+        let value = handle_message("demo");
+        assert!(value.contains("demo"));
+    }
+}

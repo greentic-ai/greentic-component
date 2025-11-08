@@ -1,0 +1,17 @@
+---
+source: crates/greentic-component/tests/templates_snapshot.rs
+expression: stdout.trim_end()
+---
+[
+  {
+    "id": "rust-wasi-p2-min",
+    "location": "built-in",
+    "path": null,
+    "description": "Minimal Rust + WASI-P2 component starter",
+    "tags": [
+      "rust",
+      "wasi-p2",
+      "component"
+    ]
+  }
+]

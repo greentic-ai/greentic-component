@@ -1,5 +1,7 @@
 #[cfg(feature = "cli")]
 use std::fs;
+#[cfg(feature = "cli")]
+use std::path::{Path, PathBuf};
 use std::process;
 
 #[cfg(feature = "cli")]
@@ -32,6 +34,10 @@ fn main() {
 #[cfg(feature = "cli")]
 fn run() -> Result<(), ComponentError> {
     let args = Args::parse();
+    if let Some(report) = detect_scaffold(&args.target) {
+        report.print();
+        return Ok(());
+    }
     let prepared = prepare_component(&args.target)?;
 
     let manifest_json = fs::read_to_string(&prepared.manifest_path)?;
@@ -75,4 +81,72 @@ fn run() -> Result<(), ComponentError> {
     );
     println!("limits configured: {}", prepared.manifest.limits.is_some());
     Ok(())
+}
+
+#[cfg(feature = "cli")]
+fn detect_scaffold(target: &str) -> Option<ScaffoldReport> {
+    let path = PathBuf::from(target);
+    let metadata = fs::metadata(&path).ok()?;
+    if !metadata.is_dir() {
+        return None;
+    }
+    ScaffoldReport::from_dir(&path)
+}
+
+#[cfg(feature = "cli")]
+struct ScaffoldReport {
+    root: PathBuf,
+    manifest: bool,
+    cargo: bool,
+    wit: bool,
+    schemas: bool,
+    src: bool,
+}
+
+#[cfg(feature = "cli")]
+impl ScaffoldReport {
+    fn from_dir(root: &Path) -> Option<Self> {
+        let manifest = root.join("component.manifest.json");
+        if !manifest.exists() {
+            return None;
+        }
+        Some(Self {
+            root: root.to_path_buf(),
+            manifest: manifest.is_file(),
+            cargo: root.join("Cargo.toml").is_file(),
+            wit: root.join("wit").is_dir(),
+            schemas: root.join("schemas").is_dir(),
+            src: root.join("src").is_dir(),
+        })
+    }
+
+    fn print(&self) {
+        println!("Detected Greentic scaffold at {}", self.root.display());
+        self.print_line("component.manifest.json", self.manifest);
+        self.print_line("Cargo.toml", self.cargo);
+        self.print_line("src/", self.src);
+        self.print_line("wit/", self.wit);
+        self.print_line("schemas/", self.schemas);
+        if self.is_complete() {
+            println!(
+                "Next steps: run `cargo check --target wasm32-wasip2` and `greentic-component doctor` once the wasm is built."
+            );
+        } else {
+            println!(
+                "Some scaffold pieces are missing. Re-run `greentic-component new` or restore the template files."
+            );
+        }
+    }
+
+    fn print_line(&self, label: &str, ok: bool) {
+        if ok {
+            println!("  [ok] {label}");
+        } else {
+            println!("  [missing] {label}");
+        }
+    }
+
+    fn is_complete(&self) -> bool {
+        self.manifest && self.wit && self.schemas
+    }
 }

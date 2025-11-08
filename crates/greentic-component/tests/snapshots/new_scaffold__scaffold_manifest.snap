@@ -1,0 +1,31 @@
+---
+source: crates/greentic-component/tests/new_scaffold.rs
+assertion_line: 33
+expression: manifest.trim()
+---
+{
+  "$schema": "https://greentic-ai.github.io/greentic-component/schemas/v1/component.manifest.schema.json",
+  "id": "ai.greentic.demo-component",
+  "name": "demo-component",
+  "version": "0.1.0",
+  "world": "component",
+  "describe_export": "describe",
+  "capabilities": {
+    "http": {
+      "domains": ["example.com"]
+    }
+  },
+  "limits": {
+    "memory_mb": 128,
+    "wall_time_ms": 1000
+  },
+  "telemetry": {
+    "span_prefix": "ai.greentic.demo_component"
+  },
+  "artifacts": {
+    "component_wasm": "target/wasm32-wasip2/release/demo_component.wasm"
+  },
+  "hashes": {
+    "component_wasm": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+  }
+}
