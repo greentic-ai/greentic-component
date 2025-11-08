@@ -49,10 +49,12 @@ jobs:
     name: smoke scaffold
     runs-on: ubuntu-latest
     needs: checks
-    env:
-      SMOKE_DIR: ${{ runner.temp }}/smoke-ci
     steps:
       - uses: actions/checkout@v4
+      - name: Resolve smoke dir
+        id: smoke-path
+        run: |
+          echo "dir=$RUNNER_TEMP/greentic-smoke" >> "$GITHUB_OUTPUT"
       - name: Install toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -61,15 +63,19 @@ jobs:
         with:
           shared-key: smoke
       - name: Scaffold demo component
+        env:
+          SMOKE_DIR: ${{ steps.smoke-path.outputs.dir }}
         run: |
           rm -rf "$SMOKE_DIR"
           cargo run -p greentic-component --features cli --bin greentic-component -- \
             new --name smoke-ci --org ai.greentic \
             --path "$SMOKE_DIR" --non-interactive --no-check --json
       - name: component-doctor (smoke)
-        run: cargo run -p greentic-component --features cli --bin component-doctor -- "$SMOKE_DIR"
+        run: cargo run -p greentic-component --features cli --bin component-doctor -- "${{ steps.smoke-path.outputs.dir }}"
       - name: cargo check (generated component)
-        working-directory: ${{ env.SMOKE_DIR }}
+        working-directory: ${{ steps.smoke-path.outputs.dir }}
         run: cargo check --target wasm32-wasip2
       - name: component-inspect (smoke)
-        run: cargo run -p greentic-component --features cli --bin component-inspect -- --json "$SMOKE_DIR/component.manifest.json"
+        run: >
+          cargo run -p greentic-component --features cli --bin component-inspect --
+          --json "${{ steps.smoke-path.outputs.dir }}/component.manifest.json"
