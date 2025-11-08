@@ -175,6 +175,9 @@ if [ "$run_smoke" = "1" ]; then
         bash -lc "cd \"$smoke_path\" && cargo check --target wasm32-wasip2"
     run_cmd "Smoke: cargo build --release (generated)" \
         bash -lc "cd \"$smoke_path\" && cargo build --target wasm32-wasip2 --release"
+    run_cmd "Smoke: update manifest hash" \
+        cargo run -p greentic-component --features "cli" --bin component-hash -- \
+        "$SMOKE_MANIFEST"
     run_cmd "Smoke: component-inspect (generated)" \
         cargo run -p greentic-component --features "cli" --bin component-inspect -- \
         --json "$SMOKE_MANIFEST"

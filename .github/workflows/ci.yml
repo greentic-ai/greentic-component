@@ -78,6 +78,10 @@ jobs:
       - name: cargo build release (generated component)
         working-directory: ${{ steps.smoke-path.outputs.dir }}
         run: cargo build --target wasm32-wasip2 --release
+      - name: Update manifest hash (smoke)
+        run: >
+          cargo run -p greentic-component --features cli --bin component-hash --
+          "${{ steps.smoke-path.outputs.dir }}/component.manifest.json"
       - name: component-inspect (smoke)
         run: >
           cargo run -p greentic-component --features cli --bin component-inspect --

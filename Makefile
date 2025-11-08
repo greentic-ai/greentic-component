@@ -39,6 +39,8 @@ smoke:
 		$(SMOKE_DIR)/$(SMOKE_COMPONENT)
 	cd $(SMOKE_DIR)/$(SMOKE_COMPONENT) && $(CARGO) check --target wasm32-wasip2
 	cd $(SMOKE_DIR)/$(SMOKE_COMPONENT) && $(CARGO) build --target wasm32-wasip2 --release
+	$(CARGO) run -p greentic-component --features cli --bin component-hash -- \
+		$(SMOKE_DIR)/$(SMOKE_COMPONENT)/component.manifest.json
 	$(CARGO) run -p greentic-component --features cli --bin component-inspect -- \
 		--json $(SMOKE_DIR)/$(SMOKE_COMPONENT)/component.manifest.json
 	if [ "$(SMOKE_CLEANUP)" = "1" ] && [ -n "$(SMOKE_BASE)" ]; then rm -rf "$(SMOKE_BASE)"; fi
