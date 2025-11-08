@@ -74,8 +74,9 @@ need jq && jq --version || true
 need curl && curl --version || true
 
 run_cmd "cargo fmt" cargo fmt --all -- --check
-run_cmd "cargo clippy" cargo clippy --all-targets --all-features -- -D warnings
+run_cmd "cargo clippy" cargo clippy --workspace --all-targets -- -D warnings
 run_cmd "cargo build --workspace --locked" cargo build --workspace --locked
+run_cmd "cargo build --workspace --all-features" cargo build --workspace --all-features
 run_cmd "cargo test --workspace --all-features --locked" cargo test --workspace --all-features --locked -- --nocapture
 run_cmd "cargo build" cargo build
 run_cmd "cargo build --no-default-features" cargo build --no-default-features
@@ -135,29 +136,46 @@ run_cli_probe() {
 run_cli_probe "component-inspect" --json crates/greentic-component/tests/fixtures/manifests/valid.component.json
 run_cli_probe "component-doctor" crates/greentic-component/tests/fixtures/manifests/valid.component.json
 
-if [ -n "${SMOKE_DIR:-}" ]; then
-    smoke_path="$SMOKE_DIR"
-    cleanup_smoke=0
-else
-    smoke_parent=$(mktemp -d 2>/dev/null || mktemp -d -t greentic-smoke)
-    smoke_path="$smoke_parent/$SMOKE_NAME"
-    cleanup_smoke=1
+run_smoke=1
+if [ "$LOCAL_CHECK_ONLINE" != "1" ]; then
+    run_smoke=0
+elif ! curl -sSf --max-time 5 https://index.crates.io/config.json >/dev/null 2>&1; then
+    run_smoke=0
 fi
-SMOKE_MANIFEST="$smoke_path/component.manifest.json"
-rm -rf "$smoke_path"
-run_cmd "Smoke: scaffold component" \
-    cargo run -p greentic-component --features "cli" --bin greentic-component -- \
-    new --name "$SMOKE_NAME" --org ai.greentic \
-    --path "$smoke_path" --non-interactive --no-check --json
-run_cmd "Smoke: component-doctor (generated)" \
-    cargo run -p greentic-component --features "cli" --bin component-doctor -- "$smoke_path"
-run_cmd "Smoke: component-inspect (generated)" \
-    cargo run -p greentic-component --features "cli" --bin component-inspect -- \
-    --json "$SMOKE_MANIFEST"
-run_cmd "Smoke: cargo check (generated)" \
-    bash -lc "cd \"$smoke_path\" && cargo check --target wasm32-wasip2"
-if [ ${cleanup_smoke:-0} -eq 1 ]; then
-    rm -rf "$smoke_parent"
+
+if [ "$run_smoke" = "1" ]; then
+    if [ -n "${SMOKE_DIR:-}" ]; then
+        smoke_path="$SMOKE_DIR"
+        cleanup_smoke=0
+    else
+        smoke_parent=$(mktemp -d 2>/dev/null || mktemp -d -t greentic-smoke)
+        smoke_path="$smoke_parent/$SMOKE_NAME"
+        cleanup_smoke=1
+    fi
+    SMOKE_MANIFEST="$smoke_path/component.manifest.json"
+    rm -rf "$smoke_path"
+    run_cmd "Smoke: scaffold component" \
+        cargo run -p greentic-component --features "cli" --bin greentic-component -- \
+        new --name "$SMOKE_NAME" --org ai.greentic \
+        --path "$smoke_path" --non-interactive --no-check --json
+    run_cmd "Smoke: component-doctor (generated)" \
+        cargo run -p greentic-component --features "cli" --bin component-doctor -- "$smoke_path"
+    run_cmd "Smoke: cargo check (generated)" \
+        bash -lc "cd \"$smoke_path\" && cargo check --target wasm32-wasip2"
+    run_cmd "Smoke: component-inspect (generated)" \
+        cargo run -p greentic-component --features "cli" --bin component-inspect -- \
+        --json "$SMOKE_MANIFEST"
+    if [ ${cleanup_smoke:-0} -eq 1 ]; then
+        rm -rf "$smoke_parent"
+    fi
+else
+    message="smoke scaffold skipped (network unavailable)"
+    if [ "$LOCAL_CHECK_STRICT" = "1" ]; then
+        echo "[fail] $message"
+        FAILED=1
+    else
+        echo "[skip] $message"
+    fi
 fi
 
 if [ $FAILED -ne 0 ]; then

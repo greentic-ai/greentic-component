@@ -166,9 +166,10 @@ LOCAL_CHECK_VERBOSE=1 ci/local_check.sh
 ```
 
 The script runs in online mode by default, gracefully skips network-dependent
-steps when `LOCAL_CHECK_ONLINE=0`, scaffolds a fresh component (doctor/inspect +
-`cargo check --target wasm32-wasip2`), and fails fast when `LOCAL_CHECK_STRICT=1`
-is set.
+steps when `LOCAL_CHECK_ONLINE=0`, scaffolds a fresh component (doctor +
+`cargo check --target wasm32-wasip2` + inspect) whenever registry access is
+available, and fails fast when `LOCAL_CHECK_STRICT=1` is set (even if smoke
+scaffolding is skipped due to an offline environment).
 
 ## Releases & Publishing
 

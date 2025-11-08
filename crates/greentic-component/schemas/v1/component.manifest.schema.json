@@ -14,6 +14,10 @@
     "hashes"
   ],
   "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Optional JSON Schema reference for tooling"
+    },
     "id": {
       "type": "string",
       "pattern": "^([a-zA-Z0-9-]+\\.)+[a-zA-Z0-9-]+$",

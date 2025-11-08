@@ -68,8 +68,8 @@ jobs:
             --path "$SMOKE_DIR" --non-interactive --no-check --json
       - name: component-doctor (smoke)
         run: cargo run -p greentic-component --features cli --bin component-doctor -- "$SMOKE_DIR"
-      - name: component-inspect (smoke)
-        run: cargo run -p greentic-component --features cli --bin component-inspect -- --json "$SMOKE_DIR/component.manifest.json"
       - name: cargo check (generated component)
         working-directory: ${{ env.SMOKE_DIR }}
         run: cargo check --target wasm32-wasip2
+      - name: component-inspect (smoke)
+        run: cargo run -p greentic-component --features cli --bin component-inspect -- --json "$SMOKE_DIR/component.manifest.json"
