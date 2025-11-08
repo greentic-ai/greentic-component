@@ -11,7 +11,7 @@ license = "MIT"
 rust-version = "1.85"
 description = "Greentic component demo-component"
 repository = "https://github.com/demo-component"
-authors = ["maarten"]
+authors = ["Greentic Labs"]
 
 [lib]
 crate-type = ["cdylib"]

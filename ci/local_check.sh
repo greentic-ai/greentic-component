@@ -76,8 +76,19 @@ need curl && curl --version || true
 run_cmd "cargo fmt" cargo fmt --all -- --check
 run_cmd "cargo clippy" cargo clippy --workspace --all-targets -- -D warnings
 run_cmd "cargo build --workspace --locked" cargo build --workspace --locked
-run_cmd "cargo build --workspace --all-features" cargo build --workspace --all-features
-run_cmd "cargo test --workspace --all-features --locked" cargo test --workspace --all-features --locked -- --nocapture
+if [ "$LOCAL_CHECK_STRICT" = "1" ]; then
+    run_cmd "cargo build --workspace --all-features" cargo build --workspace --all-features
+else
+    run_cmd "cargo build (greentic-component all features)" \
+        cargo build -p greentic-component --all-features
+fi
+if [ "$LOCAL_CHECK_STRICT" = "1" ]; then
+    run_cmd "cargo test --workspace --all-features --locked" \
+        cargo test --workspace --all-features --locked -- --nocapture
+else
+    run_cmd "cargo test --workspace --locked" \
+        cargo test --workspace --locked -- --nocapture
+fi
 run_cmd "cargo build" cargo build
 run_cmd "cargo build --no-default-features" cargo build --no-default-features
 run_cmd "cargo build --features serde" cargo build --features serde

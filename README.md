@@ -158,7 +158,7 @@ ci/local_check.sh
 # Force offline mode (skip schema drift curl)
 LOCAL_CHECK_ONLINE=0 ci/local_check.sh
 
-# Enable strict failure mode for skips
+# Enable strict mode (enforces online schema + full feature builds/tests)
 LOCAL_CHECK_ONLINE=1 LOCAL_CHECK_STRICT=1 ci/local_check.sh
 
 # Show every command
@@ -169,7 +169,9 @@ The script runs in online mode by default, gracefully skips network-dependent
 steps when `LOCAL_CHECK_ONLINE=0`, scaffolds a fresh component (doctor +
 `cargo check --target wasm32-wasip2` + inspect) whenever registry access is
 available, and fails fast when `LOCAL_CHECK_STRICT=1` is set (even if smoke
-scaffolding is skipped due to an offline environment).
+scaffolding is skipped due to an offline environment). Strict mode also forces
+workspace-wide `cargo build/test --all-features`; otherwise those heavyweight
+steps are scoped to the `greentic-component` crate for a faster inner loop.
 
 ## Releases & Publishing
 

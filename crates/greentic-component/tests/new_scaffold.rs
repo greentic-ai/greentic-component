@@ -21,7 +21,11 @@ fn scaffold_rust_wasi_template() {
         .arg("--no-check")
         .env("HOME", temp.path())
         .env("GREENTIC_TEMPLATE_YEAR", "2030")
-        .env("GREENTIC_TEMPLATE_ROOT", temp.path().join("templates"));
+        .env("GREENTIC_TEMPLATE_ROOT", temp.path().join("templates"))
+        .env("GIT_AUTHOR_NAME", "Greentic Labs")
+        .env("GIT_COMMITTER_NAME", "Greentic Labs")
+        .env_remove("USER")
+        .env_remove("USERNAME");
     cmd.assert().success();
 
     let cargo = fs::read_to_string(component_dir.join("Cargo.toml")).expect("Cargo.toml");

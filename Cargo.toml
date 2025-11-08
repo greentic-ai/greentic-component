@@ -9,7 +9,7 @@ resolver = "2"
 
 [workspace.package]
 edition = "2024"
-version = "0.3.0"
+version = "0.3.1"
 license = "MIT"
 
 [workspace.dependencies]
@@ -45,5 +45,5 @@ wit-component = "0.240"
 wit-parser = "0.240"
 wasmparser = "0.240"
 wasm-metadata = "0.240"
-component-manifest = { version = "0.3.0", path = "crates/component-manifest" }
-component-store = { version = "0.3.0", path = "crates/component-store" }
+component-manifest = { version = "0.3", path = "crates/component-manifest" }
+component-store = { version = "0.3", path = "crates/component-store" }
