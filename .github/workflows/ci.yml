@@ -75,6 +75,9 @@ jobs:
       - name: cargo check (generated component)
         working-directory: ${{ steps.smoke-path.outputs.dir }}
         run: cargo check --target wasm32-wasip2
+      - name: cargo build release (generated component)
+        working-directory: ${{ steps.smoke-path.outputs.dir }}
+        run: cargo build --target wasm32-wasip2 --release
       - name: component-inspect (smoke)
         run: >
           cargo run -p greentic-component --features cli --bin component-inspect --

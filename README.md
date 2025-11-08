@@ -95,10 +95,11 @@ record which template produced a component without shell parsing.
 
 - `.github/workflows/ci.yml` runs on every push/PR using the stable toolchain on `ubuntu-latest`.
 - The `checks` job runs `cargo fmt`, `cargo clippy`, full workspace tests (locked + all features), targeted CLI feature tests, and verifies the published schema `$id` on pushes to `master`.
- - The `smoke` job scaffolds a temporary component via `greentic-component new`,
-   runs `component-doctor`/`component-inspect` against the generated manifest,
-   and finishes with `cargo check --target wasm32-wasip2`, mirroring
-   `make smoke`/`ci/local_check.sh`.
+- The `smoke` job scaffolds a temporary component via `greentic-component new`,
+  runs `component-doctor`, performs both `cargo check --target wasm32-wasip2`
+  and `cargo build --target wasm32-wasip2 --release`, and finishes with
+  `component-inspect --json`, mirroring
+  `make smoke`/`ci/local_check.sh`.
 - Run `ci/local_check.sh` before pushing to mirror the GitHub Actions pipeline (fmt, clippy, builds/tests, schema drift, CLI probes, and the smoke scaffold).
 
 ## Development
@@ -167,11 +168,12 @@ LOCAL_CHECK_VERBOSE=1 ci/local_check.sh
 
 The script runs in online mode by default, gracefully skips network-dependent
 steps when `LOCAL_CHECK_ONLINE=0`, scaffolds a fresh component (doctor +
-`cargo check --target wasm32-wasip2` + inspect) whenever registry access is
-available, and fails fast when `LOCAL_CHECK_STRICT=1` is set (even if smoke
-scaffolding is skipped due to an offline environment). Strict mode also forces
-workspace-wide `cargo build/test --all-features`; otherwise those heavyweight
-steps are scoped to the `greentic-component` crate for a faster inner loop.
+`cargo check --target wasm32-wasip2`, `cargo build --target wasm32-wasip2 --release`,
+then inspect) whenever registry access is available, and fails fast when
+`LOCAL_CHECK_STRICT=1` is set (even if smoke scaffolding is skipped due to an
+offline environment). Strict mode also forces workspace-wide
+`cargo build/test --all-features`; otherwise those heavyweight steps are scoped
+to the `greentic-component` crate for a faster inner loop.
 
 ## Releases & Publishing
 
