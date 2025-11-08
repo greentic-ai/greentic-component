@@ -7,6 +7,11 @@ mod bindings {
 
 use bindings::Guest;
 
+#[cfg(target_arch = "wasm32")]
+#[used]
+#[link_section = ".greentic.wasi"]
+static WASI_TARGET_MARKER: [u8; 13] = *b"wasm32-wasip2";
+
 struct Component;
 
 impl Guest for Component {
