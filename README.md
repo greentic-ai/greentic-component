@@ -6,81 +6,100 @@ This workspace houses the core pieces needed to load, validate, and execute Gree
 - `component-store` — fetches component artifacts from supported stores (filesystem, HTTP, OCI/Warg placeholders) with caching and digest/signature policy enforcement.
 - `component-runtime` — uses Wasmtime’s component model to load components, bind tenant configuration/secrets, and invoke exported operations via the generic Greentic interfaces.
 
-## Component CLI
-
-Enable the `cli` feature to access the unified `greentic-component` binary, which now bundles scaffolding helpers alongside the existing doctor/inspect tools.
-
-Quick examples:
-
-```bash
-# List built-in templates (user-provided templates live in ~/.greentic/templates/component)
-cargo run -p greentic-component --features cli --bin greentic-component -- templates
-
-# Scaffold a new component (runs cargo check --target wasm32-wasip2)
-cargo run -p greentic-component --features cli --bin greentic-component -- \\
-    new --name hello-world --org ai.greentic
-```
-
-`greentic-component new --help`:
-
-```text
-Scaffold a new Greentic component project
-
-Usage: greentic-component new [OPTIONS] --name <kebab_or_snake>
-
-Options:
-      --name <kebab_or_snake>  Name for the component (kebab-or-snake case)
-      --path <dir>             Path to create the component (defaults to ./<name>)
-      --template <id>          Template identifier to scaffold from [default: rust-wasi-p2-min]
-      --org <reverse.dns>      Reverse DNS-style organisation identifier [default: ai.greentic]
-      --version <semver>       Initial component version [default: 0.1.0]
-      --license <id>           License to embed into generated sources [default: MIT]
-      --wit-world <name>       Exported WIT world name [default: component]
-      --non-interactive        Run without prompting for confirmation
-      --json                   Emit JSON instead of human-readable output
-  -h, --help                   Print help
-```
-
-`greentic-component templates --help`:
-
-```text
-List available component templates
-
-Usage: greentic-component templates [OPTIONS]
-
-Options:
-      --json  Emit JSON instead of a table
-  -h, --help  Print help
-```
-
-### Templates
-
-`greentic-component templates` ships with the `rust-wasi-p2-min` starter. It renders:
-
-- A Rust 2024 `cdylib` crate wired to `wit-bindgen` and the WASI-P2 target.
-- WIT, JSON Schemas, and a manifest skeleton that passes the workspace validators.
-- CI + Makefile boilerplate so the generated project can build/test on any runner.
-
-The `new` subcommand renders Handlebars templates with variables such as `name`,
-`org`, `version`, `license`, `wit_world`, `year`, and the sanitized snake-case
-variant used for package/world identifiers. After generation it automatically
-runs `cargo check --target wasm32-wasip2` (skip with the hidden `--no-check`
-flag if you need to avoid the compile step). Once the scaffold lands, jump into
-the component directory and run:
+## Installation
 
 ```bash
 rustup target add wasm32-wasip2
-cargo fmt && cargo clippy --all-targets
-cargo check --target wasm32-wasip2
+cargo install --path crates/greentic-component --features cli
+# or work locally via: make build
 ```
 
-Finally, update `component.manifest.json` with the real `blake3` hash for the
-compiled wasm (`greentic-component inspect --json target/wasm32-wasip2/release/<name>.wasm`).
+The CLI lives inside this workspace; running `cargo run -p greentic-component --features cli --bin greentic-component -- <command>`
+is convenient during development, while `cargo install --path crates/greentic-component --features cli`
+is ideal for day-to-day usage.
 
-`component-doctor` now recognizes fresh scaffolds too: pointing it at the root
-directory prints a checklist for `component.manifest.json`, `Cargo.toml`,
-`src/`, `wit/`, and `schemas/`, so you get immediate feedback before compiling
-the wasm.
+## Quickstart
+
+```bash
+# 1. Discover templates (built-in + ~/.greentic/templates/component/*)
+greentic-component templates
+
+# 2. Scaffold a component (runs cargo check --target wasm32-wasip2)
+greentic-component new --name hello-world --org ai.greentic
+
+# 3. Inspect / doctor the generated project
+component-doctor ./hello-world
+```
+
+Need the full CLI reference? `greentic-component new --help` and `greentic-component templates --help`
+describe every flag (JSON output, custom templates, reverse-DNS org names, etc.).
+
+## Templates
+
+- Built-in template: `rust-wasi-p2-min` (a Rust 2024 `cdylib` that targets WASI-P2 via `wit-bindgen`).
+- User templates: `~/.greentic/templates/component/<template-id>/` with an optional `template.json`
+  describing `{ "id", "description", "tags" }` (override via `GREENTIC_TEMPLATE_ROOT=...`).
+- Metadata is surfaced by `greentic-component templates --json`, making it script-friendly.
+
+## Structure of a scaffolded component
+
+```
+hello-world/
+├── Cargo.toml
+├── src/lib.rs
+├── component.manifest.json
+├── schemas/
+│   ├── component.schema.json
+│   └── io/{input,output}.schema.json
+├── wit/world.wit
+├── tests/conformance.rs
+├── .github/workflows/ci.yml
+└── README.md / LICENSE / Makefile
+```
+
+The generator wires `component.manifest.json`, schema stubs, a WIT world, CI workflow, and a local Makefile
+so the project is immediately buildable (`cargo check --target wasm32-wasip2`) and testable.
+
+## Next steps
+
+1. Implement your domain logic in `src/lib.rs` (notably the `handle` export).
+2. Extend `schemas/` and `component.manifest.json` to reflect real inputs, outputs, and capabilities.
+3. Use `component-doctor` and `component-inspect` (or `make smoke`) to validate manifests and wasm artifacts.
+4. Run `make build`, `make test`, and `make lint` to mirror CI locally.
+5. When ready, `greentic-component new --json ...` integrates nicely with automation/CI pipelines.
+
+> **Validation guardrails**
+>
+> The `new` subcommand validates component names (kebab/snake case), orgs
+> (reverse-DNS like `ai.greentic`), semantic versions, and target directories up
+> front. Validation failures emit actionable human output or structured JSON
+> (when `--json` is set) so CI/CD pipelines can separate invalid input from
+> later build failures.
+
+> **Post-render hooks**
+>
+> Each `greentic-component new ...` run bootstraps a git repository (unless the
+> target lives inside an existing worktree), creates an initial commit
+> `chore(init): scaffold component from <template id>`, and prints a short list
+> of “next step” commands (cd into the directory, run `component-doctor`, etc.)
+> so freshly scaffolded projects start in a clean, versioned state. Set
+> `--no-git` (or `GREENTIC_SKIP_GIT=1`) to opt out when an external tool is
+> responsible for version control; structured `post_init.events[]` entries in
+> the `--json` output capture each git step’s status for CI logs.
+
+`greentic-component new --json ...` now surfaces the template description/tags
+(`scaffold.template_description`, `scaffold.template_tags`) so automation can
+record which template produced a component without shell parsing.
+
+## Continuous Integration
+
+- `.github/workflows/ci.yml` runs on every push/PR using the stable toolchain on `ubuntu-latest`.
+- The `checks` job runs `cargo fmt`, `cargo clippy`, full workspace tests (locked + all features), targeted CLI feature tests, and verifies the published schema `$id` on pushes to `master`.
+ - The `smoke` job scaffolds a temporary component via `greentic-component new`,
+   runs `component-doctor`/`component-inspect` against the generated manifest,
+   and finishes with `cargo check --target wasm32-wasip2`, mirroring
+   `make smoke`/`ci/local_check.sh`.
+- Run `ci/local_check.sh` before pushing to mirror the GitHub Actions pipeline (fmt, clippy, builds/tests, schema drift, CLI probes, and the smoke scaffold).
 
 ## Development
 
@@ -133,17 +152,23 @@ cargo test
 Run `ci/local_check.sh` to mirror CI locally:
 
 ```bash
-# Default: offline, non-strict
+# Default: online, non-strict
 ci/local_check.sh
 
-# Enable online-only checks & strict mode
+# Force offline mode (skip schema drift curl)
+LOCAL_CHECK_ONLINE=0 ci/local_check.sh
+
+# Enable strict failure mode for skips
 LOCAL_CHECK_ONLINE=1 LOCAL_CHECK_STRICT=1 ci/local_check.sh
 
 # Show every command
 LOCAL_CHECK_VERBOSE=1 ci/local_check.sh
 ```
 
-The script gracefully skips network-dependent steps unless `LOCAL_CHECK_ONLINE=1` and will fail fast when `LOCAL_CHECK_STRICT=1` is set.
+The script runs in online mode by default, gracefully skips network-dependent
+steps when `LOCAL_CHECK_ONLINE=0`, scaffolds a fresh component (doctor/inspect +
+`cargo check --target wasm32-wasip2`), and fails fast when `LOCAL_CHECK_STRICT=1`
+is set.
 
 ## Releases & Publishing
 

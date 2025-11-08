@@ -5,6 +5,7 @@ mod support;
 
 use greentic_component::scaffold::engine::{ScaffoldEngine, ScaffoldRequest};
 use predicates::prelude::*;
+use serde_json::Value;
 use support::TestComponent;
 
 const TEST_WIT: &str = r#"
@@ -59,4 +60,47 @@ fn doctor_detects_scaffold_directory() {
         .assert()
         .success()
         .stdout(predicate::str::contains("Detected Greentic scaffold"));
+}
+
+#[test]
+fn new_outputs_template_metadata_in_json() {
+    let temp = tempfile::TempDir::new().unwrap();
+    let project = temp.path().join("json-demo");
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("greentic-component");
+    let assert = cmd
+        .arg("new")
+        .arg("--name")
+        .arg("json-demo")
+        .arg("--org")
+        .arg("ai.greentic")
+        .arg("--path")
+        .arg(&project)
+        .arg("--no-check")
+        .arg("--no-git")
+        .arg("--json")
+        .env("HOME", temp.path())
+        .env("GREENTIC_TEMPLATE_YEAR", "2030")
+        .assert()
+        .success();
+    let output = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
+    let value: Value = serde_json::from_str(&output).expect("json");
+    assert_eq!(
+        value["scaffold"]["template"].as_str().unwrap(),
+        "rust-wasi-p2-min"
+    );
+    assert_eq!(
+        value["scaffold"]["template_description"].as_str().unwrap(),
+        "Minimal Rust + WASI-P2 component starter"
+    );
+    assert_eq!(
+        value["post_init"]["git"]["status"].as_str().unwrap(),
+        "skipped"
+    );
+    assert!(
+        value["post_init"]["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|event| event["stage"] == "git-init")
+    );
 }

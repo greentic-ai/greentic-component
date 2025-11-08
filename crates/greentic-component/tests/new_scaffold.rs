@@ -32,4 +32,30 @@ fn scaffold_rust_wasi_template() {
     assert_snapshot!("scaffold_cargo_toml", cargo.trim());
     assert_snapshot!("scaffold_manifest", manifest.trim());
     assert_snapshot!("scaffold_wit", wit.trim());
+
+    assert!(
+        component_dir.join(".git").exists(),
+        "post-render hook should initialize git"
+    );
+    let rev_parse = Command::new("git")
+        .arg("rev-parse")
+        .arg("HEAD")
+        .current_dir(&component_dir)
+        .output()
+        .expect("git rev-parse");
+    assert!(rev_parse.status.success(), "git rev-parse should succeed");
+    let status = Command::new("git")
+        .arg("status")
+        .arg("--porcelain")
+        .current_dir(&component_dir)
+        .output()
+        .expect("git status");
+    assert!(
+        status.status.success(),
+        "git status should succeed after initial commit"
+    );
+    assert!(
+        String::from_utf8_lossy(&status.stdout).trim().is_empty(),
+        "repository should be clean after initial commit"
+    );
 }

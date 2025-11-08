@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
 # Usage:
 #   LOCAL_CHECK_ONLINE=1 LOCAL_CHECK_STRICT=1 LOCAL_CHECK_VERBOSE=1 ci/local_check.sh
-# Defaults: offline, non-strict, quiet.
+# Defaults: online, non-strict, quiet.
 
 set -euo pipefail
 
 ROOT_DIR=$(cd -- "$(dirname "$0")/.." && pwd)
 cd "$ROOT_DIR"
 
-LOCAL_CHECK_ONLINE=${LOCAL_CHECK_ONLINE:-0}
+# Enable online checks by default unless explicitly disabled.
+LOCAL_CHECK_ONLINE=${LOCAL_CHECK_ONLINE:-1}
 LOCAL_CHECK_STRICT=${LOCAL_CHECK_STRICT:-0}
 LOCAL_CHECK_VERBOSE=${LOCAL_CHECK_VERBOSE:-0}
+SMOKE_NAME=${SMOKE_NAME:-local-check}
 
 if [ "$LOCAL_CHECK_VERBOSE" = "1" ]; then
     set -x
@@ -102,7 +104,7 @@ schema_check() {
         else
             echo "[skip] schema curl (remote unavailable)"
         fi
-        return 1
+        return 0
     fi
     local remote_id local_id
     remote_id=$(jq -r '."$id"' "$remote")
@@ -132,6 +134,31 @@ run_cli_probe() {
 
 run_cli_probe "component-inspect" --json crates/greentic-component/tests/fixtures/manifests/valid.component.json
 run_cli_probe "component-doctor" crates/greentic-component/tests/fixtures/manifests/valid.component.json
+
+if [ -n "${SMOKE_DIR:-}" ]; then
+    smoke_path="$SMOKE_DIR"
+    cleanup_smoke=0
+else
+    smoke_parent=$(mktemp -d 2>/dev/null || mktemp -d -t greentic-smoke)
+    smoke_path="$smoke_parent/$SMOKE_NAME"
+    cleanup_smoke=1
+fi
+SMOKE_MANIFEST="$smoke_path/component.manifest.json"
+rm -rf "$smoke_path"
+run_cmd "Smoke: scaffold component" \
+    cargo run -p greentic-component --features "cli" --bin greentic-component -- \
+    new --name "$SMOKE_NAME" --org ai.greentic \
+    --path "$smoke_path" --non-interactive --no-check --json
+run_cmd "Smoke: component-doctor (generated)" \
+    cargo run -p greentic-component --features "cli" --bin component-doctor -- "$smoke_path"
+run_cmd "Smoke: component-inspect (generated)" \
+    cargo run -p greentic-component --features "cli" --bin component-inspect -- \
+    --json "$SMOKE_MANIFEST"
+run_cmd "Smoke: cargo check (generated)" \
+    bash -lc "cd \"$smoke_path\" && cargo check --target wasm32-wasip2"
+if [ ${cleanup_smoke:-0} -eq 1 ]; then
+    rm -rf "$smoke_parent"
+fi
 
 if [ $FAILED -ne 0 ]; then
     echo ""

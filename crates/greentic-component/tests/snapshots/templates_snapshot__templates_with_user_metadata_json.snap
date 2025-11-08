@@ -1,6 +1,6 @@
 ---
 source: crates/greentic-component/tests/templates_snapshot.rs
-assertion_line: 24
+assertion_line: 53
 expression: value
 ---
 [
@@ -13,6 +13,16 @@ expression: value
       "rust",
       "wasi-p2",
       "component"
+    ]
+  },
+  {
+    "description": "User provided template",
+    "id": "user-template",
+    "location": "user",
+    "path": "<user>",
+    "tags": [
+      "user",
+      "testing"
     ]
   }
 ]

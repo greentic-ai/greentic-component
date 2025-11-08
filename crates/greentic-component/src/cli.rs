@@ -1,5 +1,3 @@
-#![cfg(feature = "cli")]
-
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
@@ -50,6 +48,7 @@ mod tests {
                 assert_eq!(args.name, "demo");
                 assert!(args.json);
                 assert!(!args.no_check);
+                assert!(!args.no_git);
             }
             Commands::Templates(_) => panic!("expected new args"),
         }

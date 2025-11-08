@@ -3,15 +3,20 @@
 use std::env;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{self, Command};
 use std::time::Instant;
 
 use anyhow::{Context, Result};
 use clap::Args;
 use serde::Serialize;
+use serde_json::json;
 
+use crate::cmd::post::{self, GitInitStatus, PostInitReport};
 use crate::scaffold::engine::{ScaffoldEngine, ScaffoldOutcome, ScaffoldRequest};
-use crate::scaffold::validate::{self, ComponentName};
+use crate::scaffold::validate::{self, ComponentName, OrgNamespace, ValidationError};
+
+type ValidationResult<T> = std::result::Result<T, ValidationError>;
+const SKIP_GIT_ENV: &str = "GREENTIC_SKIP_GIT";
 
 #[derive(Args, Debug, Clone)]
 pub struct NewArgs {
@@ -50,23 +55,35 @@ pub struct NewArgs {
     /// Skip the post-scaffold cargo check (hidden flag for testing/local dev)
     #[arg(long = "no-check", hide = true)]
     pub no_check: bool,
+    /// Skip git initialization after scaffolding
+    #[arg(long = "no-git")]
+    pub no_git: bool,
     /// Emit JSON instead of human-readable output
     #[arg(long = "json")]
     pub json: bool,
 }
 
 pub fn run(args: NewArgs, engine: &ScaffoldEngine) -> Result<()> {
-    let request = build_request(&args)?;
+    let request = match build_request(&args) {
+        Ok(req) => req,
+        Err(err) => {
+            emit_validation_failure(&err, args.json)?;
+            return Err(err.into());
+        }
+    };
     let outcome = engine.scaffold(request)?;
+    let skip_git = should_skip_git(&args);
+    let post_init = post::run_post_init(&outcome, skip_git);
     let compile_check = run_compile_check(&outcome.path, args.no_check)?;
     if args.json {
         let payload = NewCliOutput {
             scaffold: &outcome,
             compile_check: &compile_check,
+            post_init: &post_init,
         };
         print_json(&payload)?;
     } else {
-        print_human(&outcome, &compile_check);
+        print_human(&outcome, &compile_check, &post_init);
     }
     if compile_check.ran && !compile_check.passed {
         anyhow::bail!("cargo check --target wasm32-wasip2 failed");
@@ -74,15 +91,17 @@ pub fn run(args: NewArgs, engine: &ScaffoldEngine) -> Result<()> {
     Ok(())
 }
 
-fn build_request(args: &NewArgs) -> Result<ScaffoldRequest> {
+fn build_request(args: &NewArgs) -> ValidationResult<ScaffoldRequest> {
     let component_name = ComponentName::parse(&args.name)?;
+    let org = OrgNamespace::parse(&args.org)?;
+    let version = validate::normalize_version(&args.version)?;
     let target_path = resolve_path(&component_name, args.path.as_deref())?;
     Ok(ScaffoldRequest {
         name: component_name.into_string(),
         path: target_path,
         template_id: args.template.clone(),
-        org: args.org.clone(),
-        version: args.version.clone(),
+        org: org.into_string(),
+        version,
         license: args.license.clone(),
         wit_world: args.wit_world.clone(),
         non_interactive: args.non_interactive,
@@ -90,7 +109,7 @@ fn build_request(args: &NewArgs) -> Result<ScaffoldRequest> {
     })
 }
 
-fn resolve_path(name: &ComponentName, provided: Option<&Path>) -> Result<PathBuf> {
+fn resolve_path(name: &ComponentName, provided: Option<&Path>) -> ValidationResult<PathBuf> {
     let path = validate::resolve_target_path(name, provided)?;
     Ok(path)
 }
@@ -102,16 +121,16 @@ fn print_json<T: Serialize>(value: &T) -> Result<()> {
     Ok(())
 }
 
-fn print_human(outcome: &ScaffoldOutcome, check: &CompileCheckReport) {
+fn print_human(outcome: &ScaffoldOutcome, check: &CompileCheckReport, post: &PostInitReport) {
     println!("{}", outcome.human_summary());
+    print_template_metadata(outcome);
     for path in &outcome.created {
         println!("  - {path}");
     }
+    print_git_summary(&post.git);
     if !check.ran {
         println!("cargo check (wasm32-wasip2): skipped (--no-check)");
-        return;
-    }
-    if check.passed {
+    } else if check.passed {
         println!("cargo check (wasm32-wasip2): ok");
     } else {
         println!(
@@ -123,6 +142,80 @@ fn print_human(outcome: &ScaffoldOutcome, check: &CompileCheckReport) {
                 println!("{stderr}");
             }
         }
+    }
+    if !post.next_steps.is_empty() {
+        println!("Next steps:");
+        for step in &post.next_steps {
+            println!("  $ {step}");
+        }
+    }
+}
+
+fn print_git_summary(report: &post::GitInitReport) {
+    match report.status {
+        GitInitStatus::Initialized => {
+            if let Some(commit) = &report.commit {
+                println!("git init: ok (commit {commit})");
+            } else {
+                println!("git init: ok");
+            }
+        }
+        GitInitStatus::AlreadyPresent => {
+            println!(
+                "git init: skipped ({})",
+                report
+                    .message
+                    .as_deref()
+                    .unwrap_or("directory already contains .git")
+            );
+        }
+        GitInitStatus::InsideWorktree => {
+            println!(
+                "git init: skipped ({})",
+                report
+                    .message
+                    .as_deref()
+                    .unwrap_or("already inside an existing git worktree")
+            );
+        }
+        GitInitStatus::Skipped => {
+            println!(
+                "git init: skipped ({})",
+                report.message.as_deref().unwrap_or("not requested")
+            );
+        }
+        GitInitStatus::Failed => {
+            println!(
+                "git init: failed ({})",
+                report
+                    .message
+                    .as_deref()
+                    .unwrap_or("see logs for more details")
+            );
+        }
+    }
+}
+
+fn print_template_metadata(outcome: &ScaffoldOutcome) {
+    match &outcome.template_description {
+        Some(desc) => println!("Template: {} — {desc}", outcome.template),
+        None => println!("Template: {}", outcome.template),
+    }
+    if !outcome.template_tags.is_empty() {
+        println!("  tags: {}", outcome.template_tags.join(", "));
+    }
+}
+
+fn should_skip_git(args: &NewArgs) -> bool {
+    if args.no_git {
+        return true;
+    }
+    match env::var(SKIP_GIT_ENV) {
+        Ok(value) => matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "yes"
+        ),
+        Err(_) => false,
     }
 }
 
@@ -162,10 +255,26 @@ fn run_compile_check(path: &Path, skip: bool) -> Result<CompileCheckReport> {
     })
 }
 
+fn emit_validation_failure(err: &ValidationError, json: bool) -> Result<()> {
+    if json {
+        let payload = json!({
+            "error": {
+                "kind": "validation",
+                "code": err.code(),
+                "message": err.to_string()
+            }
+        });
+        print_json(&payload)?;
+        process::exit(1);
+    }
+    Ok(())
+}
+
 #[derive(Serialize)]
 struct NewCliOutput<'a> {
     scaffold: &'a ScaffoldOutcome,
     compile_check: &'a CompileCheckReport,
+    post_init: &'a PostInitReport,
 }
 
 #[derive(Debug, Serialize)]
@@ -216,6 +325,7 @@ mod tests {
             wit_world: "component".into(),
             non_interactive: false,
             no_check: false,
+            no_git: false,
             json: false,
         };
         let request = build_request(&args).unwrap();

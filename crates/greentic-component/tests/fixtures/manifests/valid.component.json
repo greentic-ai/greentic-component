@@ -2,7 +2,7 @@
   "id": "com.greentic.demo.echo",
   "name": "Echo Component",
   "version": "0.3.0",
-  "world": "greentic:component/echo",
+  "world": "root:root/root",
   "describe_export": "describe",
   "capabilities": {
     "http": {
@@ -53,6 +53,6 @@
     "component_wasm": "bin/component.wasm"
   },
   "hashes": {
-    "component_wasm": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    "component_wasm": "blake3:d16030e523b5117990de34af8c3d7981717fc7f603b2f0b15507b6f388ffb1e3"
   }
 }

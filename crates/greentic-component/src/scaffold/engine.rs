@@ -60,6 +60,8 @@ impl ScaffoldEngine {
         Ok(ScaffoldOutcome {
             name: request.name,
             template: package.metadata.id.clone(),
+            template_description: descriptor.description.clone(),
+            template_tags: descriptor.tags.clone(),
             path: request.path,
             created,
         })
@@ -274,6 +276,10 @@ pub struct ScaffoldRequest {
 pub struct ScaffoldOutcome {
     pub name: String,
     pub template: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub template_description: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub template_tags: Vec<String>,
     #[serde(serialize_with = "serialize_path")]
     pub path: PathBuf,
     pub created: Vec<String>,
@@ -466,7 +472,7 @@ fn user_metadata(
     Ok(resolve_metadata(metadata, fallback_id))
 }
 
-fn deserialize_metadata<'a, T: AsRef<[u8]>>(
+fn deserialize_metadata<T: AsRef<[u8]>>(
     bytes: T,
     path: &str,
 ) -> Result<Option<TemplateMetadataFile>, TemplateLoadError> {
@@ -548,7 +554,7 @@ fn collect_fs_entries(
             .strip_prefix(root)
             .map_err(|source| TemplateLoadError::Io {
                 path: path.to_path_buf(),
-                source: io::Error::new(io::ErrorKind::Other, source),
+                source: io::Error::other(source),
             })?;
         let contents = fs::read(path).map_err(|source| TemplateLoadError::Io {
             path: path.to_path_buf(),
@@ -593,7 +599,7 @@ impl TemplateContext {
         let name_kebab = request.name.replace('_', "-");
         let package_id = format!("{}.{}", request.org, name_snake);
         let namespace_wit = sanitize_namespace(&request.org);
-        let year = request.year_override.unwrap_or_else(|| template_year());
+        let year = request.year_override.unwrap_or_else(template_year);
         Self {
             name: request.name.clone(),
             name_snake,
@@ -687,7 +693,7 @@ fn is_executable_heuristic(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-fn serialize_path<S>(path: &PathBuf, serializer: S) -> Result<S::Ok, S::Error>
+fn serialize_path<S>(path: &Path, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {

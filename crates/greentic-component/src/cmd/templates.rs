@@ -33,8 +33,8 @@ fn print_json(templates: &[TemplateDescriptor]) -> Result<()> {
 
 fn print_table(templates: &[TemplateDescriptor]) {
     println!(
-        "{:<24} {:<12} {:<32} {}",
-        "TEMPLATE", "LOCATION", "DESCRIPTION", "SOURCE"
+        "{:<24} {:<12} {:<32} SOURCE",
+        "TEMPLATE", "LOCATION", "DESCRIPTION"
     );
     for tpl in templates {
         let description = tpl.description.as_deref().unwrap_or("-");

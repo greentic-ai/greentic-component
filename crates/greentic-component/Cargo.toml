@@ -29,6 +29,7 @@ cli = [
     "dep:handlebars",
     "dep:walkdir",
     "dep:tempfile",
+    "dep:miette",
 ]
 
 [dependencies]
@@ -41,6 +42,7 @@ hex = { workspace = true }
 ignore = "0.4"
 include_dir = { version = "0.7", optional = true }
 handlebars = { version = "5.1", optional = true }
+miette = { version = "7.2", optional = true, default-features = false, features = ["derive"] }
 jsonschema = { workspace = true }
 oci-distribution = { version = "0.11", optional = true }
 once_cell = { workspace = true }
@@ -71,4 +73,4 @@ wasm-encoder = "0.240"
 wasm-metadata = { workspace = true }
 assert_cmd = "2"
 predicates = "3"
-insta = { version = "1.39", features = ["glob"] }
+insta = { version = "1.39", features = ["glob", "json"] }

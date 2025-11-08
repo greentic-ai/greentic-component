@@ -2,6 +2,9 @@
 
 use std::process;
 
+#[cfg(feature = "cli")]
+use greentic_component::scaffold::validate::ValidationError;
+
 #[cfg(not(feature = "cli"))]
 fn main() {
     eprintln!("greentic-component CLI requires the `cli` feature");
@@ -11,7 +14,14 @@ fn main() {
 #[cfg(feature = "cli")]
 fn main() {
     if let Err(err) = greentic_component::cli::main() {
-        eprintln!("greentic-component: {err:?}");
+        match err.downcast::<ValidationError>() {
+            Ok(diag) => {
+                eprintln!("{:?}", miette::Report::new(diag));
+            }
+            Err(other) => {
+                eprintln!("greentic-component: {other:?}");
+            }
+        }
         process::exit(1);
     }
 }
