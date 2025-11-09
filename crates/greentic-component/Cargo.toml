@@ -46,6 +46,7 @@ miette = { workspace = true, optional = true }
 jsonschema = { workspace = true }
 oci-distribution = { workspace = true, optional = true }
 once_cell = { workspace = true }
+pathdiff = { workspace = true }
 regex = { workspace = true }
 schemars = { workspace = true, optional = true }
 semver = { workspace = true }

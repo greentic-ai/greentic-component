@@ -33,4 +33,4 @@ greentic-interfaces = { version = "0.4.20" }
 greentic-types = { version = "0.3.0" }
 
 [patch.crates-io]
-greentic-component = { path = "/Users/maarten/Documents/GitHub/agentic/greentic-component/crates/greentic-component" }
+greentic-component = { path = "../../../../crates/greentic-component" }

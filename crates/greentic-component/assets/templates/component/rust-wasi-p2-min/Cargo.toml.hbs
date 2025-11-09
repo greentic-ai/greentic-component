@@ -31,9 +31,7 @@ wit-parser = "0.240"
 greentic-interfaces = { {{ greentic_interfaces_dep }} }
 greentic-types = { {{ greentic_types_dep }} }
 
-{{#if patch_entries}}
+{{#if relative_patch_path}}
 [patch.crates-io]
-{{#each patch_entries}}
-{{ this }}
-{{/each}}
+greentic-component = { {{ relative_patch_path }} }
 {{/if}}

@@ -1,14 +1,17 @@
 #![cfg(feature = "cli")]
 
 use assert_cmd::prelude::*;
-use assert_fs::TempDir;
 use insta::assert_snapshot;
 use std::fs;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+use tempfile::TempDir;
 
 #[test]
 fn scaffold_rust_wasi_template() {
-    let temp = TempDir::new().expect("temp dir");
+    let temp_base = workspace_root().join("target/scaffold-tests");
+    fs::create_dir_all(&temp_base).expect("create scaffold test dir");
+    let temp = TempDir::new_in(&temp_base).expect("temp dir");
     let component_dir = temp.path().join("demo-component");
     let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("greentic-component"));
     cmd.arg("new")
@@ -62,4 +65,12 @@ fn scaffold_rust_wasi_template() {
         String::from_utf8_lossy(&status.stdout).trim().is_empty(),
         "repository should be clean after initial commit"
     );
+}
+
+fn workspace_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(|p| p.parent())
+        .expect("workspace root")
+        .to_path_buf()
 }

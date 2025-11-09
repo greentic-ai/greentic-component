@@ -3,6 +3,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use pathdiff::diff_paths;
 use serde::Serialize;
 use thiserror::Error;
 
@@ -43,7 +44,7 @@ const GREENTIC_TYPES_VERSION: &str = "0.3.0";
 pub struct DependencyTemplates {
     pub greentic_interfaces: String,
     pub greentic_types: String,
-    pub patch_entries: Vec<String>,
+    pub relative_patch_path: Option<String>,
 }
 
 #[derive(Debug, Error)]
@@ -66,39 +67,38 @@ pub fn resolve_dependency_templates(
         DependencyMode::Local => DependencyTemplates {
             greentic_interfaces: format!("version = \"{GREENTIC_INTERFACES_VERSION}\""),
             greentic_types: format!("version = \"{GREENTIC_TYPES_VERSION}\""),
-            patch_entries: local_patch_entries(target_path),
+            relative_patch_path: local_patch_path(target_path),
         },
         DependencyMode::CratesIo => DependencyTemplates {
             greentic_interfaces: format!("version = \"{GREENTIC_INTERFACES_VERSION}\""),
             greentic_types: format!("version = \"{GREENTIC_TYPES_VERSION}\""),
-            patch_entries: Vec::new(),
+            relative_patch_path: None,
         },
     }
 }
 
-fn local_patch_entries(_target_path: &Path) -> Vec<String> {
-    let mut entries = Vec::new();
-    if let Some(path) = workspace_crate_path("greentic-component") {
-        entries.push(format!(
-            "greentic-component = {{ path = \"{}\" }}",
-            path.display()
-        ));
+fn local_patch_path(scaffold_root: &Path) -> Option<String> {
+    let repo_root = workspace_root();
+    let crate_root = repo_root.join("crates/greentic-component");
+    if !crate_root.exists() {
+        return None;
     }
-    entries
+    Some(greentic_component_patch_path(scaffold_root, &repo_root))
 }
 
-fn workspace_crate_path(name: &str) -> Option<PathBuf> {
+fn workspace_root() -> PathBuf {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let workspace_root = manifest_dir
+    manifest_dir
         .parent()
         .and_then(|p| p.parent())
-        .unwrap_or(manifest_dir);
-    let candidate = workspace_root.join("crates").join(name);
-    if candidate.exists() {
-        Some(candidate)
-    } else {
-        None
-    }
+        .unwrap_or(manifest_dir)
+        .to_path_buf()
+}
+
+fn greentic_component_patch_path(scaffold_root: &Path, repo_root: &Path) -> String {
+    let abs = repo_root.join("crates/greentic-component");
+    let rel = diff_paths(&abs, scaffold_root).unwrap_or(abs);
+    format!(r#"path = "{}""#, rel.display())
 }
 
 pub fn ensure_cratesio_manifest_clean(root: &Path) -> Result<(), DependencyError> {

@@ -602,7 +602,7 @@ struct TemplateContext {
     dependency_mode: &'static str,
     greentic_interfaces_dep: String,
     greentic_types_dep: String,
-    patch_entries: Vec<String>,
+    relative_patch_path: Option<String>,
 }
 
 impl TemplateContext {
@@ -629,7 +629,7 @@ impl TemplateContext {
             dependency_mode: request.dependency_mode.as_str(),
             greentic_interfaces_dep: deps.greentic_interfaces,
             greentic_types_dep: deps.greentic_types,
-            patch_entries: deps.patch_entries,
+            relative_patch_path: deps.relative_patch_path,
         }
     }
 }
