@@ -162,6 +162,9 @@ LOCAL_CHECK_ONLINE=0 ci/local_check.sh
 # Enable strict mode (enforces online schema + full feature builds/tests)
 LOCAL_CHECK_ONLINE=1 LOCAL_CHECK_STRICT=1 ci/local_check.sh
 
+# Temporarily skip the smoke scaffold (not recommended)
+LOCAL_CHECK_SKIP_SMOKE=1 ci/local_check.sh
+
 # Show every command
 LOCAL_CHECK_VERBOSE=1 ci/local_check.sh
 ```

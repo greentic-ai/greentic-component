@@ -147,14 +147,9 @@ run_cli_probe() {
 run_cli_probe "component-inspect" --json crates/greentic-component/tests/fixtures/manifests/valid.component.json
 run_cli_probe "component-doctor" crates/greentic-component/tests/fixtures/manifests/valid.component.json
 
-run_smoke=1
-if [ "$LOCAL_CHECK_ONLINE" != "1" ]; then
-    run_smoke=0
-elif ! curl -sSf --max-time 5 https://index.crates.io/config.json >/dev/null 2>&1; then
-    run_smoke=0
-fi
-
-if [ "$run_smoke" = "1" ]; then
+if [ "${LOCAL_CHECK_SKIP_SMOKE:-0}" = "1" ]; then
+    echo "[skip] smoke scaffold (LOCAL_CHECK_SKIP_SMOKE=1)"
+else
     if [ -n "${SMOKE_DIR:-}" ]; then
         smoke_path="$SMOKE_DIR"
         cleanup_smoke=0
@@ -183,14 +178,6 @@ if [ "$run_smoke" = "1" ]; then
         --json "$SMOKE_MANIFEST"
     if [ ${cleanup_smoke:-0} -eq 1 ]; then
         rm -rf "$smoke_parent"
-    fi
-else
-    message="smoke scaffold skipped (network unavailable)"
-    if [ "$LOCAL_CHECK_STRICT" = "1" ]; then
-        echo "[fail] $message"
-        FAILED=1
-    else
-        echo "[skip] $message"
     fi
 fi
 
