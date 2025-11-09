@@ -95,10 +95,10 @@ pub fn prepare_component(path_or_id: &str) -> Result<PreparedComponent, Componen
 fn cached_world_check(path: &Path, expected: &str) -> Result<(), ComponentError> {
     let stamp = file_stamp(path)?;
     let key = (path.to_path_buf(), expected.to_string());
-    if let Some(entry) = ABI_CACHE.get(&key) {
-        if *entry == stamp {
-            return Ok(());
-        }
+    if let Some(entry) = ABI_CACHE.get(&key)
+        && *entry == stamp
+    {
+        return Ok(());
     }
 
     abi::check_world(path, expected)?;
@@ -115,10 +115,11 @@ fn cached_describe(
     manifest: &ComponentManifest,
 ) -> Result<DescribePayload, ComponentError> {
     let stamp = file_stamp(path)?;
-    if let Some(entry) = DESCRIBE_CACHE.get(path) {
-        if entry.stamp == stamp && entry.export == manifest.describe_export.as_str() {
-            return Ok(entry.payload.clone());
-        }
+    if let Some(entry) = DESCRIBE_CACHE.get(path)
+        && entry.stamp == stamp
+        && entry.export == manifest.describe_export.as_str()
+    {
+        return Ok(entry.payload.clone());
     }
 
     let payload = describe::load(path, manifest)?;

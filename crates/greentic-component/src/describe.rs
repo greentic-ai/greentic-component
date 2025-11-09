@@ -76,10 +76,10 @@ pub fn from_embedded(manifest_dir: &Path) -> Option<DescribePayload> {
     }
     files.sort();
     for path in files {
-        if path.extension().and_then(|s| s.to_str()) == Some("json") {
-            if let Ok(payload) = read_payload(&path) {
-                return Some(payload);
-            }
+        if path.extension().and_then(|s| s.to_str()) == Some("json")
+            && let Ok(payload) = read_payload(&path)
+        {
+            return Some(payload);
         }
     }
     None
@@ -95,10 +95,10 @@ pub fn load(
     if let Ok(payload) = from_exported_func(wasm_path, manifest.describe_export.as_str()) {
         return Ok(payload);
     }
-    if let Some(dir) = wasm_path.parent() {
-        if let Some(payload) = from_embedded(dir) {
-            return Ok(payload);
-        }
+    if let Some(dir) = wasm_path.parent()
+        && let Some(payload) = from_embedded(dir)
+    {
+        return Ok(payload);
     }
     Err(DescribeError::NotFound(manifest.id.as_str().to_string()))
 }
