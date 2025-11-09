@@ -7,8 +7,8 @@ use wit_parser::Resolve;
 
 fn main() -> Result<()> {
     println!("cargo:rerun-if-changed=wit/world.wit");
-    let mut resolve = Resolve::default();
-    let pkg = resolve
+let mut resolve = Resolve::default();
+let (pkg, _source_map) = resolve
         .push_path("wit/world.wit")
         .context("failed to load wit/world.wit")?;
     let world = resolve

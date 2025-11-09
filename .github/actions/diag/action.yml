@@ -1,0 +1,55 @@
+name: smoke-diagnostics
+description: Collect diagnostics and upload artifacts for smoke jobs
+inputs:
+  smoke-dir:
+    description: Path to the scaffolded smoke directory
+    required: false
+  tree-path:
+    description: Path to the cargo tree output
+    required: false
+  artifact-name:
+    description: Name of the artifact to upload
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Toolchain versions
+      shell: bash
+      run: |
+        set -euo pipefail
+        rustc -Vv || true
+        cargo -V || true
+        rustup show || true
+    - name: Display manifest and Cargo.toml
+      if: ${{ inputs.smoke-dir != '' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ -f "${{ inputs.smoke-dir }}/component.manifest.json" ]; then
+          echo "--- component.manifest.json ---"
+          cat "${{ inputs.smoke-dir }}/component.manifest.json"
+        fi
+        if [ -f "${{ inputs.smoke-dir }}/Cargo.toml" ]; then
+          echo "--- Cargo.toml ---"
+          cat "${{ inputs.smoke-dir }}/Cargo.toml"
+        fi
+    - name: Collect diagnostics
+      id: collect
+      shell: bash
+      run: |
+        set -euo pipefail
+        DIAG_DIR=$(mktemp -d 2>/dev/null || mktemp -d -t smoke-diag)
+        echo "dir=$DIAG_DIR" >> "$GITHUB_OUTPUT"
+        if [ -n "${{ inputs.tree-path }}" ] && [ -f "${{ inputs.tree-path }}" ]; then
+          cp "${{ inputs.tree-path }}" "$DIAG_DIR/tree.txt"
+        fi
+        if [ -n "${{ inputs.smoke-dir }}" ] && [ -d "${{ inputs.smoke-dir }}" ]; then
+          tar -czf "$DIAG_DIR/smoke.tar.gz" -C "${{ inputs.smoke-dir }}" .
+        fi
+    - name: Upload diagnostics
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ steps.collect.outputs.dir }}
+        if-no-files-found: ignore

@@ -13,6 +13,9 @@ struct Args {
     /// Emit structured JSON instead of human output
     #[arg(long)]
     json: bool,
+    /// Treat warnings as errors
+    #[arg(long)]
+    strict: bool,
 }
 
 #[cfg(not(feature = "cli"))]
@@ -24,24 +27,36 @@ fn main() {
 #[cfg(feature = "cli")]
 fn main() {
     let args = Args::parse();
-    if let Err(err) = run(&args) {
-        if args.json {
-            let failure = serde_json::json!({
-                "error": {"code": err.code(), "message": err.to_string()}
-            });
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&failure).expect("serialize failure report")
-            );
-        } else {
-            eprintln!("component-inspect[{}]: {err}", err.code());
+    match run(&args) {
+        Ok(result) => {
+            emit_warnings(&result.warnings);
+            if args.strict && !result.warnings.is_empty() {
+                eprintln!(
+                    "component-inspect: {} warning(s) treated as errors (--strict)",
+                    result.warnings.len()
+                );
+                process::exit(2);
+            }
         }
-        process::exit(1);
+        Err(err) => {
+            if args.json {
+                let failure = serde_json::json!({
+                    "error": {"code": err.code(), "message": err.to_string()}
+                });
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&failure).expect("serialize failure report")
+                );
+            } else {
+                eprintln!("component-inspect[{}]: {err}", err.code());
+            }
+            process::exit(1);
+        }
     }
 }
 
 #[cfg(feature = "cli")]
-fn run(args: &Args) -> Result<(), ComponentError> {
+fn run(args: &Args) -> Result<InspectResult, ComponentError> {
     let prepared = prepare_component(&args.target)?;
     if args.json {
         let json = serde_json::to_string_pretty(&build_report(&prepared))
@@ -79,7 +94,20 @@ fn run(args: &Args) -> Result<(), ComponentError> {
         println!("  redaction paths: {}", prepared.redaction_paths().len());
         println!("  defaults applied: {}", prepared.defaults_applied().len());
     }
-    Ok(())
+    Ok(InspectResult::default())
+}
+
+#[cfg(feature = "cli")]
+#[derive(Default)]
+struct InspectResult {
+    warnings: Vec<String>,
+}
+
+#[cfg(feature = "cli")]
+fn emit_warnings(warnings: &[String]) {
+    for warning in warnings {
+        eprintln!("warning: {warning}");
+    }
 }
 
 #[cfg(feature = "cli")]

@@ -3,7 +3,7 @@ name = "{{ name }}"
 version = "{{ version }}"
 edition = "2024"
 license = "{{ license }}"
-rust-version = "1.85"
+rust-version = "1.88"
 description = "Greentic component {{ name }}"
 repository = "https://github.com/{{ repo }}"
 {{#if author}}
@@ -26,3 +26,14 @@ serde_json = "1"
 anyhow = "1.0"
 wit-component = "0.240"
 wit-parser = "0.240"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+greentic-interfaces = { {{ greentic_interfaces_dep }} }
+greentic-types = { {{ greentic_types_dep }} }
+
+{{#if patch_entries}}
+[patch.crates-io]
+{{#each patch_entries}}
+{{ this }}
+{{/each}}
+{{/if}}

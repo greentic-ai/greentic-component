@@ -12,6 +12,7 @@ use serde::Serialize;
 use serde_json::json;
 
 use crate::cmd::post::{self, GitInitStatus, PostInitReport};
+use crate::scaffold::deps::DependencyMode;
 use crate::scaffold::engine::{ScaffoldEngine, ScaffoldOutcome, ScaffoldRequest};
 use crate::scaffold::validate::{self, ComponentName, OrgNamespace, ValidationError};
 
@@ -106,6 +107,7 @@ fn build_request(args: &NewArgs) -> ValidationResult<ScaffoldRequest> {
         wit_world: args.wit_world.clone(),
         non_interactive: args.non_interactive,
         year_override: None,
+        dependency_mode: DependencyMode::from_env(),
     })
 }
 

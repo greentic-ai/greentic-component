@@ -3,6 +3,7 @@
 #[path = "support/mod.rs"]
 mod support;
 
+use greentic_component::scaffold::deps::DependencyMode;
 use greentic_component::scaffold::engine::{ScaffoldEngine, ScaffoldRequest};
 use predicates::prelude::*;
 use serde_json::Value;
@@ -53,6 +54,7 @@ fn doctor_detects_scaffold_directory() {
         wit_world: "component".into(),
         non_interactive: true,
         year_override: Some(2030),
+        dependency_mode: DependencyMode::Local,
     };
     engine.scaffold(request).unwrap();
     let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("component-doctor");

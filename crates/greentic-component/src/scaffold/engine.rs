@@ -17,6 +17,7 @@ use thiserror::Error;
 use time::OffsetDateTime;
 use walkdir::WalkDir;
 
+use super::deps::{self, DependencyMode};
 use super::validate::{self, ValidationError};
 use super::write::{GeneratedFile, WriteError, Writer};
 
@@ -56,6 +57,10 @@ impl ScaffoldEngine {
         let context = TemplateContext::from_request(&request);
         let rendered = self.render_files(&package, &context)?;
         let created = Writer::new().write_all(&request.path, &rendered)?;
+
+        if matches!(request.dependency_mode, DependencyMode::CratesIo) {
+            deps::ensure_cratesio_manifest_clean(&request.path)?;
+        }
 
         Ok(ScaffoldOutcome {
             name: request.name,
@@ -257,6 +262,8 @@ pub enum ScaffoldError {
     Write(#[from] WriteError),
     #[error(transparent)]
     Validation(#[from] ValidationError),
+    #[error(transparent)]
+    Dependency(#[from] deps::DependencyError),
 }
 
 #[derive(Debug, Clone)]
@@ -270,6 +277,7 @@ pub struct ScaffoldRequest {
     pub wit_world: String,
     pub non_interactive: bool,
     pub year_override: Option<i32>,
+    pub dependency_mode: DependencyMode,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -591,6 +599,10 @@ struct TemplateContext {
     year: i32,
     repo: String,
     author: Option<String>,
+    dependency_mode: &'static str,
+    greentic_interfaces_dep: String,
+    greentic_types_dep: String,
+    patch_entries: Vec<String>,
 }
 
 impl TemplateContext {
@@ -600,6 +612,7 @@ impl TemplateContext {
         let package_id = format!("{}.{}", request.org, name_snake);
         let namespace_wit = sanitize_namespace(&request.org);
         let year = request.year_override.unwrap_or_else(template_year);
+        let deps = deps::resolve_dependency_templates(request.dependency_mode, &request.path);
         Self {
             name: request.name.clone(),
             name_snake,
@@ -613,6 +626,10 @@ impl TemplateContext {
             year,
             repo: request.name.clone(),
             author: detect_author(),
+            dependency_mode: request.dependency_mode.as_str(),
+            greentic_interfaces_dep: deps.greentic_interfaces,
+            greentic_types_dep: deps.greentic_types,
+            patch_entries: deps.patch_entries,
         }
     }
 }
@@ -761,6 +778,7 @@ mod tests {
             wit_world: "component".into(),
             non_interactive: true,
             year_override: Some(2030),
+            dependency_mode: DependencyMode::Local,
         };
         let outcome = engine.scaffold(request).unwrap();
         assert!(target.join("Cargo.toml").exists());
@@ -789,6 +807,7 @@ mod tests {
             wit_world: "component".into(),
             non_interactive: true,
             year_override: None,
+            dependency_mode: DependencyMode::Local,
         };
         let err = engine.scaffold(request).unwrap_err();
         assert!(matches!(err, ScaffoldError::Validation(_)));

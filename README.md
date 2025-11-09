@@ -91,6 +91,12 @@ so the project is immediately buildable (`cargo check --target wasm32-wasip2`) a
 (`scaffold.template_description`, `scaffold.template_tags`) so automation can
 record which template produced a component without shell parsing.
 
+`GREENTIC_DEP_MODE` controls how dependencies are written when scaffolding:
+`local` (default) injects workspace `path =` overrides so CI catches template
+regressions against unpublished crates, while `cratesio` emits pure semver
+constraints and fails fast if any `path =` slips into the generated
+`Cargo.toml`. The dual-mode smoke tests exercise both flavors.
+
 ## Continuous Integration
 
 - `.github/workflows/ci.yml` runs on every push/PR using the stable toolchain on `ubuntu-latest`.
@@ -106,7 +112,7 @@ record which template produced a component without shell parsing.
 
 ### Prerequisites & MSRV
 
-- Rust stable toolchain (MSRV: 1.85)
+- Rust stable toolchain (MSRV: 1.88)
 - `wasmtime` dependencies (clang/LLVM on macOS & Linux) if you intend to run components locally
 
 ### Cargo Features
@@ -177,6 +183,30 @@ then inspect) whenever registry access is available, and fails fast when
 offline environment). Strict mode also forces workspace-wide
 `cargo build/test --all-features`; otherwise those heavyweight steps are scoped
 to the `greentic-component` crate for a faster inner loop.
+
+The smoke phase runs twice—once with `GREENTIC_DEP_MODE=local` (workspace
+patch overrides) and once with `GREENTIC_DEP_MODE=cratesio` (pure semver
+dependencies). Both variants execute the exact commands the CI job uses:
+
+```bash
+GREENTIC_DEP_MODE=<mode> cargo run --locked -p greentic-component --features cli -- \
+  new --name local-check --org ai.greentic --path "$TMPDIR/<mode>" \
+  --non-interactive --no-check --json
+(cd "$TMPDIR/<mode>" && cargo generate-lockfile)
+(cd "$TMPDIR/<mode>" && cargo tree -e no-dev --locked \
+    | tee target/local-check/tree-<mode>.txt >/dev/null)
+cargo run --locked -p greentic-component --features cli --bin component-doctor -- "$TMPDIR/<mode>"
+(cd "$TMPDIR/<mode>" && cargo check --target wasm32-wasip2 --locked)
+(cd "$TMPDIR/<mode>" && cargo build --target wasm32-wasip2 --release --locked)
+cargo run --locked -p greentic-component --features cli --bin component-hash -- \
+  "$TMPDIR/<mode>/component.manifest.json"
+cargo run --locked -p greentic-component --features cli --bin component-inspect -- \
+  --json "$TMPDIR/<mode>/component.manifest.json"
+```
+
+Per-mode cargo trees are stored under `target/local-check/tree-<mode>.txt`
+(override via `LOCAL_CHECK_TREE_DIR=...`) so failures always include a snapshot
+of the resolved dependencies.
 
 ## Releases & Publishing
 
@@ -254,7 +284,7 @@ cargo run --features cli --bin component-inspect ./component.manifest.json --jso
 cargo run --features cli --bin component-doctor ./component.manifest.json
 ```
 
-`component-inspect` emits a structured JSON report with manifest metadata, BLAKE3 hashes, lifecycle detection, describe payloads, and redaction hints sourced from `x-redact` annotations. `component-doctor` executes the full validation pipeline (schema validation, hash verification, world/ABI probe, lifecycle detection, describe resolution, and redaction summary) and exits non-zero on any failure—perfect for CI gates.
+`component-inspect` emits a structured JSON report with manifest metadata, BLAKE3 hashes, lifecycle detection, describe payloads, and redaction hints sourced from `x-redact` annotations. Add `--strict` when warnings should become hard failures (default mode only exits non-zero on actual errors so smoke jobs can keep running while still surfacing warnings on stderr). `component-doctor` executes the full validation pipeline (schema validation, hash verification, world/ABI probe, lifecycle detection, describe resolution, and redaction summary) and exits non-zero on any failure—perfect for CI gates.
 
 ## Host HTTP Fetch
 

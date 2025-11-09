@@ -1,6 +1,6 @@
 ---
 source: crates/greentic-component/tests/new_scaffold.rs
-assertion_line: 32
+assertion_line: 36
 expression: cargo.trim()
 ---
 [package]
@@ -8,7 +8,7 @@ name = "demo-component"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
-rust-version = "1.85"
+rust-version = "1.88"
 description = "Greentic component demo-component"
 repository = "https://github.com/demo-component"
 authors = ["Greentic Labs"]
@@ -27,3 +27,10 @@ serde_json = "1"
 anyhow = "1.0"
 wit-component = "0.240"
 wit-parser = "0.240"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+greentic-interfaces = { version = "0.4.20" }
+greentic-types = { version = "0.3.0" }
+
+[patch.crates-io]
+greentic-component = { path = "/Users/maarten/Documents/GitHub/agentic/greentic-component/crates/greentic-component" }
