@@ -86,6 +86,13 @@ cargo --version
 need jq && jq --version || true
 need curl && curl --version || true
 
+if [ "$LOCAL_CHECK_ONLINE" = "1" ]; then
+    run_cmd "cargo fetch (linux target)" \
+        cargo fetch --locked --target x86_64-unknown-linux-gnu
+else
+    skip_step "cargo fetch (linux target)" "offline mode"
+fi
+
 run_cmd "cargo fmt" cargo fmt --all -- --check
 run_cmd "cargo clippy" cargo clippy --locked --workspace --all-targets -- -D warnings
 run_cmd "cargo build --workspace --locked" cargo build --workspace --locked

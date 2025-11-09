@@ -89,7 +89,7 @@ fn normalize_world_ref(input: &str) -> Result<String, AbiError> {
                 raw: input.to_string(),
             })?;
 
-    let mut id = format!("{}:{}/{}", namespace, name, world);
+    let mut id = format!("{namespace}:{name}/{world}");
     if let Some(ver) = version {
         id.push('@');
         id.push_str(ver);

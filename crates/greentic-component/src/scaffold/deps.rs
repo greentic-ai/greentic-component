@@ -20,10 +20,7 @@ impl DependencyMode {
                 "cratesio" | "crates-io" | "crates_io" => DependencyMode::CratesIo,
                 "local" | "" => DependencyMode::Local,
                 _ => {
-                    eprintln!(
-                        "Unknown GREENTIC_DEP_MODE='{}', defaulting to local mode",
-                        value
-                    );
+                    eprintln!("Unknown GREENTIC_DEP_MODE='{value}', defaulting to local mode");
                     DependencyMode::Local
                 }
             },
@@ -67,13 +64,13 @@ pub fn resolve_dependency_templates(
 ) -> DependencyTemplates {
     match mode {
         DependencyMode::Local => DependencyTemplates {
-            greentic_interfaces: format!("version = \"{}\"", GREENTIC_INTERFACES_VERSION),
-            greentic_types: format!("version = \"{}\"", GREENTIC_TYPES_VERSION),
+            greentic_interfaces: format!("version = \"{GREENTIC_INTERFACES_VERSION}\""),
+            greentic_types: format!("version = \"{GREENTIC_TYPES_VERSION}\""),
             patch_entries: local_patch_entries(target_path),
         },
         DependencyMode::CratesIo => DependencyTemplates {
-            greentic_interfaces: format!("version = \"{}\"", GREENTIC_INTERFACES_VERSION),
-            greentic_types: format!("version = \"{}\"", GREENTIC_TYPES_VERSION),
+            greentic_interfaces: format!("version = \"{GREENTIC_INTERFACES_VERSION}\""),
+            greentic_types: format!("version = \"{GREENTIC_TYPES_VERSION}\""),
             patch_entries: Vec::new(),
         },
     }
