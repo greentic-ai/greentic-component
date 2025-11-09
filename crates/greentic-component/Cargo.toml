@@ -34,17 +34,17 @@ cli = [
 
 [dependencies]
 anyhow = { workspace = true }
-blake3 = "1.5"
+blake3 = { workspace = true }
 bytes = { workspace = true }
-clap = { version = "4.5", features = ["derive"], optional = true }
-directories = "6"
+clap = { workspace = true, optional = true }
+directories = { workspace = true }
 hex = { workspace = true }
-ignore = "0.4"
-include_dir = { version = "0.7", optional = true }
-handlebars = { version = "5.1", optional = true }
-miette = { version = "7.2", optional = true, default-features = false, features = ["derive"] }
+ignore = { workspace = true }
+include_dir = { workspace = true, optional = true }
+handlebars = { workspace = true, optional = true }
+miette = { workspace = true, optional = true }
 jsonschema = { workspace = true }
-oci-distribution = { version = "0.11", optional = true }
+oci-distribution = { workspace = true, optional = true }
 once_cell = { workspace = true }
 regex = { workspace = true }
 schemars = { workspace = true, optional = true }
@@ -59,21 +59,21 @@ dashmap = { workspace = true, optional = true }
 time = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
-tempfile = { version = "3", optional = true }
-walkdir = { version = "2", optional = true }
+tempfile = { workspace = true, optional = true }
+walkdir = { workspace = true, optional = true }
 wit-component = { workspace = true, optional = true }
 wit-parser = { workspace = true, optional = true }
 wasmparser = { workspace = true, optional = true }
 
 [dev-dependencies]
-assert_fs = "1"
-tempfile = "3"
+assert_fs = { workspace = true }
+tempfile = { workspace = true }
 tokio = { workspace = true }
-wasm-encoder = "0.240"
+wasm-encoder = { workspace = true }
 wasm-metadata = { workspace = true }
-assert_cmd = "2"
-predicates = "3"
-insta = { version = "1.39", features = ["glob", "json"] }
+assert_cmd = { workspace = true }
+predicates = { workspace = true }
+insta = { workspace = true }
 
 [[example]]
 name = "gen_fixture"
