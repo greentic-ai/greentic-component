@@ -635,10 +635,10 @@ impl TemplateContext {
 }
 
 fn template_year() -> i32 {
-    if let Ok(value) = env::var(TEMPLATE_YEAR_ENV) {
-        if let Ok(parsed) = value.parse() {
-            return parsed;
-        }
+    if let Ok(value) = env::var(TEMPLATE_YEAR_ENV)
+        && let Ok(parsed) = value.parse()
+    {
+        return parsed;
     }
     OffsetDateTime::now_utc().year()
 }

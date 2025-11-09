@@ -139,10 +139,10 @@ fn print_human(outcome: &ScaffoldOutcome, check: &CompileCheckReport, post: &Pos
             "cargo check (wasm32-wasip2): FAILED (exit code {:?})",
             check.exit_code
         );
-        if let Some(stderr) = &check.stderr {
-            if !stderr.is_empty() {
-                println!("{stderr}");
-            }
+        if let Some(stderr) = &check.stderr
+            && !stderr.is_empty()
+        {
+            println!("{stderr}");
         }
     }
     if !post.next_steps.is_empty() {
