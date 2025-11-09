@@ -12,6 +12,12 @@ use bindings::Guest;
 #[unsafe(link_section = ".greentic.wasi")]
 static WASI_TARGET_MARKER: [u8; 13] = *b"wasm32-wasip2";
 
+#[cfg(target_arch = "wasm32")]
+#[used]
+#[link_section = "component-type"]
+static COMPONENT_TYPE: [u8; include_bytes!(concat!(env!("OUT_DIR"), "/component.metadata")).len()] =
+    *include_bytes!(concat!(env!("OUT_DIR"), "/component.metadata"));
+
 struct Component;
 
 impl Guest for Component {

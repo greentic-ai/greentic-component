@@ -22,3 +22,8 @@ serde_json = "1"
 
 [dev-dependencies]
 serde_json = "1"
+
+[build-dependencies]
+anyhow = "1.0"
+wit-component = "0.240"
+wit-parser = "0.240"

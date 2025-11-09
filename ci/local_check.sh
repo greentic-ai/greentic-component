@@ -57,6 +57,17 @@ run_or_skip() {
     fi
 }
 
+skip_step() {
+    local desc=$1
+    local reason=$2
+    if [ "$LOCAL_CHECK_STRICT" = "1" ]; then
+        echo "[fail] $desc ($reason)"
+        FAILED=1
+    else
+        echo "[skip] $desc ($reason)"
+    fi
+}
+
 hard_need() {
     if ! need "$1"; then
         echo "Error: required tool '$1' is missing" >&2
@@ -166,16 +177,28 @@ else
         --path "$smoke_path" --non-interactive --no-check --json
     run_cmd "Smoke: component-doctor (generated)" \
         cargo run -p greentic-component --features "cli" --bin component-doctor -- "$smoke_path"
-    run_cmd "Smoke: cargo check (generated)" \
-        bash -lc "cd \"$smoke_path\" && cargo check --target wasm32-wasip2"
-    run_cmd "Smoke: cargo build --release (generated)" \
-        bash -lc "cd \"$smoke_path\" && cargo build --target wasm32-wasip2 --release"
-    run_cmd "Smoke: update manifest hash" \
-        cargo run -p greentic-component --features "cli" --bin component-hash -- \
-        "$SMOKE_MANIFEST"
-    run_cmd "Smoke: component-inspect (generated)" \
-        cargo run -p greentic-component --features "cli" --bin component-inspect -- \
-        --json "$SMOKE_MANIFEST"
+    if curl -sSf --max-time 5 https://index.crates.io/config.json >/dev/null 2>&1; then
+        run_cmd "Smoke: cargo check (generated)" \
+            bash -lc "cd \"$smoke_path\" && cargo check --target wasm32-wasip2"
+        run_cmd "Smoke: cargo build --release (generated)" \
+            bash -lc "cd \"$smoke_path\" && cargo build --target wasm32-wasip2 --release"
+        smoke_built=1
+    else
+        skip_step "Smoke: cargo check (generated)" "network unavailable"
+        skip_step "Smoke: cargo build --release (generated)" "network unavailable"
+        smoke_built=0
+    fi
+    if [ "${smoke_built:-0}" -eq 1 ]; then
+        run_cmd "Smoke: update manifest hash" \
+            cargo run -p greentic-component --features "cli" --bin component-hash -- \
+            "$SMOKE_MANIFEST"
+        run_cmd "Smoke: component-inspect (generated)" \
+            cargo run -p greentic-component --features "cli" --bin component-inspect -- \
+            --json "$SMOKE_MANIFEST"
+    else
+        skip_step "Smoke: update manifest hash" "wasm build unavailable"
+        skip_step "Smoke: component-inspect (generated)" "wasm build unavailable"
+    fi
     if [ ${cleanup_smoke:-0} -eq 1 ]; then
         rm -rf "$smoke_parent"
     fi

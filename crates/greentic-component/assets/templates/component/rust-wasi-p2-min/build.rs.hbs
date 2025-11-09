@@ -1,0 +1,22 @@
+use std::env;
+use std::path::PathBuf;
+
+use anyhow::{Context, Result};
+use wit_component::{StringEncoding, metadata};
+use wit_parser::Resolve;
+
+fn main() -> Result<()> {
+    println!("cargo:rerun-if-changed=wit/world.wit");
+    let mut resolve = Resolve::default();
+    let pkg = resolve
+        .push_path("wit/world.wit")
+        .context("failed to load wit/world.wit")?;
+    let world = resolve
+        .select_world(&[pkg], Some("{{ wit_world }}"))
+        .context("failed to select world")?;
+    let bytes =
+        metadata::encode(&resolve, world, StringEncoding::UTF8, None).context("metadata encode")?;
+    let out = PathBuf::from(env::var("OUT_DIR")?).join("component.metadata");
+    std::fs::write(&out, bytes).context("write metadata")?;
+    Ok(())
+}
