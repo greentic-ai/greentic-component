@@ -9,7 +9,7 @@ resolver = "2"
 
 [workspace.package]
 edition = "2024"
-version = "0.3.2"
+version = "0.3.3"
 license = "MIT"
 rust-version = "1.88"
 
@@ -28,9 +28,9 @@ dashmap = "6"
 directories = "6"
 displaydoc = "0.2"
 futures = "0.3"
-greentic-interfaces = "0.4.20"
-greentic-types = "0.3.0"
-handlebars = "5.1"
+greentic-interfaces = "0.4"
+greentic-types = "0.3"
+handlebars = "6"
 hex = "0.4"
 ignore = "0.4"
 include_dir = { version = "0.7" }
