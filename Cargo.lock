@@ -380,7 +380,7 @@ checksum = "b05b61dc5112cbb17e4b6cd61790d9845d13888356391624cbe7e41efeac1e75"
 
 [[package]]
 name = "component-manifest"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "jsonschema",
@@ -396,7 +396,7 @@ dependencies = [
 
 [[package]]
 name = "component-runtime"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -421,7 +421,7 @@ dependencies = [
 
 [[package]]
 name = "component-store"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1112,7 +1112,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-component"
-version = "0.3.0"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "assert_cmd",

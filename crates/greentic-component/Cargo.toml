@@ -1,6 +1,6 @@
 [package]
 name = "greentic-component"
-version = "0.3.0"
+version.workspace=true
 edition = "2024"
 rust-version = "1.88"
 license = "MIT"
