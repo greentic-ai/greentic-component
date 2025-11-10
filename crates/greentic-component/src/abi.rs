@@ -2,10 +2,10 @@ use std::fs;
 use std::path::Path;
 
 use thiserror::Error;
-use wit_component::metadata;
 use wit_parser::{Resolve, WorldId, WorldItem};
 
 use crate::lifecycle::Lifecycle;
+use crate::wasm::{self, WorldSource};
 
 const WASI_TARGET_MARKER: &str = "wasm32-wasip2";
 const DEFAULT_REQUIRED_EXPORTS: [&str; 1] = ["describe"];
@@ -33,17 +33,19 @@ pub fn check_world(wasm_path: &Path, expected: &str) -> Result<(), AbiError> {
     let bytes = fs::read(wasm_path)?;
     ensure_wasi_target(&bytes)?;
 
-    let (_, bindgen) = metadata::decode(&bytes).map_err(AbiError::Metadata)?;
-    let found = format_world(&bindgen.resolve, bindgen.world);
-    let normalized_expected = normalize_world_ref(expected)?;
-    if !worlds_match(&found, &normalized_expected) {
-        return Err(AbiError::WorldMismatch {
-            expected: normalized_expected,
-            found,
-        });
+    let decoded = wasm::decode_world(&bytes).map_err(AbiError::Metadata)?;
+    let found = format_world(&decoded.resolve, decoded.world);
+    if let WorldSource::Metadata = decoded.source {
+        let normalized_expected = normalize_world_ref(expected)?;
+        if !worlds_match(&found, &normalized_expected) {
+            return Err(AbiError::WorldMismatch {
+                expected: normalized_expected,
+                found,
+            });
+        }
     }
 
-    ensure_required_exports(&bindgen.resolve, bindgen.world, &found)?;
+    ensure_required_exports(&decoded.resolve, decoded.world, &found)?;
     Ok(())
 }
 
@@ -72,6 +74,9 @@ fn ensure_wasi_target(bytes: &[u8]) -> Result<(), AbiError> {
 
 fn normalize_world_ref(input: &str) -> Result<String, AbiError> {
     let raw = input.trim();
+    if !raw.contains('/') {
+        return Ok(raw.to_string());
+    }
     let (pkg_part, version) = match raw.split_once('@') {
         Some((pkg, ver)) if !pkg.is_empty() && !ver.is_empty() => (pkg, Some(ver)),
         _ => (raw, None),
@@ -118,8 +123,16 @@ fn worlds_match(found: &str, expected: &str) -> bool {
     if found == expected {
         return true;
     }
-    if !expected.contains('@') {
-        return found.split('@').next() == Some(expected);
+    let found_base = found.split('@').next().unwrap_or(found);
+    let expected_base = expected.split('@').next().unwrap_or(expected);
+    if found_base == expected_base {
+        return true;
+    }
+    if !expected_base.contains('/') {
+        if let Some((_, world)) = found_base.rsplit_once('/') {
+            return world == expected_base;
+        }
+        return found_base == expected_base;
     }
     false
 }

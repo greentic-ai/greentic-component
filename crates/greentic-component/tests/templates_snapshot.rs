@@ -7,6 +7,11 @@ use serde_json::Value;
 use std::fs;
 use std::process::Command;
 
+#[path = "snapshot_util.rs"]
+mod snapshot_util;
+
+use snapshot_util::normalize_value_paths;
+
 fn run_templates_json(envs: &[(&str, &std::path::Path)]) -> Value {
     let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("greentic-component"));
     cmd.arg("templates").arg("--json");
@@ -20,7 +25,8 @@ fn run_templates_json(envs: &[(&str, &std::path::Path)]) -> Value {
 #[test]
 fn templates_only_builtin_json() {
     let temp_home = TempDir::new().expect("temp dir");
-    let value = run_templates_json(&[("HOME", temp_home.path())]);
+    let mut value = run_templates_json(&[("HOME", temp_home.path())]);
+    normalize_value_paths(&mut value);
     assert_json_snapshot!("templates_only_builtin_json", value);
 }
 
@@ -50,5 +56,6 @@ fn templates_include_user_metadata() {
             }
         }
     }
+    normalize_value_paths(&mut value);
     assert_json_snapshot!("templates_with_user_metadata_json", value);
 }

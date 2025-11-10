@@ -156,23 +156,33 @@ cargo test
 
 ### Local Checks
 
-Run `ci/local_check.sh` to mirror CI locally:
+Developers only need one entrypoint to mirror CI:
+
+```bash
+# Fast checks (quiet, online, non-strict)
+bash ci/local_check.sh
+
+# CI-equivalent (strict, verbose)
+LOCAL_CHECK_ONLINE=1 LOCAL_CHECK_STRICT=1 LOCAL_CHECK_VERBOSE=1 bash ci/local_check.sh
+```
+
+Toggles remain available when you need a targeted run:
 
 ```bash
 # Default: online, non-strict
-ci/local_check.sh
+bash ci/local_check.sh
 
 # Force offline mode (skip schema drift curl)
-LOCAL_CHECK_ONLINE=0 ci/local_check.sh
+LOCAL_CHECK_ONLINE=0 bash ci/local_check.sh
 
 # Enable strict mode (enforces online schema + full feature builds/tests)
-LOCAL_CHECK_ONLINE=1 LOCAL_CHECK_STRICT=1 ci/local_check.sh
+LOCAL_CHECK_ONLINE=1 LOCAL_CHECK_STRICT=1 bash ci/local_check.sh
 
 # Temporarily skip the smoke scaffold (not recommended)
-LOCAL_CHECK_SKIP_SMOKE=1 ci/local_check.sh
+LOCAL_CHECK_SKIP_SMOKE=1 bash ci/local_check.sh
 
 # Show every command
-LOCAL_CHECK_VERBOSE=1 ci/local_check.sh
+LOCAL_CHECK_VERBOSE=1 bash ci/local_check.sh
 ```
 
 The script runs in online mode by default, gracefully skips network-dependent
@@ -184,9 +194,14 @@ offline environment). Strict mode also forces workspace-wide
 `cargo build/test --all-features`; otherwise those heavyweight steps are scoped
 to the `greentic-component` crate for a faster inner loop.
 
-The smoke phase runs twice—once with `GREENTIC_DEP_MODE=local` (workspace
-patch overrides) and once with `GREENTIC_DEP_MODE=cratesio` (pure semver
-dependencies). Both variants execute the exact commands the CI job uses:
+The smoke phase runs twice with complementary dependency modes:
+
+- `local` injects workspace `path =` overrides so regressions surface before publish.
+- `cratesio` uses only published crates; lockfile/tree/build steps emit `[skip]` when
+  `LOCAL_CHECK_ONLINE=0` (or the crates.io probe fails) unless strict mode is enabled,
+  in which case the same conditions are treated as hard failures.
+
+Both variants execute the exact commands the CI job uses:
 
 ```bash
 GREENTIC_DEP_MODE=<mode> cargo run --locked -p greentic-component --features cli -- \

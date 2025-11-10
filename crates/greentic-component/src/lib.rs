@@ -27,6 +27,13 @@ pub mod cli;
 pub mod cmd;
 #[cfg(feature = "cli")]
 pub mod scaffold;
+#[cfg(any(
+    feature = "abi",
+    feature = "describe",
+    feature = "prepare",
+    feature = "cli"
+))]
+pub mod wasm;
 
 #[cfg(feature = "abi")]
 pub use abi::{AbiError, check_world, has_lifecycle};

@@ -1,54 +1,71 @@
-name: Publish crates (single or workspace)
+name: Publish crates
 
 on:
   push:
-    branches: [ master ]
-    tags: [ "v*" ]
+    tags:
+      - "v*"
   workflow_dispatch:
 
-jobs:
-  build-test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.88.0
-          components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
-      - name: Lint & Test
-        run: |
-          cargo fmt --all -- --check
-          cargo clippy --workspace --all-targets -- -D warnings
-          cargo build --workspace --all-features
-          cargo test --workspace --all-features -- --nocapture
-      - name: Feature matrix builds
-        run: |
-          set -euo pipefail
-          for features in "" "--no-default-features" "--features serde"; do
-            echo "Running cargo build ${features}"
-            cargo build ${features}
-          done
+concurrency:
+  group: publish-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
+jobs:
   publish:
-    if: github.event_name == 'push'
-    needs: build-test
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_NET_RETRY: 5
+      CARGO_HTTP_TIMEOUT: 120
+      CARGO_HOME: ${{ runner.temp }}/cargo-home
+      CARGO_TARGET_DIR: ${{ runner.temp }}/target
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Install toolchain
+        uses: dtolnay/rust-toolchain@v1
         with:
           toolchain: 1.88.0
           components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
-      - name: Publish changed crates
-        uses: katyo/publish-crates@v2
+          targets: wasm32-wasip2, x86_64-unknown-linux-gnu
+      - name: Install jq and curl
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq curl
+      - name: Prepare cargo dirs
+        run: |
+          mkdir -p "${CARGO_HOME}/registry" "${CARGO_HOME}/git" "${CARGO_TARGET_DIR}"
+      - name: Cache cargo directories
+        uses: actions/cache@v4
         with:
-          path: .
-          registry-token: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-          ignore-unpublished-changes: true
-          check-repo: true
-          dry-run: false
+          path: |
+            ${{ env.CARGO_HOME }}/registry
+            ${{ env.CARGO_HOME }}/git
+            ${{ env.CARGO_TARGET_DIR }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}
+      - name: Run strict local check
+        run: LOCAL_CHECK_ONLINE=1 LOCAL_CHECK_STRICT=1 LOCAL_CHECK_VERBOSE=1 bash ci/local_check.sh
+      - name: Verify clean worktree
+        run: git diff --exit-code
+      - name: Cargo package (locked)
+        run: cargo package -p greentic-component --locked
+      - name: Snapshot package contents
+        run: |
+          PKG_PATH=$(ls "$CARGO_TARGET_DIR"/package/greentic-component-*.crate | head -n1)
+          tar -tzf "$PKG_PATH" | sort > /tmp/greentic-component-files.txt
+          sed -n '1,200p' /tmp/greentic-component-files.txt
+      - name: Upload package manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: greentic-component-package-files
+          path: /tmp/greentic-component-files.txt
+      - name: Cargo publish dry run
+        run: cargo publish -p greentic-component --dry-run --locked
+      - name: Cargo publish
+        run: cargo publish -p greentic-component --locked
+      - name: Wait for crates.io index
+        run: |
+          echo "Give crates.io index time to update"
+          sleep 20

@@ -346,8 +346,8 @@ world node {
     }
 
     fn detect_world(bytes: &[u8]) -> Option<String> {
-        let (_, bindgen) = metadata::decode(bytes).ok()?;
-        Some(world_label(&bindgen.resolve, bindgen.world))
+        let decoded = crate::wasm::decode_world(bytes).ok()?;
+        Some(world_label(&decoded.resolve, decoded.world))
     }
 
     fn world_label(resolve: &Resolve, world_id: WorldId) -> String {

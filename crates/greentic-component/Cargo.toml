@@ -10,6 +10,14 @@ homepage = "https://github.com/greentic-ai/greentic-component"
 documentation = "https://docs.rs/greentic-component"
 keywords = ["greentic", "component", "wasm"]
 categories = ["wasm"]
+include = [
+    "Cargo.toml",
+    "assets/**",
+    "examples/**",
+    "schemas/**",
+    "src/**",
+    "tests/**",
+]
 
 [lib]
 path = "src/lib.rs"

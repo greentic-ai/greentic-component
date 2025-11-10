@@ -4,6 +4,7 @@
 # Defaults: online, non-strict, quiet.
 
 set -euo pipefail
+export RUSTFLAGS=""
 
 ROOT_DIR=$(cd -- "$(dirname "$0")/.." && pwd)
 cd "$ROOT_DIR"
@@ -77,8 +78,32 @@ hard_need() {
     fi
 }
 
+ensure_rust_target() {
+    local target=$1
+    if rustup target list --installed | grep -Fxq "$target"; then
+        return 0
+    fi
+    step "Installing Rust target $target"
+    rustup target add "$target"
+}
+
 hard_need rustc
 hard_need cargo
+hard_need rustup
+
+ensure_rust_target wasm32-wasip2
+ensure_rust_target x86_64-unknown-linux-gnu
+ensure_rust_component() {
+    local component=$1
+    if rustup component list --installed | cut -d' ' -f1 | grep -Fxq "$component"; then
+        return 0
+    fi
+    step "Installing Rust component $component"
+    rustup component add "$component"
+}
+
+ensure_rust_component rustfmt
+ensure_rust_component clippy
 
 step "Tool versions"
 rustc --version
@@ -130,7 +155,7 @@ schema_check() {
     fi
     step "Schema drift check"
     local remote=/tmp/local-check-schema.json
-    if ! curl -sSfo "$remote" https://greentic-ai.github.io/greentic-component/schemas/v1/component.manifest.schema.json; then
+    if ! curl -sSf --max-time 5 -o "$remote" https://greentic-ai.github.io/greentic-component/schemas/v1/component.manifest.schema.json; then
         if [ "$LOCAL_CHECK_STRICT" = "1" ]; then
             echo "[fail] schema curl"
             FAILED=1

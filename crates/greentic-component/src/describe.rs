@@ -6,10 +6,10 @@ use semver::Version;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use thiserror::Error;
-use wit_component::metadata;
 use wit_parser::{Resolve, WorldId, WorldItem, WorldKey};
 
 use crate::manifest::ComponentManifest;
+use crate::wasm;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct DescribePayload {
@@ -63,8 +63,8 @@ pub fn from_wit_world(wasm_path: &Path, _world: &str) -> Result<DescribePayload,
         path: wasm_path.to_path_buf(),
         source,
     })?;
-    let (_, bindgen) = metadata::decode(&bytes).map_err(DescribeError::Metadata)?;
-    build_payload_from_world(&bindgen.resolve, bindgen.world)
+    let decoded = wasm::decode_world(&bytes).map_err(DescribeError::Metadata)?;
+    build_payload_from_world(&decoded.resolve, decoded.world)
 }
 
 pub fn from_embedded(manifest_dir: &Path) -> Option<DescribePayload> {

@@ -3,6 +3,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use anyhow::Result;
+use greentic_component::wasm;
 use wasm_encoder::{
     CodeSection, CustomSection, ExportKind, ExportSection, Function, FunctionSection, Instruction,
     Module, TypeSection,
@@ -101,6 +102,6 @@ fn world_label(resolve: &Resolve, world_id: WorldId) -> String {
 }
 
 fn detect_world(bytes: &[u8]) -> Option<String> {
-    let (_, bindgen) = metadata::decode(bytes).ok()?;
-    Some(world_label(&bindgen.resolve, bindgen.world))
+    let decoded = wasm::decode_world(bytes).ok()?;
+    Some(world_label(&decoded.resolve, decoded.world))
 }

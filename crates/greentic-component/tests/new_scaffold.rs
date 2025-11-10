@@ -3,15 +3,17 @@
 use assert_cmd::prelude::*;
 use insta::assert_snapshot;
 use std::fs;
-use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile::TempDir;
 
+#[path = "snapshot_util.rs"]
+mod snapshot_util;
+
+use snapshot_util::normalize_text;
+
 #[test]
 fn scaffold_rust_wasi_template() {
-    let temp_base = workspace_root().join("target/scaffold-tests");
-    fs::create_dir_all(&temp_base).expect("create scaffold test dir");
-    let temp = TempDir::new_in(&temp_base).expect("temp dir");
+    let temp = TempDir::new().expect("temp dir");
     let component_dir = temp.path().join("demo-component");
     let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("greentic-component"));
     cmd.arg("new")
@@ -26,7 +28,9 @@ fn scaffold_rust_wasi_template() {
         .env("GREENTIC_TEMPLATE_YEAR", "2030")
         .env("GREENTIC_TEMPLATE_ROOT", temp.path().join("templates"))
         .env("GIT_AUTHOR_NAME", "Greentic Labs")
+        .env("GIT_AUTHOR_EMAIL", "greentic-labs@example.com")
         .env("GIT_COMMITTER_NAME", "Greentic Labs")
+        .env("GIT_COMMITTER_EMAIL", "greentic-labs@example.com")
         .env_remove("USER")
         .env_remove("USERNAME");
     cmd.assert().success();
@@ -36,9 +40,9 @@ fn scaffold_rust_wasi_template() {
         fs::read_to_string(component_dir.join("component.manifest.json")).expect("manifest");
     let wit = fs::read_to_string(component_dir.join("wit/world.wit")).expect("wit");
 
-    assert_snapshot!("scaffold_cargo_toml", cargo.trim());
-    assert_snapshot!("scaffold_manifest", manifest.trim());
-    assert_snapshot!("scaffold_wit", wit.trim());
+    assert_snapshot!("scaffold_cargo_toml", normalize_text(cargo.trim()));
+    assert_snapshot!("scaffold_manifest", normalize_text(manifest.trim()));
+    assert_snapshot!("scaffold_wit", normalize_text(wit.trim()));
 
     assert!(
         component_dir.join(".git").exists(),
@@ -65,12 +69,4 @@ fn scaffold_rust_wasi_template() {
         String::from_utf8_lossy(&status.stdout).trim().is_empty(),
         "repository should be clean after initial commit"
     );
-}
-
-fn workspace_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|p| p.parent())
-        .expect("workspace root")
-        .to_path_buf()
 }
