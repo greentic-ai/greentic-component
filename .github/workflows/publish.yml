@@ -19,11 +19,13 @@ jobs:
       CARGO_TERM_COLOR: always
       CARGO_NET_RETRY: 5
       CARGO_HTTP_TIMEOUT: 120
-      CARGO_HOME: ${{ runner.temp }}/cargo-home
-      CARGO_TARGET_DIR: ${{ runner.temp }}/target
       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
     steps:
       - uses: actions/checkout@v4
+      - name: Set cargo env
+        run: |
+          echo "CARGO_HOME=$RUNNER_TEMP/cargo-home" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_DIR=$RUNNER_TEMP/target" >> "$GITHUB_ENV"
       - name: Install toolchain
         uses: dtolnay/rust-toolchain@v1
         with:
