@@ -1,7 +1,10 @@
-use anyhow::Result;
+use anyhow::{Error, Result, bail};
 use clap::{Parser, Subcommand};
 
-use crate::cmd::{self, new::NewArgs, templates::TemplatesArgs};
+use crate::cmd::{
+    self, doctor::DoctorArgs, hash::HashArgs, inspect::InspectArgs, new::NewArgs,
+    store::StoreCommand, templates::TemplatesArgs,
+};
 use crate::scaffold::engine::ScaffoldEngine;
 
 #[derive(Parser, Debug)]
@@ -24,6 +27,15 @@ enum Commands {
     New(NewArgs),
     /// List available component templates
     Templates(TemplatesArgs),
+    /// Run component doctor checks
+    Doctor(DoctorArgs),
+    /// Inspect manifests and describe payloads
+    Inspect(InspectArgs),
+    /// Recompute manifest hashes
+    Hash(HashArgs),
+    /// Interact with the component store
+    #[command(subcommand)]
+    Store(StoreCommand),
 }
 
 pub fn main() -> Result<()> {
@@ -32,6 +44,20 @@ pub fn main() -> Result<()> {
     match cli.command {
         Commands::New(args) => cmd::new::run(args, &engine),
         Commands::Templates(args) => cmd::templates::run(args, &engine),
+        Commands::Doctor(args) => cmd::doctor::run(args).map_err(Error::new),
+        Commands::Inspect(args) => {
+            let result = cmd::inspect::run(&args)?;
+            cmd::inspect::emit_warnings(&result.warnings);
+            if args.strict && !result.warnings.is_empty() {
+                bail!(
+                    "component-inspect: {} warning(s) treated as errors (--strict)",
+                    result.warnings.len()
+                );
+            }
+            Ok(())
+        }
+        Commands::Hash(args) => cmd::hash::run(args),
+        Commands::Store(store_cmd) => cmd::store::run(store_cmd),
     }
 }
 
@@ -50,7 +76,7 @@ mod tests {
                 assert!(!args.no_check);
                 assert!(!args.no_git);
             }
-            Commands::Templates(_) => panic!("expected new args"),
+            _ => panic!("expected new args"),
         }
     }
 }
