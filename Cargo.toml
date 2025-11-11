@@ -9,7 +9,7 @@ resolver = "2"
 
 [workspace.package]
 edition = "2024"
-version = "0.3.3"
+version = "0.3.4"
 license = "MIT"
 rust-version = "1.88"
 
@@ -53,7 +53,7 @@ sha2 = "0.10"
 tempfile = "3.10"
 thiserror = "2.0"
 time = { version = "0.3", features = ["serde", "formatting", "parsing"] }
-tokio = { version = "1.38", features = ["macros", "rt-multi-thread", "sync", "fs", "time"] }
+tokio = { version = "1.38", features = ["macros", "rt-multi-thread", "sync", "fs", "time", "io-util"] }
 tokio-util = "0.7"
 toml = "0.9"
 tracing = "0.1"
