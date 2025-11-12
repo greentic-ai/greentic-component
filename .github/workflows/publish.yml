@@ -52,7 +52,11 @@ jobs:
       - name: Verify clean worktree
         run: git diff --exit-code
       - name: Cargo package (locked)
-        run: cargo package -p greentic-component --locked
+        run: |
+          crates=(greentic-component-store greentic-component-runtime greentic-component)
+          for crate in "${crates[@]}"; do
+            cargo package -p "$crate" --locked
+          done
       - name: Snapshot package contents
         run: |
           PKG_PATH=$(ls "$CARGO_TARGET_DIR"/package/greentic-component-*.crate | head -n1)
@@ -64,9 +68,17 @@ jobs:
           name: greentic-component-package-files
           path: /tmp/greentic-component-files.txt
       - name: Cargo publish dry run
-        run: cargo publish -p greentic-component --dry-run --locked
+        run: |
+          crates=(greentic-component-store greentic-component-runtime greentic-component)
+          for crate in "${crates[@]}"; do
+            cargo publish -p "$crate" --dry-run --locked
+          done
       - name: Cargo publish
-        run: cargo publish -p greentic-component --locked
+        run: |
+          crates=(greentic-component-store greentic-component-runtime greentic-component)
+          for crate in "${crates[@]}"; do
+            cargo publish -p "$crate" --locked
+          done
       - name: Wait for crates.io index
         run: |
           echo "Give crates.io index time to update"

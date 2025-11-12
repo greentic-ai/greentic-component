@@ -2,14 +2,14 @@
 members = [
     "crates/greentic-component",
     "crates/component-manifest",
-    "crates/component-store",
-    "crates/component-runtime",
+    "crates/greentic-component-store",
+    "crates/greentic-component-runtime",
 ]
 resolver = "2"
 
 [workspace.package]
 edition = "2024"
-version = "0.3.5"
+version = "0.3.8"
 license = "MIT"
 rust-version = "1.88"
 
@@ -23,7 +23,7 @@ blake3 = "1.5"
 bytes = "1.6"
 clap = { version = "4.5", features = ["derive"] }
 component-manifest = { version = "0.3", path = "crates/component-manifest" }
-component-store = { version = "0.3", path = "crates/component-store" }
+greentic-component-store = { version = "0.3", path = "crates/greentic-component-store" }
 dashmap = "6"
 directories = "6"
 displaydoc = "0.2"
@@ -66,3 +66,7 @@ wasmparser = "0.240"
 wasmtime = { version = "38", default-features = false, features = ["component-model", "cranelift", "runtime"] }
 wit-component = "0.240"
 wit-parser = "0.240"
+
+[patch.crates-io]
+greentic-component-store = { path = "crates/greentic-component-store" }
+greentic-component-runtime = { path = "crates/greentic-component-runtime" }

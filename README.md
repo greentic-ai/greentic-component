@@ -3,8 +3,8 @@
 This workspace houses the core pieces needed to load, validate, and execute Greentic components without baking any component-specific knowledge into the runner. It is organised into three crates:
 
 - `component-manifest` — strongly-typed parsing and validation for component self-descriptions. It validates capability lists, export declarations, config schemas, and WIT compatibility using JSON Schema tooling.
-- `component-store` — fetches component artifacts from supported stores (filesystem, HTTP, OCI/Warg placeholders) with caching and digest/signature policy enforcement.
-- `component-runtime` — uses Wasmtime’s component model to load components, bind tenant configuration/secrets, and invoke exported operations via the generic Greentic interfaces.
+- `greentic-component-store` — fetches component artifacts from supported stores (filesystem, HTTP, OCI/Warg placeholders) with caching and digest/signature policy enforcement.
+- `greentic-component-runtime` — uses Wasmtime’s component model to load components, bind tenant configuration/secrets, and invoke exported operations via the generic Greentic interfaces.
 
 ## Installation
 
@@ -259,9 +259,9 @@ println!("id={} size={}", component.id.0, component.meta.size);
 Automated tests cover multiple layers:
 
 - **Manifest validation** (`crates/component-manifest/tests/manifest_valid.rs`): ensures well-formed manifests pass and malformed manifests (duplicate capabilities, invalid secrets) fail.
-- **Component store** (`crates/component-store/tests/*.rs`): verifies filesystem listings, caching behaviour, and HTTP fetching via a lightweight test server.
-- **Runtime binding** (`crates/component-runtime/src/binder.rs` tests): validates schema enforcement and secret resolution logic.
-- **Host imports** (`crates/component-runtime/src/host_imports.rs` tests): exercises telemetry gating plus the HTTP fetch host import, including policy denial and successful request/response handling.
+- **Component store** (`crates/greentic-component-store/tests/*.rs`): verifies filesystem listings, caching behaviour, and HTTP fetching via a lightweight test server.
+- **Runtime binding** (`crates/greentic-component-runtime/src/binder.rs` tests): validates schema enforcement and secret resolution logic.
+- **Host imports** (`crates/greentic-component-runtime/src/host_imports.rs` tests): exercises telemetry gating plus the HTTP fetch host import, including policy denial and successful request/response handling.
 
 Add new tests alongside the relevant crate to keep runtime guarantees tight.
 

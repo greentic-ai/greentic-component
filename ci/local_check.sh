@@ -262,6 +262,24 @@ else
     done
 fi
 
+publish_crates=(
+    greentic-component-store
+    greentic-component-runtime
+    greentic-component
+)
+for crate in "${publish_crates[@]}"; do
+    run_cmd "cargo package (locked) -p $crate" \
+        cargo package --allow-dirty -p "$crate" --locked
+done
+if [ "$LOCAL_CHECK_ONLINE" = "1" ]; then
+    for crate in "${publish_crates[@]}"; do
+        run_cmd "cargo publish --dry-run (locked) -p $crate" \
+            cargo publish --allow-dirty -p "$crate" --dry-run --locked
+    done
+else
+    skip_step "cargo publish --dry-run (locked)" "LOCAL_CHECK_ONLINE=0"
+fi
+
 if [ $FAILED -ne 0 ]; then
     echo ""
     echo "local_check: FAILED"

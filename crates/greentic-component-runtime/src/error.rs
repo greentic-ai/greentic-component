@@ -1,5 +1,5 @@
 use component_manifest::ManifestError;
-use component_store::StoreError;
+use greentic_component_store::StoreError;
 use jsonschema::ValidationError;
 use thiserror::Error;
 use wasmtime::Error as WasmtimeError;

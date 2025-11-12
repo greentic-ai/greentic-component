@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use component_store::ComponentStore;
-use component_store::VerificationPolicy;
+use greentic_component_store::ComponentStore;
+use greentic_component_store::VerificationPolicy;
 
 #[derive(Debug, Clone)]
 pub struct HostPolicy {

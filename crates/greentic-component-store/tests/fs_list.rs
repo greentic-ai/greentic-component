@@ -2,8 +2,8 @@ use std::fs::{self, File};
 use std::io::Write;
 use std::path::PathBuf;
 
-use component_store::fs as store_fs;
-use component_store::{ComponentStore, DigestPolicy, VerificationPolicy};
+use greentic_component_store::fs as store_fs;
+use greentic_component_store::{ComponentStore, DigestPolicy, VerificationPolicy};
 
 fn write_file(dir: &tempfile::TempDir, name: &str, contents: &[u8]) -> PathBuf {
     let path = dir.path().join(name);

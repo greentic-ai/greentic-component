@@ -2,7 +2,7 @@ use std::io::{ErrorKind, Read, Write};
 use std::net::TcpListener;
 use std::thread;
 
-use component_store::{ComponentStore, DigestPolicy, VerificationPolicy};
+use greentic_component_store::{ComponentStore, DigestPolicy, VerificationPolicy};
 
 fn spawn_http_server(body: &'static [u8]) -> std::io::Result<String> {
     let listener = TcpListener::bind("127.0.0.1:0")?;
