@@ -38,3 +38,6 @@ wit-component.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 schemars.workspace = true
+
+[patch.crates-io]
+greentic-component-store = { path = "../greentic-component-store" }

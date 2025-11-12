@@ -13,13 +13,15 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Toolchain versions
+    - name: Toolchain + dependency info
       shell: bash
       run: |
         set -euo pipefail
         rustc -Vv || true
         cargo -V || true
         rustup show || true
+        cargo tree --locked -e no-dev || true
+        wasm-tools --version >/dev/null 2>&1 || true
     - name: Display manifest and Cargo.toml
       if: ${{ inputs.smoke-dir != '' }}
       shell: bash
@@ -38,14 +40,71 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
+        root_dir=$(pwd)
         DIAG_DIR=$(mktemp -d 2>/dev/null || mktemp -d -t smoke-diag)
         echo "dir=$DIAG_DIR" >> "$GITHUB_OUTPUT"
         if [ -n "${{ inputs.tree-path }}" ] && [ -f "${{ inputs.tree-path }}" ]; then
           cp "${{ inputs.tree-path }}" "$DIAG_DIR/tree.txt"
         fi
+        logs_dir="$DIAG_DIR/smoke-logs"
+        mkdir -p "$logs_dir"
         if [ -n "${{ inputs.smoke-dir }}" ] && [ -d "${{ inputs.smoke-dir }}" ]; then
-          tar -czf "$DIAG_DIR/smoke.tar.gz" -C "${{ inputs.smoke-dir }}" .
+          find "${{ inputs.smoke-dir }}" -name '*.stdout' -print0 | xargs -0 -I{} cp {} "$logs_dir/" >/dev/null 2>&1 || true
+          find "${{ inputs.smoke-dir }}" -name '*.stderr' -print0 | xargs -0 -I{} cp {} "$logs_dir/" >/dev/null 2>&1 || true
         fi
+        tar_args=(-czf "$DIAG_DIR/smoke.tar.gz")
+        added=0
+        if [ -n "${{ inputs.smoke-dir }}" ] && [ -d "${{ inputs.smoke-dir }}" ]; then
+          tar_args+=(-C "${{ inputs.smoke-dir }}" .)
+          added=1
+        fi
+        if [ -f "$root_dir/Cargo.lock" ]; then
+          tar_args+=(-C "$root_dir" Cargo.lock)
+          added=1
+        fi
+        if [ -f "$root_dir/Cargo.toml" ]; then
+          tar_args+=(-C "$root_dir" Cargo.toml)
+          added=1
+        fi
+        if [ -f "$root_dir/rust-toolchain.toml" ]; then
+          tar_args+=(-C "$root_dir" rust-toolchain.toml)
+          added=1
+        fi
+        if [ -f "$root_dir/rust-toolchain" ]; then
+          tar_args+=(-C "$root_dir" rust-toolchain)
+          added=1
+        fi
+        if [ -d "$logs_dir" ] && [ -n "$(ls -A "$logs_dir" 2>/dev/null)" ]; then
+          tar_args+=(-C "$logs_dir" .)
+          added=1
+        fi
+        if [ $added -gt 0 ]; then
+          tar "${tar_args[@]}"
+        else
+          echo "No smoke artifacts collected."
+        fi
+    - name: wasm-tools inspect logs
+      if: ${{ inputs.smoke-dir != '' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        DIAG_DIR="${{ steps.collect.outputs.dir }}"
+        SMOKE_DIR="${{ inputs.smoke-dir }}"
+        if [ -z "$DIAG_DIR" ] || [ -z "$SMOKE_DIR" ] || [ ! -d "$SMOKE_DIR" ]; then
+          echo "Skipping wasm-tools inspect (missing smoke directory)"
+          exit 0
+        fi
+        if ! command -v wasm-tools >/dev/null 2>&1; then
+          cargo install --locked wasm-tools
+        fi
+        WASM_LOG="$DIAG_DIR/wasm-tools.log"
+        touch "$WASM_LOG"
+        find "$SMOKE_DIR" -name '*.wasm' -print0 | while IFS= read -r -d '' wasm; do
+          echo "--- wasm-tools inspect $wasm ---" >> "$WASM_LOG"
+          if ! wasm-tools inspect "$wasm" >>"$WASM_LOG" 2>&1; then
+            echo "wasm-tools inspect failed for $wasm" >> "$WASM_LOG"
+          fi
+        done
     - name: Upload diagnostics
       if: always()
       uses: actions/upload-artifact@v4

@@ -17,13 +17,13 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@v1
         with:
-          toolchain: 1.88.0
+          toolchain: stable
       - uses: Swatinem/rust-cache@v2
 
-      - name: Install jq
-        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Install tomlq
+        run: cargo install --locked tomlq
 
       - name: Ensure scripts present
         run: |
@@ -39,35 +39,46 @@ jobs:
           set -euo pipefail
           source scripts/version-tools.sh
 
-          # list current crates
-          mapfile -t crates < <(list_crates)
+          if ! PREV_HASH=$(git rev-parse HEAD^ 2>/dev/null); then
+            echo "No previous commit detected; skipping tag creation."
+            exit 0
+          fi
+
+          mapfile -t changed_manifests < <(git diff --name-only "$PREV_HASH" HEAD | grep -F "Cargo.toml" || true)
+          if [ "${#changed_manifests[@]}" -eq 0 ]; then
+            echo "No Cargo.toml changes detected in this push."
+            exit 0
+          fi
 
           tagged_any="false"
 
-          for line in "${crates[@]}"; do
-            name=$(awk '{print $1}' <<<"$line")
-            version=$(awk '{print $2}' <<<"$line")
-            manifest=$(awk '{print $3}' <<<"$line")
-            tag="${name}-v${version}"
-
-            # If tag already exists, skip.
+          for manifest in "${changed_manifests[@]}"; do
+            if [ ! -f "$manifest" ]; then
+              echo "Skipping removed manifest $manifest."
+              continue
+            fi
+            name=$(tomlq -r .package.name < "$manifest")
+            new_version=$(tomlq -r .package.version < "$manifest")
+            if [ -z "$name" ] || [ -z "$new_version" ]; then
+              echo "Skipping $manifest (missing name/version)."
+              continue
+            fi
+            old_manifest=$(git show "$PREV_HASH:$manifest" 2>/dev/null || true)
+            old_version=""
+            if [ -n "$old_manifest" ]; then
+              old_version=$(printf '%s' "$old_manifest" | tomlq -r .package.version 2>/dev/null || true)
+            fi
+            if [ "$old_version" = "$new_version" ]; then
+              echo "Version unchanged for ${name} (${new_version}); skipping."
+              continue
+            fi
+            tag="${name}-v${new_version}"
             if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
-              echo "::notice::Tag ${tag} already exists. Skipping."
+              echo "Annotated tag ${tag} already exists; skipping."
               continue
             fi
-
-            # Check if version changed since previous commit for this crate's Cargo.toml
-            crate_dir=$(crate_dir_from_manifest "$manifest")
-            cargo_toml="${crate_dir}/Cargo.toml"
-
-            # If the file didn't change in this push, skip.
-            if ! git diff --name-only HEAD~1 HEAD | grep -q "^${cargo_toml}\$"; then
-              echo "No change in ${cargo_toml} this push. Skipping ${name}."
-              continue
-            fi
-
-            echo "Creating lightweight tag ${tag}"
-            git tag -a "${tag}" -m "${name} ${version}"
+            echo "Creating annotated tag ${tag}"
+            git tag -a "${tag}" -m "${name} ${new_version}"
             tagged_any="true"
           done
 
