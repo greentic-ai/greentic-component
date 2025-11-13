@@ -35,14 +35,23 @@ step() {
 }
 
 FAILED=0
+FAILED_STEPS=()
+LAST_RUN_FAILED=0
+
+record_failure() {
+    FAILED=1
+    FAILED_STEPS+=("$1")
+}
 
 run_cmd() {
     local desc=$1
     shift
     step "$desc"
+    LAST_RUN_FAILED=0
     if ! "$@"; then
         echo "[fail] $desc"
-        FAILED=1
+        record_failure "$desc"
+        LAST_RUN_FAILED=1
     fi
 }
 
@@ -53,12 +62,12 @@ run_bin_cmd() {
     step "$desc"
     if [ ! -x "$bin_path" ]; then
         echo "[fail] $desc ($bin_path missing)"
-        FAILED=1
+        record_failure "$desc ($bin_path missing)"
         return 1
     fi
     if ! "$bin_path" "$@"; then
         echo "[fail] $desc"
-        FAILED=1
+        record_failure "$desc"
     fi
 }
 
@@ -70,7 +79,7 @@ run_or_skip() {
     fi
     if [ "$LOCAL_CHECK_STRICT" = "1" ]; then
         echo "[fail] $desc"
-        FAILED=1
+        record_failure "$desc"
     else
         echo "[skip] $desc"
     fi
@@ -81,7 +90,7 @@ skip_step() {
     local reason=$2
     if [ "$LOCAL_CHECK_STRICT" = "1" ]; then
         echo "[fail] $desc ($reason)"
-        FAILED=1
+        record_failure "$desc ($reason)"
     else
         echo "[skip] $desc ($reason)"
     fi
@@ -126,6 +135,23 @@ cargo --version
 need jq && jq --version || true
 need curl && curl --version || true
 
+CRATES_IO_AVAILABLE=0
+CRATES_IO_REASON="LOCAL_CHECK_ONLINE=0"
+if [ "$LOCAL_CHECK_ONLINE" = "1" ]; then
+    CRATES_IO_REASON="crates.io unreachable"
+    if command -v curl >/dev/null 2>&1; then
+        if curl -sSf --max-time 5 https://index.crates.io/config.json >/dev/null 2>&1; then
+            CRATES_IO_AVAILABLE=1
+            CRATES_IO_REASON=""
+        else
+            echo "[warn] crates.io unreachable; online-only steps will be skipped"
+        fi
+    else
+        CRATES_IO_REASON="curl missing"
+        echo "[warn] curl is missing; crates.io-dependent steps will be skipped"
+    fi
+fi
+
 schema_check() {
     if [ "$LOCAL_CHECK_ONLINE" != "1" ]; then
         echo "[skip] schema drift check (offline)"
@@ -155,7 +181,7 @@ schema_check() {
     if [ $success -ne 1 ]; then
         if [ "$LOCAL_CHECK_STRICT" = "1" ]; then
             echo "[fail] schema drift check (remote unavailable)"
-            FAILED=1
+            record_failure "schema drift check (remote unavailable)"
         else
             echo "[skip] schema drift check (remote unavailable)"
         fi
@@ -168,7 +194,7 @@ schema_check() {
     if [ "$remote_id" != "$local_id" ]; then
         echo "Schema ID mismatch remote=$remote_id local=$local_id"
         if [ "$LOCAL_CHECK_STRICT" = "1" ]; then
-            FAILED=1
+            record_failure "schema drift check (schema ID mismatch remote=$remote_id local=$local_id)"
         fi
     else
         echo "Schema IDs match: $remote_id"
@@ -185,11 +211,11 @@ build_release_bin() {
     run_cmd "cargo build release -p $bin" "${args[@]}"
 }
 
-if [ "$LOCAL_CHECK_ONLINE" = "1" ]; then
+if [ "$LOCAL_CHECK_ONLINE" = "1" ] && [ "$CRATES_IO_AVAILABLE" = "1" ]; then
     run_cmd "cargo fetch (linux target)" \
         cargo fetch --locked --target x86_64-unknown-linux-gnu
 else
-    skip_step "cargo fetch (linux target)" "offline mode"
+    skip_step "cargo fetch (linux target)" "${CRATES_IO_REASON:-crates.io unreachable}"
 fi
 
 run_cmd "cargo fmt" cargo fmt --all -- --check
@@ -243,34 +269,71 @@ run_smoke_mode() {
         --path "$smoke_path" --non-interactive --no-check --json
     run_bin_cmd "Smoke ($mode): component-doctor" "$BIN_COMPONENT_DOCTOR" "$smoke_path"
     local network_ok=0
-    if [ "$LOCAL_CHECK_ONLINE" = "1" ] && \
-        curl -sSf --max-time 5 https://index.crates.io/config.json >/dev/null 2>&1; then
-        network_ok=1
-        run_cmd "Smoke ($mode): cargo generate-lockfile" \
-            bash -lc "cd '$smoke_path' && cargo generate-lockfile"
-        local tree_file="$TREE_DIR/tree-$mode.txt"
-        run_cmd "Smoke ($mode): cargo tree" \
-            bash -lc "cd '$smoke_path' && cargo tree -e no-dev --locked | tee '$tree_file' >/dev/null"
-        run_cmd "Smoke ($mode): cargo check" \
-            bash -lc "cd '$smoke_path' && cargo check --target wasm32-wasip2 --locked"
-        run_cmd "Smoke ($mode): cargo build --release" \
-            bash -lc "cd '$smoke_path' && cargo build --target wasm32-wasip2 --release --locked"
-    else
-        local reason="network unavailable"
-        if [ "$LOCAL_CHECK_ONLINE" != "1" ]; then
-            reason="LOCAL_CHECK_ONLINE=0"
+    local network_reason="${CRATES_IO_REASON:-network unavailable}"
+    if [ "$LOCAL_CHECK_ONLINE" = "1" ] && [ "$CRATES_IO_AVAILABLE" = "1" ]; then
+        if curl -sSf --max-time 5 https://index.crates.io/config.json >/dev/null 2>&1; then
+            local wasm_ready=1
+            run_cmd "Smoke ($mode): cargo generate-lockfile" \
+                bash -lc "cd '$smoke_path' && cargo generate-lockfile"
+            if [ "$LAST_RUN_FAILED" -eq 1 ]; then
+                wasm_ready=0
+                network_reason="cargo generate-lockfile failed"
+            fi
+            local tree_file="$TREE_DIR/tree-$mode.txt"
+            if [ $wasm_ready -eq 1 ]; then
+                run_cmd "Smoke ($mode): cargo tree" \
+                    bash -lc "cd '$smoke_path' && cargo tree -e no-dev --locked | tee '$tree_file' >/dev/null"
+                if [ "$LAST_RUN_FAILED" -eq 1 ]; then
+                    wasm_ready=0
+                    network_reason="cargo tree failed"
+                fi
+            fi
+            if [ $wasm_ready -eq 1 ]; then
+                run_cmd "Smoke ($mode): cargo check" \
+                    bash -lc "cd '$smoke_path' && cargo check --target wasm32-wasip2 --locked"
+                if [ "$LAST_RUN_FAILED" -eq 1 ]; then
+                    wasm_ready=0
+                    network_reason="cargo check failed"
+                fi
+            fi
+            if [ $wasm_ready -eq 1 ]; then
+                run_cmd "Smoke ($mode): cargo build --release" \
+                    bash -lc "cd '$smoke_path' && cargo build --target wasm32-wasip2 --release --locked"
+                if [ "$LAST_RUN_FAILED" -eq 1 ]; then
+                    wasm_ready=0
+                    network_reason="cargo wasm build failed"
+                fi
+            fi
+            if [ $wasm_ready -eq 1 ]; then
+                local wasm_file="$smoke_path/bin/component.wasm"
+                if [ ! -f "$wasm_file" ]; then
+                    wasm_ready=0
+                    network_reason="wasm artifact missing ($wasm_file)"
+                fi
+            fi
+            if [ $wasm_ready -eq 1 ]; then
+                network_ok=1
+            fi
+        else
+            network_reason="crates.io unreachable"
         fi
-        skip_step "Smoke ($mode): cargo generate-lockfile" "$reason"
-        skip_step "Smoke ($mode): cargo tree" "$reason"
-        skip_step "Smoke ($mode): cargo check" "$reason"
-        skip_step "Smoke ($mode): cargo build --release" "$reason"
+    else
+        if [ "$LOCAL_CHECK_ONLINE" != "1" ]; then
+            network_reason="LOCAL_CHECK_ONLINE=0"
+        fi
+    fi
+    if [ $network_ok -ne 1 ]; then
+        skip_step "Smoke ($mode): cargo generate-lockfile" "$network_reason"
+        skip_step "Smoke ($mode): cargo tree" "$network_reason"
+        skip_step "Smoke ($mode): cargo check" "$network_reason"
+        skip_step "Smoke ($mode): cargo build --release" "$network_reason"
     fi
     if [ $network_ok -eq 1 ]; then
         run_bin_cmd "Smoke ($mode): component-hash" "$BIN_COMPONENT_HASH" "$smoke_manifest"
         run_bin_cmd "Smoke ($mode): component-inspect" "$BIN_COMPONENT_INSPECT" --json "$smoke_manifest"
     else
-        skip_step "Smoke ($mode): update manifest hash" "wasm build unavailable"
-        skip_step "Smoke ($mode): component-inspect" "wasm build unavailable"
+        skip_step "Smoke ($mode): update manifest hash" "${network_reason:-wasm build unavailable}"
+        skip_step "Smoke ($mode): component-inspect" "${network_reason:-wasm build unavailable}"
     fi
     if [ $cleanup_smoke -eq 1 ]; then
         rm -rf "$smoke_parent"
@@ -300,7 +363,7 @@ for crate in "${publish_crates[@]}"; do
     run_cmd "cargo package (locked) -p $crate" \
         cargo package --allow-dirty -p "$crate" --locked
 done
-if [ "$LOCAL_CHECK_ONLINE" = "1" ]; then
+if [ "$LOCAL_CHECK_ONLINE" = "1" ] && [ "$CRATES_IO_AVAILABLE" = "1" ]; then
     for crate in "${publish_crates[@]}"; do
         step "cargo publish --dry-run (locked) -p $crate"
         echo ""
@@ -310,11 +373,18 @@ if [ "$LOCAL_CHECK_ONLINE" = "1" ]; then
         fi
     done
 else
-    skip_step "cargo publish --dry-run (locked)" "LOCAL_CHECK_ONLINE=0"
+    skip_step "cargo publish --dry-run (locked)" "${CRATES_IO_REASON:-network unavailable}"
 fi
 
 if [ "$FAILED" -ne 0 ]; then
     echo ""
+    if [ "${#FAILED_STEPS[@]}" -ne 0 ]; then
+        echo "Failed checks:"
+        for step in "${FAILED_STEPS[@]}"; do
+            echo "- $step"
+        done
+        echo ""
+    fi
     echo "❌ LOCAL CHECK FAILED"
     exit 1
 fi
