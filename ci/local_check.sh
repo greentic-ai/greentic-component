@@ -321,7 +321,9 @@ run_smoke_mode() {
                 fi
             fi
             if [ $wasm_ready -eq 1 ]; then
-                local wasm_file="$smoke_path/bin/component.wasm"
+                local wasm_rel
+                wasm_rel=$(jq -r '.artifacts.component_wasm' "$smoke_manifest")
+                local wasm_file="$smoke_path/$wasm_rel"
                 if [ ! -f "$wasm_file" ]; then
                     wasm_ready=0
                     network_reason="wasm artifact missing ($wasm_file)"
