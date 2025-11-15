@@ -9,12 +9,14 @@ export RUSTFLAGS=""
 ROOT_DIR=$(cd -- "$(dirname "$0")/.." && pwd)
 cd "$ROOT_DIR"
 
+TARGET_DIR=${CARGO_TARGET_DIR:-$ROOT_DIR/target}
+
 LOCAL_CHECK_ONLINE=${LOCAL_CHECK_ONLINE:-1}
 LOCAL_CHECK_STRICT=${LOCAL_CHECK_STRICT:-0}
 LOCAL_CHECK_VERBOSE=${LOCAL_CHECK_VERBOSE:-0}
 SMOKE_NAME=${SMOKE_NAME:-local-check}
-TREE_DIR=${LOCAL_CHECK_TREE_DIR:-$ROOT_DIR/target/local-check}
-SMOKE_TARGET_DIR=$ROOT_DIR/target/smoke
+TREE_DIR=${LOCAL_CHECK_TREE_DIR:-$TARGET_DIR/local-check}
+SMOKE_TARGET_DIR=$TARGET_DIR/smoke
 mkdir -p "$TREE_DIR" "$SMOKE_TARGET_DIR"
 
 if [ "$LOCAL_CHECK_VERBOSE" = "1" ]; then
@@ -231,10 +233,10 @@ build_release_bin component-doctor "cli,prepare"
 build_release_bin component-hash "cli"
 build_release_bin greentic-component "cli"
 
-readonly BIN_COMPONENT_INSPECT=$ROOT_DIR/target/release/component-inspect
-readonly BIN_COMPONENT_DOCTOR=$ROOT_DIR/target/release/component-doctor
-readonly BIN_COMPONENT_HASH=$ROOT_DIR/target/release/component-hash
-readonly BIN_GREENTIC_COMPONENT=$ROOT_DIR/target/release/greentic-component
+readonly BIN_COMPONENT_INSPECT=$TARGET_DIR/release/component-inspect
+readonly BIN_COMPONENT_DOCTOR=$TARGET_DIR/release/component-doctor
+readonly BIN_COMPONENT_HASH=$TARGET_DIR/release/component-hash
+readonly BIN_GREENTIC_COMPONENT=$TARGET_DIR/release/greentic-component
 
 run_bin_cmd "component-inspect probe" "$BIN_COMPONENT_INSPECT" --json crates/greentic-component/tests/fixtures/manifests/valid.component.json
 run_bin_cmd "component-doctor probe" "$BIN_COMPONENT_DOCTOR" crates/greentic-component/tests/fixtures/manifests/valid.component.json
