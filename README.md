@@ -6,6 +6,21 @@ This workspace houses the core pieces needed to load, validate, and execute Gree
 - `greentic-component-store` — fetches component artifacts from supported stores (filesystem, HTTP, OCI/Warg placeholders) with caching and digest/signature policy enforcement.
 - `greentic-component-runtime` — uses Wasmtime’s component model to load components, bind tenant configuration/secrets, and invoke exported operations via the generic Greentic interfaces.
 
+## Crates & publishing
+
+Only the `greentic-component` crate is published on crates.io. Internal crates such as
+`greentic-component-store` and `greentic-component-runtime` exist for code organization inside this
+workspace and are marked `publish = false`. If you want to consume Greentic tooling from crates.io,
+depend on `greentic-component` only:
+
+```toml
+[dependencies]
+greentic-component = "0.4"
+```
+
+Developers working in this repository interact directly with the internal crates via their workspace
+paths; downstream users do not need to reference them.
+
 ## Installation
 
 ```bash

@@ -371,8 +371,6 @@ else
 fi
 
 publish_crates=(
-    greentic-component-store
-    greentic-component-runtime
     greentic-component
 )
 for crate in "${publish_crates[@]}"; do

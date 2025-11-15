@@ -3,6 +3,7 @@ name = "greentic-component-store"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+publish = false
 description = "Store abstraction and verification for Greentic components"
 repository = "https://github.com/greentic-ai/greentic-component"
 homepage = "https://github.com/greentic-ai/greentic-component"

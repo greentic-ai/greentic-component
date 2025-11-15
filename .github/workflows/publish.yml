@@ -44,6 +44,7 @@ jobs:
             ${{ env.CARGO_TARGET_DIR }}
           key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock','ci/local_check.sh') }}
       - name: Run strict local check
+        # Preflight run (dry-run publish) for greentic-component, the only public crate.
         run: |
           LOCAL_CHECK_ONLINE=1 \
           LOCAL_CHECK_STRICT=1 \
@@ -91,6 +92,7 @@ jobs:
       - name: Verify clean worktree
         run: git diff --exit-code
       - name: Run strict local check + publish
+        # In release mode the script performs real `cargo publish` for greentic-component only.
         run: |
           LOCAL_CHECK_ONLINE=1 \
           LOCAL_CHECK_STRICT=1 \

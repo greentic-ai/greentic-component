@@ -23,7 +23,7 @@ blake3 = "1"
 bytes = "1"
 clap = { version = "4", features = ["derive"] }
 component-manifest = { version = "0.4", path = "crates/component-manifest" }
-greentic-component-store = { version = "0.4", path = "crates/greentic-component-store" }
+greentic-component-store = { path = "crates/greentic-component-store" }
 dashmap = "6"
 directories = "6"
 displaydoc = "0.2"
