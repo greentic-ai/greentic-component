@@ -17,6 +17,20 @@ LOCAL_CHECK_VERBOSE=${LOCAL_CHECK_VERBOSE:-0}
 SMOKE_NAME=${SMOKE_NAME:-local-check}
 TREE_DIR=${LOCAL_CHECK_TREE_DIR:-$TARGET_DIR/local-check}
 SMOKE_TARGET_DIR=$TARGET_DIR/smoke
+
+# Publish mode defaults:
+#   - CI environment => publish
+#   - local runs      => dry-run
+if [ -z "${LOCAL_CHECK_PUBLISH_MODE:-}" ]; then
+    if [ -n "${CI:-}" ]; then
+        LOCAL_CHECK_PUBLISH_MODE="publish"
+    else
+        LOCAL_CHECK_PUBLISH_MODE="dry-run"
+    fi
+fi
+
+# Ignore publish dry-run failures when bumping versions locally.
+LOCAL_VERSION_UPGRADE=${LOCAL_VERSION_UPGRADE:-0}
 mkdir -p "$TREE_DIR" "$SMOKE_TARGET_DIR"
 
 if [ "$LOCAL_CHECK_VERBOSE" = "1" ]; then
@@ -365,18 +379,45 @@ for crate in "${publish_crates[@]}"; do
     run_cmd "cargo package (locked) -p $crate" \
         cargo package --allow-dirty -p "$crate" --locked
 done
-if [ "$LOCAL_CHECK_ONLINE" = "1" ] && [ "$CRATES_IO_AVAILABLE" = "1" ]; then
-    for crate in "${publish_crates[@]}"; do
-        step "cargo publish --dry-run (locked) -p $crate"
-        echo ""
-        echo "▶ cargo publish --dry-run (locked) -p $crate"
-        if ! cargo publish --allow-dirty -p "$crate" --dry-run --locked; then
-            echo "[warn] cargo publish --dry-run (locked) -p $crate failed (ignoring)"
+case "$LOCAL_CHECK_PUBLISH_MODE" in
+    dry-run)
+        if [ "$LOCAL_CHECK_ONLINE" = "1" ] && [ "$CRATES_IO_AVAILABLE" = "1" ]; then
+            for crate in "${publish_crates[@]}"; do
+                step "cargo publish --dry-run (locked) -p $crate"
+                echo ""
+                echo "▶ cargo publish --dry-run (locked) -p $crate"
+                if ! cargo publish --allow-dirty -p "$crate" --dry-run --locked; then
+                    if [ "$LOCAL_VERSION_UPGRADE" = "1" ]; then
+                        echo "[warn] cargo publish --dry-run (locked) -p $crate failed, ignoring due to LOCAL_VERSION_UPGRADE=1"
+                    else
+                        echo "[fail] cargo publish --dry-run (locked) -p $crate"
+                        record_failure "cargo publish --dry-run (locked) -p $crate"
+                    fi
+                fi
+            done
+        else
+            skip_step "cargo publish --dry-run (locked)" "${CRATES_IO_REASON:-network unavailable}"
         fi
-    done
-else
-    skip_step "cargo publish --dry-run (locked)" "${CRATES_IO_REASON:-network unavailable}"
-fi
+        ;;
+    publish)
+        if [ "$LOCAL_CHECK_ONLINE" = "1" ] && [ "$CRATES_IO_AVAILABLE" = "1" ]; then
+            for crate in "${publish_crates[@]}"; do
+                step "cargo publish (locked) -p $crate"
+                echo ""
+                echo "▶ cargo publish (locked) -p $crate"
+                if ! cargo publish --allow-dirty -p "$crate" --locked; then
+                    echo "[fail] cargo publish (locked) -p $crate"
+                    record_failure "cargo publish (locked) -p $crate"
+                fi
+            done
+        else
+            skip_step "cargo publish (locked)" "${CRATES_IO_REASON:-network unavailable}"
+        fi
+        ;;
+    *)
+        skip_step "cargo publish / dry-run" "LOCAL_CHECK_PUBLISH_MODE=$LOCAL_CHECK_PUBLISH_MODE not recognized"
+        ;;
+esac
 
 if [ "$FAILED" -ne 0 ]; then
     echo ""

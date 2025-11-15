@@ -40,4 +40,9 @@ jobs:
             ${{ env.CARGO_TARGET_DIR }}
           key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock','ci/local_check.sh') }}
       - name: Run strict local check
-        run: LOCAL_CHECK_ONLINE=1 LOCAL_CHECK_STRICT=1 LOCAL_CHECK_VERBOSE=1 bash ci/local_check.sh
+        run: |
+          LOCAL_CHECK_ONLINE=1 \
+          LOCAL_CHECK_STRICT=1 \
+          LOCAL_CHECK_VERBOSE=1 \
+          LOCAL_CHECK_PUBLISH_MODE=dry-run \
+          bash ci/local_check.sh

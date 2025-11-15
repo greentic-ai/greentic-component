@@ -44,7 +44,12 @@ jobs:
             ${{ env.CARGO_TARGET_DIR }}
           key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock','ci/local_check.sh') }}
       - name: Run strict local check
-        run: LOCAL_CHECK_ONLINE=1 LOCAL_CHECK_STRICT=1 LOCAL_CHECK_VERBOSE=1 bash ci/local_check.sh
+        run: |
+          LOCAL_CHECK_ONLINE=1 \
+          LOCAL_CHECK_STRICT=1 \
+          LOCAL_CHECK_VERBOSE=1 \
+          LOCAL_CHECK_PUBLISH_MODE=dry-run \
+          bash ci/local_check.sh
 
   publish:
     needs: local-check
@@ -85,12 +90,12 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock','ci/local_check.sh') }}
       - name: Verify clean worktree
         run: git diff --exit-code
-      - name: Cargo package (locked)
+      - name: Run strict local check + publish
         run: |
-          crates=(greentic-component-store greentic-component-runtime greentic-component)
-          for crate in "${crates[@]}"; do
-            cargo package -p "$crate" --locked
-          done
+          LOCAL_CHECK_ONLINE=1 \
+          LOCAL_CHECK_STRICT=1 \
+          LOCAL_CHECK_VERBOSE=1 \
+          bash ci/local_check.sh
       - name: Snapshot package contents
         run: |
           PKG_PATH=$(ls "$CARGO_TARGET_DIR"/package/greentic-component-*.crate | head -n1)
@@ -101,32 +106,6 @@ jobs:
         with:
           name: greentic-component-package-files
           path: /tmp/greentic-component-files.txt
-      - name: Cargo publish
-        run: |
-          set -euo pipefail
-          publish_retry() {
-            local crate=$1
-            local tries=1
-            while [ $tries -le 3 ]; do
-              if publish_output=$(cargo publish -p "$crate" --locked 2>&1); then
-                echo "$publish_output"
-                return 0
-              fi
-              echo "$publish_output"
-              if echo "$publish_output" | grep -qi "already uploaded"; then
-                echo "crate $crate already published"
-                return 0
-              fi
-              echo "Retry $tries for $crate"
-              tries=$((tries + 1))
-              sleep 10
-            done
-            return 1
-          }
-          crates=(greentic-component-store greentic-component-runtime greentic-component)
-          for crate in "${crates[@]}"; do
-            publish_retry "$crate"
-          done
       - name: Wait for crates.io index
         run: |
           echo "Give crates.io index time to update"
