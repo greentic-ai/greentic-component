@@ -1,10 +1,13 @@
 use std::collections::HashSet;
 
+use crate::capabilities::CapabilityError;
 use crate::capabilities::{
-    Capabilities, CapabilityError, FsCaps, HttpCaps, KvCaps, NetCaps, SecretsCaps, ToolsCaps,
+    Capabilities, FilesystemCapabilities, FilesystemMode, HostCapabilities, TelemetryScope,
+    WasiCapabilities,
 };
 use crate::manifest::ComponentManifest;
 
+/// Host profile describing the maximum capabilities granted to a component.
 #[derive(Debug, Clone, Default)]
 pub struct Profile {
     pub allowed: Capabilities,
@@ -20,216 +23,221 @@ pub fn enforce_capabilities(
     manifest: &ComponentManifest,
     profile: Profile,
 ) -> Result<(), CapabilityError> {
-    let requested = &manifest.capabilities;
-    let allowed = &profile.allowed;
-
-    if let Some(http) = &requested.http {
-        ensure_http(http, allowed.http.as_ref())?;
-    }
-    if let Some(secrets) = &requested.secrets {
-        ensure_secrets(secrets, allowed.secrets.as_ref())?;
-    }
-    if let Some(kv) = &requested.kv {
-        ensure_kv(kv, allowed.kv.as_ref())?;
-    }
-    if let Some(fs) = &requested.fs {
-        ensure_fs(fs, allowed.fs.as_ref())?;
-    }
-    if let Some(net) = &requested.net {
-        ensure_net(net, allowed.net.as_ref())?;
-    }
-    if let Some(tools) = &requested.tools {
-        ensure_tools(tools, allowed.tools.as_ref())?;
-    }
-
-    Ok(())
+    ensure_wasi(&manifest.capabilities.wasi, &profile.allowed.wasi)?;
+    ensure_host(&manifest.capabilities.host, &profile.allowed.host)
 }
 
-fn ensure_http(requested: &HttpCaps, allowed: Option<&HttpCaps>) -> Result<(), CapabilityError> {
-    let policy = allowed.ok_or_else(|| {
-        CapabilityError::denied(
-            "http",
-            "capabilities.http",
-            "profile does not permit outbound HTTP",
-        )
-    })?;
-
-    let allowed_domains: HashSet<_> = policy.domains.iter().collect();
-    for domain in &requested.domains {
-        if !allowed_domains.contains(domain) {
-            return Err(CapabilityError::denied(
-                "http",
-                format!("capabilities.http.domains[{domain}]"),
-                format!("domain `{domain}` is not allowed"),
-            ));
-        }
-    }
-
-    if requested.allow_insecure && !policy.allow_insecure {
-        return Err(CapabilityError::denied(
-            "http",
-            "capabilities.http.allow_insecure",
-            "insecure HTTP is disabled for this profile",
-        ));
-    }
-
-    Ok(())
-}
-
-fn ensure_secrets(
-    requested: &SecretsCaps,
-    allowed: Option<&SecretsCaps>,
+fn ensure_wasi(
+    requested: &WasiCapabilities,
+    allowed: &WasiCapabilities,
 ) -> Result<(), CapabilityError> {
-    let policy = allowed.ok_or_else(|| {
-        CapabilityError::denied(
-            "secrets",
-            "capabilities.secrets",
-            "profile denies access to secrets",
-        )
-    })?;
-
-    let allowed_scopes: HashSet<_> = policy.scopes.iter().collect();
-    for scope in &requested.scopes {
-        if !allowed_scopes.contains(scope) {
-            return Err(CapabilityError::denied(
-                "secrets",
-                format!("capabilities.secrets.scopes[{scope}]"),
-                format!("scope `{scope}` is not part of the profile"),
-            ));
-        }
-    }
-    Ok(())
-}
-
-fn ensure_kv(requested: &KvCaps, allowed: Option<&KvCaps>) -> Result<(), CapabilityError> {
-    let policy = allowed.ok_or_else(|| {
-        CapabilityError::denied("kv", "capabilities.kv", "profile denies kv access")
-    })?;
-
-    let allowed_buckets: HashSet<_> = policy.buckets.iter().collect();
-    for bucket in &requested.buckets {
-        if !allowed_buckets.contains(bucket) {
-            return Err(CapabilityError::denied(
-                "kv",
-                format!("capabilities.kv.buckets[{bucket}]"),
-                format!("bucket `{bucket}` is unavailable"),
-            ));
-        }
+    if let Some(fs) = &requested.filesystem {
+        let policy = allowed.filesystem.as_ref().ok_or_else(|| {
+            CapabilityError::invalid("wasi.filesystem", "filesystem access denied")
+        })?;
+        ensure_filesystem(fs, policy)?;
     }
 
-    if requested.read && !policy.read {
-        return Err(CapabilityError::denied(
-            "kv",
-            "capabilities.kv.read",
-            "read access denied by profile",
-        ));
-    }
-
-    if requested.write && !policy.write {
-        return Err(CapabilityError::denied(
-            "kv",
-            "capabilities.kv.write",
-            "write access denied by profile",
-        ));
-    }
-
-    Ok(())
-}
-
-fn ensure_fs(requested: &FsCaps, allowed: Option<&FsCaps>) -> Result<(), CapabilityError> {
-    let policy = allowed.ok_or_else(|| {
-        CapabilityError::denied("fs", "capabilities.fs", "profile denies filesystem mounts")
-    })?;
-
-    let allowed_paths: HashSet<_> = policy.paths.iter().collect();
-    for path in &requested.paths {
-        if !allowed_paths.contains(path) {
-            return Err(CapabilityError::denied(
-                "fs",
-                format!("capabilities.fs.paths[{path}]"),
-                format!("path `{path}` is not mounted in this profile"),
-            ));
-        }
-    }
-
-    if !requested.read_only && policy.read_only {
-        return Err(CapabilityError::denied(
-            "fs",
-            "capabilities.fs.read_only",
-            "profile exposes filesystem as read-only",
-        ));
-    }
-
-    Ok(())
-}
-
-fn ensure_net(requested: &NetCaps, allowed: Option<&NetCaps>) -> Result<(), CapabilityError> {
-    let policy = allowed.ok_or_else(|| {
-        CapabilityError::denied(
-            "net",
-            "capabilities.net",
-            "profile denies outbound network access",
-        )
-    })?;
-
-    if !requested.hosts.is_empty() {
-        if policy.hosts.is_empty() {
-            return Err(CapabilityError::denied(
-                "net",
-                "capabilities.net.hosts",
-                "profile did not pre-authorise hosts",
-            ));
-        }
-        let allowed_hosts: HashSet<_> = policy.hosts.iter().collect();
-        for host in &requested.hosts {
-            if !allowed_hosts.contains(host) {
-                return Err(CapabilityError::denied(
-                    "net",
-                    format!("capabilities.net.hosts[{host}]"),
-                    format!("host `{host}` is blocked"),
+    if let Some(env) = &requested.env {
+        let policy = allowed
+            .env
+            .as_ref()
+            .ok_or_else(|| CapabilityError::invalid("wasi.env", "environment access denied"))?;
+        let allowed_vars: HashSet<_> = policy.allow.iter().collect();
+        for var in &env.allow {
+            if !allowed_vars.contains(var) {
+                return Err(CapabilityError::invalid(
+                    "wasi.env.allow",
+                    format!("env `{var}` not permitted by profile"),
                 ));
             }
         }
     }
 
-    if requested.allow_tcp && !policy.allow_tcp {
-        return Err(CapabilityError::denied(
-            "net",
-            "capabilities.net.allow_tcp",
-            "TCP access disabled",
+    if requested.random && !allowed.random {
+        return Err(CapabilityError::invalid(
+            "wasi.random",
+            "profile denies random number generation",
         ));
     }
-
-    if requested.allow_udp && !policy.allow_udp {
-        return Err(CapabilityError::denied(
-            "net",
-            "capabilities.net.allow_udp",
-            "UDP access disabled",
+    if requested.clocks && !allowed.clocks {
+        return Err(CapabilityError::invalid(
+            "wasi.clocks",
+            "profile denies clock access",
         ));
     }
 
     Ok(())
 }
 
-fn ensure_tools(requested: &ToolsCaps, allowed: Option<&ToolsCaps>) -> Result<(), CapabilityError> {
-    let policy = allowed.ok_or_else(|| {
-        CapabilityError::denied(
-            "tools",
-            "capabilities.tools",
-            "no tools allowed for this profile",
-        )
-    })?;
+fn ensure_filesystem(
+    requested: &FilesystemCapabilities,
+    allowed: &FilesystemCapabilities,
+) -> Result<(), CapabilityError> {
+    if mode_rank(&requested.mode) > mode_rank(&allowed.mode) {
+        return Err(CapabilityError::invalid(
+            "wasi.filesystem.mode",
+            "requested mode exceeds profile allowance",
+        ));
+    }
 
-    let allowed: HashSet<_> = policy.allow.iter().collect();
-    for tool in &requested.allow {
-        if !allowed.contains(tool) {
-            return Err(CapabilityError::denied(
-                "tools",
-                format!("capabilities.tools.allow[{tool}]"),
-                format!("tool `{tool}` cannot be invoked"),
+    let allowed_mounts: HashSet<_> = allowed
+        .mounts
+        .iter()
+        .map(|mount| (&mount.name, &mount.host_class, &mount.guest_path))
+        .collect();
+    for mount in &requested.mounts {
+        let key = (&mount.name, &mount.host_class, &mount.guest_path);
+        if !allowed_mounts.contains(&key) {
+            return Err(CapabilityError::invalid(
+                "wasi.filesystem.mounts",
+                format!("mount `{}` is not available in this profile", mount.name),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn mode_rank(mode: &FilesystemMode) -> u8 {
+    match mode {
+        FilesystemMode::None => 0,
+        FilesystemMode::ReadOnly => 1,
+        FilesystemMode::Sandbox => 2,
+    }
+}
+
+fn ensure_host(
+    requested: &HostCapabilities,
+    allowed: &HostCapabilities,
+) -> Result<(), CapabilityError> {
+    if let Some(secrets) = &requested.secrets {
+        let policy = allowed
+            .secrets
+            .as_ref()
+            .ok_or_else(|| CapabilityError::invalid("host.secrets", "secrets access denied"))?;
+        let allowed_set: HashSet<_> = policy.required.iter().collect();
+        for key in &secrets.required {
+            if !allowed_set.contains(key) {
+                return Err(CapabilityError::invalid(
+                    "host.secrets.required",
+                    format!("secret `{key}` is not available"),
+                ));
+            }
+        }
+    }
+
+    if let Some(state) = &requested.state {
+        let policy = allowed
+            .state
+            .as_ref()
+            .ok_or_else(|| CapabilityError::invalid("host.state", "state access denied"))?;
+        if state.read && !policy.read {
+            return Err(CapabilityError::invalid(
+                "host.state.read",
+                "profile denies state reads",
+            ));
+        }
+        if state.write && !policy.write {
+            return Err(CapabilityError::invalid(
+                "host.state.write",
+                "profile denies state writes",
+            ));
+        }
+    }
+
+    ensure_io_capability(
+        requested
+            .messaging
+            .as_ref()
+            .map(|m| (m.inbound, m.outbound)),
+        allowed.messaging.as_ref().map(|m| (m.inbound, m.outbound)),
+        "host.messaging",
+    )?;
+    ensure_io_capability(
+        requested.events.as_ref().map(|m| (m.inbound, m.outbound)),
+        allowed.events.as_ref().map(|m| (m.inbound, m.outbound)),
+        "host.events",
+    )?;
+    ensure_io_capability(
+        requested.http.as_ref().map(|h| (h.client, h.server)),
+        allowed.http.as_ref().map(|h| (h.client, h.server)),
+        "host.http",
+    )?;
+
+    if let Some(telemetry) = &requested.telemetry {
+        let policy = allowed
+            .telemetry
+            .as_ref()
+            .ok_or_else(|| CapabilityError::invalid("host.telemetry", "telemetry access denied"))?;
+        if !telemetry_scope_allowed(&policy.scope, &telemetry.scope) {
+            return Err(CapabilityError::invalid(
+                "host.telemetry.scope",
+                format!(
+                    "requested scope `{:?}` exceeds profile allowance `{:?}`",
+                    telemetry.scope, policy.scope
+                ),
+            ));
+        }
+    }
+
+    if let Some(iac) = &requested.iac {
+        let policy = allowed
+            .iac
+            .as_ref()
+            .ok_or_else(|| CapabilityError::invalid("host.iac", "iac access denied"))?;
+        if iac.write_templates && !policy.write_templates {
+            return Err(CapabilityError::invalid(
+                "host.iac.write_templates",
+                "profile denies template writes",
+            ));
+        }
+        if iac.execute_plans && !policy.execute_plans {
+            return Err(CapabilityError::invalid(
+                "host.iac.execute_plans",
+                "profile denies plan execution",
             ));
         }
     }
 
     Ok(())
+}
+
+fn ensure_io_capability(
+    requested: Option<(bool, bool)>,
+    allowed: Option<(bool, bool)>,
+    label: &'static str,
+) -> Result<(), CapabilityError> {
+    if let Some((req_in, req_out)) = requested {
+        let Some((allow_in, allow_out)) = allowed else {
+            return Err(CapabilityError::invalid(
+                label,
+                "profile denies this capability",
+            ));
+        };
+        if req_in && !allow_in {
+            return Err(CapabilityError::invalid(
+                label,
+                "inbound access denied by profile",
+            ));
+        }
+        if req_out && !allow_out {
+            return Err(CapabilityError::invalid(
+                label,
+                "outbound access denied by profile",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn telemetry_scope_allowed(allowed: &TelemetryScope, requested: &TelemetryScope) -> bool {
+    scope_rank(allowed) >= scope_rank(requested)
+}
+
+fn scope_rank(scope: &TelemetryScope) -> u8 {
+    match scope {
+        TelemetryScope::Tenant => 0,
+        TelemetryScope::Pack => 1,
+        TelemetryScope::Node => 2,
+    }
 }

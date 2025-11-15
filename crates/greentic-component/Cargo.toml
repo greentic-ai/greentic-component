@@ -73,6 +73,7 @@ walkdir = { workspace = true, optional = true }
 wit-component = { workspace = true, optional = true }
 wit-parser = { workspace = true, optional = true }
 wasmparser = { workspace = true, optional = true }
+greentic-types = { workspace = true }
 
 [dev-dependencies]
 assert_fs = { workspace = true }

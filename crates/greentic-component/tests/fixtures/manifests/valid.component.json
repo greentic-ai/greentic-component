@@ -4,30 +4,52 @@
   "version": "0.3.0",
   "world": "root:root/root",
   "describe_export": "describe",
+  "supports": ["messaging", "events"],
+  "profiles": {
+    "default": "stateless",
+    "supported": ["stateless", "cached"]
+  },
   "capabilities": {
-    "http": {
-      "domains": ["api.greentic.dev"],
-      "allow_insecure": false
+    "wasi": {
+      "filesystem": {
+        "mode": "read_only",
+        "mounts": [
+          {
+            "name": "assets",
+            "host_class": "assets",
+            "guest_path": "/assets"
+          }
+        ]
+      },
+      "env": {
+        "allow": ["RUST_LOG"]
+      },
+      "random": true,
+      "clocks": true
     },
-    "secrets": {
-      "scopes": ["kv/api"]
-    },
-    "kv": {
-      "buckets": ["config"],
-      "read": true,
-      "write": false
-    },
-    "fs": {
-      "paths": ["./assets"],
-      "read_only": true
-    },
-    "net": {
-      "hosts": ["api.greentic.dev"],
-      "allow_tcp": true,
-      "allow_udp": false
-    },
-    "tools": {
-      "allow": ["greentic-dev"]
+    "host": {
+      "secrets": {
+        "required": ["KV_API_TOKEN"]
+      },
+      "state": {
+        "read": true,
+        "write": false
+      },
+      "messaging": {
+        "inbound": true,
+        "outbound": true
+      },
+      "events": {
+        "inbound": false,
+        "outbound": true
+      },
+      "http": {
+        "client": true,
+        "server": false
+      },
+      "telemetry": {
+        "scope": "pack"
+      }
     }
   },
   "limits": {

@@ -267,9 +267,9 @@ Add new tests alongside the relevant crate to keep runtime guarantees tight.
 
 ## Component Manifest v1
 
-`crates/greentic-component` now owns the canonical manifest schema (`schemas/v1/component.manifest.schema.json`) and typed parser. Manifests describe a reverse-DNS `id`, human name, semantic `version`, the exported WIT `world`, and the function to call for describing configuration. Artifact metadata captures the relative wasm path plus a required `blake3` digest. Optional sections describe enforced `limits`, `telemetry` attributes, and build `provenance` (builder, commit, toolchain, timestamp).
+`crates/greentic-component` now owns the canonical manifest schema (`schemas/v1/component.manifest.schema.json`) and typed parser. Manifests describe an opaque `id`, human name, semantic `version`, the exported WIT `world`, and the function to call for describing configuration. Artifact metadata captures the relative wasm path plus a required `blake3` digest. Optional sections describe enforced `limits`, `telemetry` attributes, and build `provenance` (builder, commit, toolchain, timestamp).
 
-- **Capabilities** — structured declarations for HTTP domains, secrets scopes, KV buckets, filesystem mounts, net access, and tool invocations. The `security::enforce_capabilities` helper compares a manifest against a runtime `Profile` and produces precise denials (e.g. `capabilities.http.domains[foo.example]`).
+- **Capabilities** — structured WASI + host declarations (filesystem/env/random/clocks plus secrets/state/messaging/events/http/telemetry/IaC). The `security::enforce_capabilities` helper compares a manifest against a runtime `Profile` and produces precise denials (e.g. `host.secrets.required[OPENAI_API_KEY]`).
 - **Describe loading order** — `describe::load` first tries to decode the embedded WIT world from the wasm, falls back to a JSON blob emitted by an exported symbol (e.g. `describe`), and finally searches `schemas/v1/*.json` for provider-supplied payloads. The resulting `DescribePayload` snapshots all known schema versions.
 - **Redaction hints** — schema utilities walk arbitrary JSON Schema documents and surface paths tagged with `x-redact`, `x-default-applied`, and `x-capability`. These hints are used by greentic-dev/runner to scrub transcripts or explain defaulted fields.
 
@@ -286,7 +286,27 @@ The schema is published at <https://greentic-ai.github.io/greentic-component/sch
   "version": "0.1.0",
   "world": "greentic:component/node@0.1.0",
   "describe_export": "describe",
-  "capabilities": {},
+  "supports": ["messaging"],
+  "profiles": {
+    "default": "stateless",
+    "supported": ["stateless"]
+  },
+  "capabilities": {
+    "wasi": {
+      "filesystem": {
+        "mode": "none",
+        "mounts": []
+      },
+      "random": true,
+      "clocks": true
+    },
+    "host": {
+      "messaging": {
+        "inbound": true,
+        "outbound": true
+      }
+    }
+  },
   "artifacts": {"component_wasm": "component.wasm"},
   "hashes": {"component_wasm": "blake3:..."}
 }

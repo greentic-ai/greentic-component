@@ -1,7 +1,6 @@
 use std::fs;
 use std::path::Path;
 
-use greentic_component::capabilities::CapabilityErrorKind;
 use greentic_component::manifest::parse_manifest;
 use greentic_component::security::{Profile, enforce_capabilities};
 
@@ -15,11 +14,12 @@ fn manifest() -> greentic_component::manifest::ComponentManifest {
 #[test]
 fn profile_denies_missing_capability() {
     let manifest = manifest();
-    let profile = Profile::default();
-    let err = enforce_capabilities(&manifest, profile).expect_err("profile must deny http");
-    assert_eq!(err.capability, "http");
-    assert_eq!(err.path, "capabilities.http");
-    assert_eq!(err.kind, CapabilityErrorKind::Denied);
+    let mut allowed = manifest.capabilities.clone();
+    allowed.host.http = None;
+    let profile = Profile::new(allowed);
+    let err =
+        enforce_capabilities(&manifest, profile).expect_err("profile must deny http capability");
+    assert_eq!(err.path, "host.http");
 }
 
 #[test]

@@ -10,17 +10,36 @@ expression: manifest.trim()
   "version": "0.1.0",
   "world": "component",
   "describe_export": "describe",
+  "supports": ["messaging"],
+  "profiles": {
+    "default": "stateless",
+    "supported": ["stateless"]
+  },
   "capabilities": {
-    "http": {
-      "domains": ["example.com"]
+    "wasi": {
+      "filesystem": {
+        "mode": "none",
+        "mounts": []
+      },
+      "random": true,
+      "clocks": true
+    },
+    "host": {
+      "messaging": {
+        "inbound": true,
+        "outbound": true
+      },
+      "telemetry": {
+        "scope": "node"
+      },
+      "secrets": {
+        "required": []
+      }
     }
   },
   "limits": {
     "memory_mb": 128,
     "wall_time_ms": 1000
-  },
-  "telemetry": {
-    "span_prefix": "ai.greentic.demo_component"
   },
   "artifacts": {
     "component_wasm": "target/wasm32-wasip2/release/demo_component.wasm"

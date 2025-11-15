@@ -42,10 +42,28 @@ impl TestComponent {
             "version": "0.1.0",
             "world": world_value,
             "describe_export": "describe",
+            "supports": ["messaging"],
+            "profiles": {
+                "default": "stateless",
+                "supported": ["stateless"]
+            },
             "capabilities": {
-                "http": {
-                    "domains": ["api.greentic.dev"],
-                    "allow_insecure": false
+                "wasi": {
+                    "filesystem": {
+                        "mode": "none",
+                        "mounts": []
+                    },
+                    "random": true,
+                    "clocks": true
+                },
+                "host": {
+                    "messaging": {
+                        "inbound": true,
+                        "outbound": true
+                    },
+                    "telemetry": {
+                        "scope": "tenant"
+                    }
                 }
             },
             "limits": {

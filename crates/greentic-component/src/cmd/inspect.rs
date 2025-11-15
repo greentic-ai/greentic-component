@@ -42,11 +42,30 @@ pub fn run(args: &InspectArgs) -> Result<InspectResult, ComponentError> {
         println!("  wasm: {}", prepared.wasm_path.display());
         println!("  world ok: {}", prepared.world_ok);
         println!("  hash: {}", prepared.wasm_hash);
+        println!("  supports: {:?}", prepared.manifest.supports);
+        println!(
+            "  profiles: default={:?} supported={:?}",
+            prepared.manifest.profiles.default, prepared.manifest.profiles.supported
+        );
         println!(
             "  lifecycle: init={} health={} shutdown={}",
             prepared.lifecycle.init, prepared.lifecycle.health, prepared.lifecycle.shutdown
         );
-        println!("  capabilities: {:?}", prepared.manifest.capabilities);
+        let caps = &prepared.manifest.capabilities;
+        println!(
+            "  capabilities: wasi(fs={}, env={}, random={}, clocks={}) host(secrets={}, state={}, messaging={}, events={}, http={}, telemetry={}, iac={})",
+            caps.wasi.filesystem.is_some(),
+            caps.wasi.env.is_some(),
+            caps.wasi.random,
+            caps.wasi.clocks,
+            caps.host.secrets.is_some(),
+            caps.host.state.is_some(),
+            caps.host.messaging.is_some(),
+            caps.host.events.is_some(),
+            caps.host.http.is_some(),
+            caps.host.telemetry.is_some(),
+            caps.host.iac.is_some(),
+        );
         println!(
             "  limits: {}",
             prepared
@@ -79,6 +98,7 @@ pub fn emit_warnings(warnings: &[String]) {
 }
 
 pub fn build_report(prepared: &PreparedComponent) -> Value {
+    let caps = &prepared.manifest.capabilities;
     serde_json::json!({
         "manifest": &prepared.manifest,
         "manifest_path": prepared.manifest_path,
@@ -105,14 +125,25 @@ pub fn build_report(prepared: &PreparedComponent) -> Value {
             .collect::<Vec<_>>(),
         "defaults_applied": prepared.defaults_applied(),
         "summary": {
+            "supports": prepared.manifest.supports,
+            "profiles": prepared.manifest.profiles,
             "capabilities": {
-                "http": prepared.manifest.capabilities.http.is_some(),
-                "secrets": prepared.manifest.capabilities.secrets.is_some(),
-                "kv": prepared.manifest.capabilities.kv.is_some(),
-                "fs": prepared.manifest.capabilities.fs.is_some(),
-                "net": prepared.manifest.capabilities.net.is_some(),
-                "tools": prepared.manifest.capabilities.tools.is_some(),
-            }
+                "wasi": {
+                    "filesystem": caps.wasi.filesystem.is_some(),
+                    "env": caps.wasi.env.is_some(),
+                    "random": caps.wasi.random,
+                    "clocks": caps.wasi.clocks
+                },
+                "host": {
+                    "secrets": caps.host.secrets.is_some(),
+                    "state": caps.host.state.is_some(),
+                    "messaging": caps.host.messaging.is_some(),
+                    "events": caps.host.events.is_some(),
+                    "http": caps.host.http.is_some(),
+                    "telemetry": caps.host.telemetry.is_some(),
+                    "iac": caps.host.iac.is_some()
+                }
+            },
         }
     })
 }

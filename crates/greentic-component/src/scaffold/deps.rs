@@ -37,8 +37,8 @@ impl DependencyMode {
     }
 }
 
-const GREENTIC_INTERFACES_VERSION: &str = "0.4.20";
-const GREENTIC_TYPES_VERSION: &str = "0.3.0";
+const GREENTIC_INTERFACES_VERSION: &str = "0.4.32";
+const GREENTIC_TYPES_VERSION: &str = "0.4.2";
 
 #[derive(Debug, Clone)]
 pub struct DependencyTemplates {

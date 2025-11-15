@@ -59,14 +59,21 @@ pub fn run(args: DoctorArgs) -> Result<(), ComponentError> {
             println!("  - {entry}");
         }
     }
+    let caps = &prepared.manifest.capabilities;
+    println!("supports: {:?}", prepared.manifest.supports);
     println!(
-        "capabilities declared: http={} secrets={} kv={} fs={} net={} tools={}",
-        prepared.manifest.capabilities.http.is_some(),
-        prepared.manifest.capabilities.secrets.is_some(),
-        prepared.manifest.capabilities.kv.is_some(),
-        prepared.manifest.capabilities.fs.is_some(),
-        prepared.manifest.capabilities.net.is_some(),
-        prepared.manifest.capabilities.tools.is_some()
+        "capabilities declared: wasi(fs={}, env={}, random={}, clocks={}) host(secrets={}, state={}, messaging={}, events={}, http={}, telemetry={}, iac={})",
+        caps.wasi.filesystem.is_some(),
+        caps.wasi.env.is_some(),
+        caps.wasi.random,
+        caps.wasi.clocks,
+        caps.host.secrets.is_some(),
+        caps.host.state.is_some(),
+        caps.host.messaging.is_some(),
+        caps.host.events.is_some(),
+        caps.host.http.is_some(),
+        caps.host.telemetry.is_some(),
+        caps.host.iac.is_some()
     );
     println!("limits configured: {}", prepared.manifest.limits.is_some());
     Ok(())

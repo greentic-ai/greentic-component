@@ -10,6 +10,9 @@
     "version",
     "world",
     "describe_export",
+    "supports",
+    "profiles",
+    "capabilities",
     "artifacts",
     "hashes"
   ],
@@ -20,8 +23,8 @@
     },
     "id": {
       "type": "string",
-      "pattern": "^([a-zA-Z0-9-]+\\.)+[a-zA-Z0-9-]+$",
-      "description": "Reverse DNS identifier for the component"
+      "minLength": 1,
+      "description": "Opaque component identifier"
     },
     "name": {
       "type": "string",
@@ -33,123 +36,216 @@
     },
     "world": {
       "type": "string",
-      "pattern": "^[A-Za-z0-9:_./@-]+$"
+      "minLength": 1
     },
     "describe_export": {
       "type": "string",
       "minLength": 1
     },
+    "supports": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "enum": ["messaging", "events"]
+      }
+    },
+    "profiles": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["supported"],
+      "properties": {
+        "default": {
+          "type": "string",
+          "minLength": 1
+        },
+        "supported": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
     "capabilities": {
       "type": "object",
       "additionalProperties": false,
+      "required": ["wasi", "host"],
       "properties": {
-        "http": {
+        "wasi": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["domains"],
           "properties": {
-            "domains": {
-              "type": "array",
-              "minItems": 1,
-              "items": {
-                "type": "string"
-              },
-              "x-capability": "http"
-            },
-            "allow_insecure": {
-              "type": "boolean",
-              "default": false
-            }
-          }
-        },
-        "secrets": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["scopes"],
-          "properties": {
-            "scopes": {
-              "type": "array",
-              "minItems": 1,
-              "items": {
-                "type": "string"
-              },
-              "x-redact": true,
-              "x-capability": "secrets"
-            }
-          }
-        },
-        "kv": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["buckets"],
-          "properties": {
-            "buckets": {
-              "type": "array",
-              "items": {
-                "type": "string"
+            "filesystem": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["mode"],
+              "properties": {
+                "mode": {
+                  "type": "string",
+                  "enum": ["none", "read_only", "sandbox"]
+                },
+                "mounts": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["name", "host_class", "guest_path"],
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "host_class": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "guest_path": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  }
+                }
               }
             },
-            "read": {
-              "type": "boolean",
-              "default": true
+            "env": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "allow": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
             },
-            "write": {
+            "random": {
+              "type": "boolean",
+              "default": false
+            },
+            "clocks": {
               "type": "boolean",
               "default": false
             }
           }
         },
-        "fs": {
+        "host": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["paths"],
           "properties": {
-            "paths": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "x-capability": "fs"
+            "secrets": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "required": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
             },
-            "read_only": {
-              "type": "boolean",
-              "default": true
+            "state": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "read": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "write": {
+                  "type": "boolean",
+                  "default": false
+                }
+              }
+            },
+            "messaging": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "inbound": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "outbound": {
+                  "type": "boolean",
+                  "default": false
+                }
+              }
+            },
+            "events": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "inbound": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "outbound": {
+                  "type": "boolean",
+                  "default": false
+                }
+              }
+            },
+            "http": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "client": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "server": {
+                  "type": "boolean",
+                  "default": false
+                }
+              }
+            },
+            "telemetry": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "scope": {
+                  "type": "string",
+                  "enum": ["tenant", "pack", "node"]
+                }
+              }
+            },
+            "iac": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "write_templates": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "execute_plans": {
+                  "type": "boolean",
+                  "default": false
+                }
+              }
             }
           }
+        }
+      }
+    },
+    "configurators": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "basic": {
+          "type": "string",
+          "minLength": 1
         },
-        "net": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "hosts": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "x-capability": "net"
-            },
-            "allow_tcp": {
-              "type": "boolean",
-              "default": true
-            },
-            "allow_udp": {
-              "type": "boolean",
-              "default": false
-            }
-          }
-        },
-        "tools": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "allow": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "x-capability": "tools"
-            }
-          }
+        "full": {
+          "type": "string",
+          "minLength": 1
         }
       }
     },

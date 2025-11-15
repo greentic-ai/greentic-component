@@ -335,7 +335,27 @@ world node {
             "version": "0.1.0",
             "world": observed_world,
             "describe_export": "describe",
-            "capabilities": {"http": {"domains": ["api.greentic.dev"], "allow_insecure": false}},
+            "supports": ["messaging"],
+            "profiles": {
+                "default": "stateless",
+                "supported": ["stateless"]
+            },
+            "capabilities": {
+                "wasi": {
+                    "filesystem": {
+                        "mode": "none",
+                        "mounts": []
+                    },
+                    "random": true,
+                    "clocks": true
+                },
+                "host": {
+                    "messaging": {
+                        "inbound": true,
+                        "outbound": true
+                    }
+                }
+            },
             "limits": {"memory_mb": 64, "wall_time_ms": 1000},
             "telemetry": {"span_prefix": "test.component"},
             "artifacts": {"component_wasm": "component.wasm"},

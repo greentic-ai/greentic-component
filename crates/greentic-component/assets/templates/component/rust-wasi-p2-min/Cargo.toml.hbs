@@ -16,7 +16,7 @@ authors = ["Greentic Labs"]
 crate-type = ["cdylib"]
 
 [dependencies]
-wit-bindgen = "0.44"
+wit-bindgen = "0.48"
 serde_json = "1"
 
 [dev-dependencies]
@@ -24,14 +24,9 @@ serde_json = "1"
 
 [build-dependencies]
 anyhow = "1.0"
-wit-component = "0.240"
-wit-parser = "0.240"
+wit-component = "0.241.2"
+wit-parser = "0.241.2"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 greentic-interfaces = { {{ greentic_interfaces_dep }} }
 greentic-types = { {{ greentic_types_dep }} }
-
-{{#if relative_patch_path}}
-[patch.crates-io]
-greentic-component = { {{ relative_patch_path }} }
-{{/if}}

@@ -2,16 +2,18 @@ use std::path::{Component, Path, PathBuf};
 
 use jsonschema::{Validator, validator_for};
 use once_cell::sync::Lazy;
-use regex::Regex;
 use semver::Version;
 use serde::Serialize;
 use serde_json::Value;
 use thiserror::Error;
 
-use crate::capabilities::Capabilities;
+use crate::capabilities::{
+    Capabilities, ComponentConfigurators, ComponentProfiles, validate_capabilities,
+};
 use crate::limits::Limits;
 use crate::provenance::Provenance;
 use crate::telemetry::TelemetrySpec;
+use greentic_types::flow::FlowKind;
 
 static RAW_SCHEMA: &str = include_str!("../../schemas/v1/component.manifest.schema.json");
 
@@ -21,21 +23,19 @@ static COMPILED_SCHEMA: Lazy<Validator> = Lazy::new(|| {
     validator_for(&value).expect("component manifest schema must compile")
 });
 
-static ID_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^([a-zA-Z0-9-]+\.)+[a-zA-Z0-9-]+$").expect("component id regex should compile")
-});
-
-static WORLD_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"^[A-Za-z0-9:_./@-]+$").expect("world regex should compile"));
-
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct ComponentManifest {
     pub id: ManifestId,
     pub name: String,
     pub version: Version,
+    #[serde(default)]
+    pub supports: Vec<FlowKind>,
     pub world: World,
     #[serde(default)]
     pub capabilities: Capabilities,
+    pub profiles: ComponentProfiles,
+    #[serde(default)]
+    pub configurators: Option<ComponentConfigurators>,
     #[serde(default)]
     pub limits: Option<Limits>,
     #[serde(default)]
@@ -59,8 +59,8 @@ pub struct ManifestId(String);
 
 impl ManifestId {
     fn parse(id: String) -> Result<Self, ManifestError> {
-        if !ID_RE.is_match(&id) {
-            return Err(ManifestError::InvalidId { id });
+        if id.trim().is_empty() {
+            return Err(ManifestError::EmptyField("id"));
         }
         Ok(Self(id))
     }
@@ -82,7 +82,7 @@ pub struct World(String);
 
 impl World {
     fn parse(world: String) -> Result<Self, ManifestError> {
-        if !WORLD_RE.is_match(&world) {
+        if world.trim().is_empty() {
             return Err(ManifestError::InvalidWorld { world });
         }
         Ok(Self(world))
@@ -213,12 +213,16 @@ pub enum ManifestError {
     Json(#[from] serde_json::Error),
     #[error("manifest schema validation failed: {0}")]
     Schema(String),
-    #[error("component id must be reverse DNS, got `{id}`")]
-    InvalidId { id: String },
     #[error("world identifier is invalid: `{world}`")]
     InvalidWorld { world: String },
     #[error("manifest field `{0}` cannot be empty")]
     EmptyField(&'static str),
+    #[error("component must support at least one flow kind")]
+    MissingSupports,
+    #[error("profiles.supported must include at least one profile identifier")]
+    MissingProfiles,
+    #[error("profiles.default `{default}` must be one of the supported profiles")]
+    InvalidProfileDefault { default: String },
     #[error("invalid semantic version `{version}`: {source}")]
     InvalidVersion {
         version: String,
@@ -246,7 +250,13 @@ struct RawManifest {
     version: String,
     world: String,
     #[serde(default)]
+    supports: Vec<FlowKind>,
+    #[serde(default)]
     capabilities: Capabilities,
+    #[serde(default)]
+    profiles: ComponentProfiles,
+    #[serde(default)]
+    configurators: Option<ComponentConfigurators>,
     #[serde(default)]
     limits: Option<Limits>,
     #[serde(default)]
@@ -277,8 +287,17 @@ impl TryFrom<RawManifest> for ComponentManifest {
         let artifacts = Artifacts::try_from(raw.artifacts)?;
         let hashes = Hashes::try_from(raw.hashes)?;
 
-        raw.capabilities
-            .validate()
+        if raw.supports.is_empty() {
+            return Err(ManifestError::MissingSupports);
+        }
+
+        validate_profiles(&raw.profiles)?;
+
+        if let Some(configurators) = &raw.configurators {
+            validate_configurators(configurators)?;
+        }
+
+        validate_capabilities(&raw.capabilities)
             .map_err(|err| ManifestError::Capability(err.to_string()))?;
 
         if let Some(limits) = &raw.limits {
@@ -298,7 +317,10 @@ impl TryFrom<RawManifest> for ComponentManifest {
             name: raw.name,
             version,
             world,
+            supports: raw.supports,
             capabilities: raw.capabilities,
+            profiles: raw.profiles,
+            configurators: raw.configurators,
             limits: raw.limits,
             telemetry: raw.telemetry,
             describe_export,
@@ -352,5 +374,24 @@ fn ensure_relative(path: &str) -> Result<(), ManifestError> {
             path: path.to_string(),
         });
     }
+    Ok(())
+}
+
+fn validate_profiles(profiles: &ComponentProfiles) -> Result<(), ManifestError> {
+    if profiles.supported.is_empty() {
+        return Err(ManifestError::MissingProfiles);
+    }
+    if let Some(default) = &profiles.default {
+        if !profiles.supported.iter().any(|entry| entry == default) {
+            return Err(ManifestError::InvalidProfileDefault {
+                default: default.clone(),
+            });
+        }
+    }
+    Ok(())
+}
+
+fn validate_configurators(_configurators: &ComponentConfigurators) -> Result<(), ManifestError> {
+    // Flow identifiers are validated by greentic-types, so no additional checks are required.
     Ok(())
 }

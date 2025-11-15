@@ -4,6 +4,7 @@ use std::path::Path;
 use greentic_component::manifest::{
     DescribeKind, ManifestError, parse_manifest, validate_manifest,
 };
+use greentic_types::flow::FlowKind;
 use serde_json::Value;
 
 fn fixture(name: &str) -> String {
@@ -20,6 +21,14 @@ fn round_trip_manifest_parse() {
     assert_eq!(manifest.id.as_str(), "com.greentic.demo.echo");
     assert_eq!(manifest.version.to_string(), "0.3.0");
     assert_eq!(manifest.describe_export.kind(), DescribeKind::Export);
+    assert_eq!(
+        manifest.supports,
+        vec![FlowKind::Messaging, FlowKind::Events]
+    );
+    assert_eq!(
+        manifest.profiles.supported,
+        vec!["stateless".to_string(), "cached".to_string()]
+    );
     assert!(manifest.telemetry.is_some());
 }
 
