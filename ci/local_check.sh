@@ -321,9 +321,15 @@ run_smoke_mode() {
                 fi
             fi
             if [ $wasm_ready -eq 1 ]; then
+                local crate_snake=${SMOKE_NAME//-/_}
+                local built_wasm="$CARGO_TARGET_DIR/wasm32-wasip2/release/${crate_snake}.wasm"
                 local wasm_rel
                 wasm_rel=$(jq -r '.artifacts.component_wasm' "$smoke_manifest")
                 local wasm_file="$smoke_path/$wasm_rel"
+                if [ -f "$built_wasm" ]; then
+                    mkdir -p "$(dirname "$wasm_file")"
+                    cp "$built_wasm" "$wasm_file"
+                fi
                 if [ ! -f "$wasm_file" ]; then
                     wasm_ready=0
                     network_reason="wasm artifact missing ($wasm_file)"
