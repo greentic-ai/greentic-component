@@ -6,6 +6,8 @@ on:
       - "v*"
   workflow_dispatch:
 
+# Workflow-level concurrency ensures only one publish per ref; jobs must not reuse
+# the same group to avoid deadlocks.
 concurrency:
   group: publish-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -55,9 +57,7 @@ jobs:
   publish:
     needs: local-check
     runs-on: ubuntu-latest
-    concurrency:
-      group: publish-${{ github.workflow }}-${{ github.ref }}
-      cancel-in-progress: true
+    # No per-job concurrency; relies on workflow-level lock above.
     permissions:
       contents: read
       packages: write
