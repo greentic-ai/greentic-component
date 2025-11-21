@@ -38,11 +38,13 @@ fn scaffold_rust_wasi_template() {
     let cargo = fs::read_to_string(component_dir.join("Cargo.toml")).expect("Cargo.toml");
     let manifest =
         fs::read_to_string(component_dir.join("component.manifest.json")).expect("manifest");
-    let wit = fs::read_to_string(component_dir.join("wit/world.wit")).expect("wit");
 
     assert_snapshot!("scaffold_cargo_toml", normalize_text(cargo.trim()));
     assert_snapshot!("scaffold_manifest", normalize_text(manifest.trim()));
-    assert_snapshot!("scaffold_wit", normalize_text(wit.trim()));
+    assert!(
+        !component_dir.join("wit").exists(),
+        "template should not emit raw WIT files"
+    );
 
     assert!(
         component_dir.join(".git").exists(),

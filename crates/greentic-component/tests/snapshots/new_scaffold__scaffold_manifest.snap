@@ -8,8 +8,8 @@ expression: manifest.trim()
   "id": "ai.greentic.demo-component",
   "name": "demo-component",
   "version": "0.1.0",
-  "world": "component",
-  "describe_export": "describe",
+  "world": "greentic:component/component@0.4.0",
+  "describe_export": "get-manifest",
   "supports": ["messaging"],
   "profiles": {
     "default": "stateless",

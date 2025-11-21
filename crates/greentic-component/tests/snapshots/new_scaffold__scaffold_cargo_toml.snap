@@ -17,17 +17,12 @@ authors = ["Greentic Labs"]
 crate-type = ["cdylib"]
 
 [dependencies]
-wit-bindgen = "0.48"
 serde_json = "1"
 
 [dev-dependencies]
 serde_json = "1"
 
-[build-dependencies]
-anyhow = "1.0"
-wit-component = "0.241.2"
-wit-parser = "0.241.2"
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-greentic-interfaces = { version = "0.4.32" }
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+greentic-interfaces = { version = "0.4.34", default-features = false, features = ["wit-all"] }
+greentic-interfaces-guest = { version = "0.4" }
 greentic-types = { version = "0.4.2" }

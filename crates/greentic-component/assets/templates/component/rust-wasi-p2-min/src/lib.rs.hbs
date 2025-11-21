@@ -1,36 +1,47 @@
-mod bindings {
-    wit_bindgen::generate!({
-        path: "wit/world.wit",
-        world: "{{ wit_world }}",
-    });
-}
-
-use bindings::Guest;
-
 #[cfg(target_arch = "wasm32")]
 #[used]
 #[unsafe(link_section = ".greentic.wasi")]
 static WASI_TARGET_MARKER: [u8; 13] = *b"wasm32-wasip2";
 
 #[cfg(target_arch = "wasm32")]
-#[used]
-#[unsafe(link_section = "component-type")]
-static COMPONENT_TYPE: [u8; include_bytes!(concat!(env!("OUT_DIR"), "/component.metadata")).len()] =
-    *include_bytes!(concat!(env!("OUT_DIR"), "/component.metadata"));
+mod component {
+    use greentic_interfaces_guest::component::v0_4 as component;
+    use component::exports::greentic::component::node::{
+        ExecCtx, InvokeResult, LifecycleStatus, StreamEvent,
+    };
 
-struct Component;
+    use super::{describe_payload, handle_message};
 
-impl Guest for Component {
-    fn describe() -> String {
-        describe_payload()
+    struct Component;
+
+    impl component::exports::greentic::component::node::Guest for Component {
+        fn get_manifest() -> String {
+            describe_payload()
+        }
+
+        fn on_start(_ctx: ExecCtx) -> Result<LifecycleStatus, String> {
+            Ok(LifecycleStatus::Ok)
+        }
+
+        fn on_stop(_ctx: ExecCtx, _reason: String) -> Result<LifecycleStatus, String> {
+            Ok(LifecycleStatus::Ok)
+        }
+
+        fn invoke(_ctx: ExecCtx, op: String, input: String) -> InvokeResult {
+            InvokeResult::Ok(handle_message(&op, &input))
+        }
+
+        fn invoke_stream(_ctx: ExecCtx, op: String, input: String) -> Vec<StreamEvent> {
+            vec![
+                StreamEvent::Progress(0),
+                StreamEvent::Data(handle_message(&op, &input)),
+                StreamEvent::Done,
+            ]
+        }
     }
 
-    fn handle(input: String) -> String {
-        handle_message(&input)
-    }
+    component::export!(Component);
 }
-
-bindings::export!(Component with_types_in bindings);
 
 pub fn describe_payload() -> String {
     serde_json::json!({
@@ -49,8 +60,8 @@ pub fn describe_payload() -> String {
     .to_string()
 }
 
-pub fn handle_message(input: &str) -> String {
-    format!("{{ name }}::handle => {}", input.trim())
+pub fn handle_message(operation: &str, input: &str) -> String {
+    format!("{{ name }}::{operation} => {}", input.trim())
 }
 
 #[cfg(test)]
@@ -66,7 +77,7 @@ mod tests {
 
     #[test]
     fn handle_message_round_trips() {
-        let value = handle_message("demo");
+        let value = handle_message("handle", "demo");
         assert!(value.contains("demo"));
     }
 }

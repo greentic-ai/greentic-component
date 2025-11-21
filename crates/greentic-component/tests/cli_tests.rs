@@ -4,7 +4,7 @@
 mod support;
 
 use greentic_component::scaffold::deps::DependencyMode;
-use greentic_component::scaffold::engine::{ScaffoldEngine, ScaffoldRequest};
+use greentic_component::scaffold::engine::{DEFAULT_WIT_WORLD, ScaffoldEngine, ScaffoldRequest};
 use predicates::prelude::*;
 use serde_json::Value;
 use support::TestComponent;
@@ -51,7 +51,7 @@ fn doctor_detects_scaffold_directory() {
         org: "ai.greentic".into(),
         version: "0.1.0".into(),
         license: "MIT".into(),
-        wit_world: "component".into(),
+        wit_world: DEFAULT_WIT_WORLD.into(),
         non_interactive: true,
         year_override: Some(2030),
         dependency_mode: DependencyMode::Local,

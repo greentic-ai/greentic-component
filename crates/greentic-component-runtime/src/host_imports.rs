@@ -3,9 +3,11 @@ use std::convert::TryFrom;
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
-use greentic_interfaces::component_v0_4::{self, ControlHost, exports::greentic::component::node};
-use greentic_interfaces::host_import_v0_4::{
-    self,
+use greentic_interfaces_host::component::v0_4::{
+    self, ControlHost, exports::greentic::component::node,
+};
+use greentic_interfaces_host::host_import::v0_4::{
+    self as host_import_v0_4,
     greentic::host_import::{http, secrets, telemetry},
     greentic::types_core::types as core_types,
 };
@@ -60,7 +62,7 @@ impl HostState {
 pub fn build_linker(engine: &Engine, _policy: &HostPolicy) -> Result<Linker<HostState>, CompError> {
     let mut linker = Linker::<HostState>::new(engine);
     host_import_v0_4::add_to_linker(&mut linker, |state: &mut HostState| state)?;
-    component_v0_4::add_control_to_linker(&mut linker, |state: &mut HostState| state)?;
+    v0_4::add_control_to_linker(&mut linker, |state: &mut HostState| state)?;
     Ok(linker)
 }
 
@@ -273,7 +275,7 @@ pub fn make_component_tenant_ctx(tenant: &TenantCtx) -> node::TenantCtx {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use greentic_interfaces::host_import_v0_4::greentic::host_import::http::Host as HttpHost;
+    use greentic_interfaces_host::host_import::v0_4::greentic::host_import::http::Host as HttpHost;
     use std::io::{ErrorKind, Read, Write};
     use std::net::TcpListener;
     use std::thread;

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use component_manifest::{ComponentInfo, ManifestValidator};
-use greentic_interfaces::component_v0_4::exports::greentic::component::node::GuestIndices;
+use greentic_interfaces_host::component::v0_4::exports::greentic::component::node::GuestIndices;
 use jsonschema::{Validator, validator_for};
 use serde_json::Value;
 use wasmtime::component::{Component as WasmComponent, InstancePre};

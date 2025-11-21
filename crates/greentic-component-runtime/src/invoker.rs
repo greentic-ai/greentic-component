@@ -47,7 +47,7 @@ pub fn invoke(
     let input = serde_json::to_string(input_json)?;
     let result = exports.call_invoke(&mut store, &exec_ctx, operation, &input)?;
 
-    use greentic_interfaces::component_v0_4::exports::greentic::component::node::InvokeResult;
+    use greentic_interfaces_host::component::v0_4::exports::greentic::component::node::InvokeResult;
 
     match result {
         InvokeResult::Ok(output_json) => Ok(serde_json::from_str(&output_json)?),

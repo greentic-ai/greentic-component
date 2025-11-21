@@ -24,6 +24,8 @@ use super::write::{GeneratedFile, WriteError, Writer};
 static BUILTIN_COMPONENT_TEMPLATES: Dir<'_> =
     include_dir!("$CARGO_MANIFEST_DIR/assets/templates/component");
 
+pub const DEFAULT_WIT_WORLD: &str = "greentic:component/component@0.4.0";
+
 const METADATA_FILE: &str = "template.json";
 const TEMPLATE_HOME_ENV: &str = "GREENTIC_TEMPLATE_ROOT";
 const TEMPLATE_YEAR_ENV: &str = "GREENTIC_TEMPLATE_YEAR";
@@ -601,6 +603,7 @@ struct TemplateContext {
     author: Option<String>,
     dependency_mode: &'static str,
     greentic_interfaces_dep: String,
+    greentic_interfaces_guest_dep: String,
     greentic_types_dep: String,
     relative_patch_path: Option<String>,
 }
@@ -628,6 +631,7 @@ impl TemplateContext {
             author: detect_author(),
             dependency_mode: request.dependency_mode.as_str(),
             greentic_interfaces_dep: deps.greentic_interfaces,
+            greentic_interfaces_guest_dep: deps.greentic_interfaces_guest,
             greentic_types_dep: deps.greentic_types,
             relative_patch_path: deps.relative_patch_path,
         }
@@ -775,7 +779,7 @@ mod tests {
             org: "ai.greentic".into(),
             version: "0.1.0".into(),
             license: "MIT".into(),
-            wit_world: "component".into(),
+            wit_world: DEFAULT_WIT_WORLD.into(),
             non_interactive: true,
             year_override: Some(2030),
             dependency_mode: DependencyMode::Local,
@@ -804,7 +808,7 @@ mod tests {
             org: "ai.greentic".into(),
             version: "0.1.0".into(),
             license: "MIT".into(),
-            wit_world: "component".into(),
+            wit_world: DEFAULT_WIT_WORLD.into(),
             non_interactive: true,
             year_override: None,
             dependency_mode: DependencyMode::Local,

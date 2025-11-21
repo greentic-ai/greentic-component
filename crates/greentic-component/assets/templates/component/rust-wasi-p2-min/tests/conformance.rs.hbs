@@ -9,6 +9,6 @@ fn describe_mentions_world() {
 
 #[test]
 fn handle_echoes_input() {
-    let response = handle_message("ping");
+    let response = handle_message("invoke", "ping");
     assert!(response.contains("ping"));
 }

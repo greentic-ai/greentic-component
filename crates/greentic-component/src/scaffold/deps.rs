@@ -37,12 +37,14 @@ impl DependencyMode {
     }
 }
 
-const GREENTIC_INTERFACES_VERSION: &str = "0.4.32";
 const GREENTIC_TYPES_VERSION: &str = "0.4.2";
+const GREENTIC_INTERFACES_GUEST_VERSION: &str = "0.4";
+const GREENTIC_INTERFACES_VERSION: &str = "0.4.34";
 
 #[derive(Debug, Clone)]
 pub struct DependencyTemplates {
     pub greentic_interfaces: String,
+    pub greentic_interfaces_guest: String,
     pub greentic_types: String,
     pub relative_patch_path: Option<String>,
 }
@@ -66,11 +68,13 @@ pub fn resolve_dependency_templates(
     match mode {
         DependencyMode::Local => DependencyTemplates {
             greentic_interfaces: format!("version = \"{GREENTIC_INTERFACES_VERSION}\""),
+            greentic_interfaces_guest: format!("version = \"{GREENTIC_INTERFACES_GUEST_VERSION}\""),
             greentic_types: format!("version = \"{GREENTIC_TYPES_VERSION}\""),
             relative_patch_path: local_patch_path(target_path),
         },
         DependencyMode::CratesIo => DependencyTemplates {
             greentic_interfaces: format!("version = \"{GREENTIC_INTERFACES_VERSION}\""),
+            greentic_interfaces_guest: format!("version = \"{GREENTIC_INTERFACES_GUEST_VERSION}\""),
             greentic_types: format!("version = \"{GREENTIC_TYPES_VERSION}\""),
             relative_patch_path: None,
         },

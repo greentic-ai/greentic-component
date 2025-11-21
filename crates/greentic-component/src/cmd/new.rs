@@ -13,7 +13,9 @@ use serde_json::json;
 
 use crate::cmd::post::{self, GitInitStatus, PostInitReport};
 use crate::scaffold::deps::DependencyMode;
-use crate::scaffold::engine::{ScaffoldEngine, ScaffoldOutcome, ScaffoldRequest};
+use crate::scaffold::engine::{
+    DEFAULT_WIT_WORLD, ScaffoldEngine, ScaffoldOutcome, ScaffoldRequest,
+};
 use crate::scaffold::validate::{self, ComponentName, OrgNamespace, ValidationError};
 
 type ValidationResult<T> = std::result::Result<T, ValidationError>;
@@ -48,7 +50,11 @@ pub struct NewArgs {
     #[arg(long = "license", default_value = "MIT", value_name = "id")]
     pub license: String,
     /// Exported WIT world name
-    #[arg(long = "wit-world", default_value = "component", value_name = "name")]
+    #[arg(
+        long = "wit-world",
+        default_value = DEFAULT_WIT_WORLD,
+        value_name = "name"
+    )]
     pub wit_world: String,
     /// Run without prompting for confirmation
     #[arg(long = "non-interactive")]
@@ -324,7 +330,7 @@ mod tests {
             org: "ai.greentic".into(),
             version: "0.1.0".into(),
             license: "MIT".into(),
-            wit_world: "component".into(),
+            wit_world: DEFAULT_WIT_WORLD.into(),
             non_interactive: false,
             no_check: false,
             no_git: false,
