@@ -5,16 +5,15 @@ static WASI_TARGET_MARKER: [u8; 13] = *b"wasm32-wasip2";
 
 #[cfg(target_arch = "wasm32")]
 mod component {
-    use greentic_interfaces_guest::component::v0_4 as component;
-    use component::exports::greentic::component::node::{
-        ExecCtx, InvokeResult, LifecycleStatus, StreamEvent,
+    use greentic_interfaces_guest::component::node::{
+        self, ExecCtx, InvokeResult, LifecycleStatus, StreamEvent,
     };
 
     use super::{describe_payload, handle_message};
 
     struct Component;
 
-    impl component::exports::greentic::component::node::Guest for Component {
+    impl node::Guest for Component {
         fn get_manifest() -> String {
             describe_payload()
         }
@@ -40,7 +39,7 @@ mod component {
         }
     }
 
-    component::export!(Component);
+    node::export!(Component);
 }
 
 pub fn describe_payload() -> String {

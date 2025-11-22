@@ -92,7 +92,6 @@ struct ScaffoldReport {
     root: PathBuf,
     manifest: bool,
     cargo: bool,
-    wit: bool,
     schemas: bool,
     src: bool,
 }
@@ -107,7 +106,6 @@ impl ScaffoldReport {
             root: root.to_path_buf(),
             manifest: manifest.is_file(),
             cargo: root.join("Cargo.toml").is_file(),
-            wit: root.join("wit").is_dir(),
             schemas: root.join("schemas").is_dir(),
             src: root.join("src").is_dir(),
         })
@@ -118,7 +116,6 @@ impl ScaffoldReport {
         self.print_line("component.manifest.json", self.manifest);
         self.print_line("Cargo.toml", self.cargo);
         self.print_line("src/", self.src);
-        self.print_line("wit/", self.wit);
         self.print_line("schemas/", self.schemas);
         if self.is_complete() {
             println!(
@@ -140,6 +137,6 @@ impl ScaffoldReport {
     }
 
     fn is_complete(&self) -> bool {
-        self.manifest && self.wit && self.schemas
+        self.manifest && self.schemas
     }
 }

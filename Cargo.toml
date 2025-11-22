@@ -9,7 +9,7 @@ resolver = "2"
 
 [workspace.package]
 edition = "2024"
-version = "0.4.1"
+version = "0.4.3"
 license = "MIT"
 rust-version = "1.88"
 
@@ -23,7 +23,7 @@ blake3 = "1"
 bytes = "1"
 clap = { version = "4", features = ["derive"] }
 component-manifest = { version = "0.4", path = "crates/component-manifest" }
-greentic-component-store = { path = "crates/greentic-component-store" }
+greentic-component-store = { version = "0.4",path = "crates/greentic-component-store" }
 dashmap = "6"
 directories = "6"
 displaydoc = "0.2"
