@@ -2,7 +2,7 @@
 name = "greentic-component"
 version.workspace=true
 edition = "2024"
-rust-version = "1.88"
+rust-version = "1.89"
 license = "MIT"
 description = "High-level component loader and store for Greentic components"
 repository = "https://github.com/greentic-ai/greentic-component"
@@ -84,6 +84,7 @@ wasm-metadata = { workspace = true }
 assert_cmd = { workspace = true }
 predicates = { workspace = true }
 insta = { workspace = true }
+greentic-interfaces-guest = { workspace = true }
 
 [[example]]
 name = "gen_fixture"

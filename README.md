@@ -127,7 +127,7 @@ constraints and fails fast if any `path =` slips into the generated
 
 ### Prerequisites & MSRV
 
-- Rust stable toolchain (MSRV: 1.88)
+- Rust stable toolchain (MSRV: 1.89)
 - `wasmtime` dependencies (clang/LLVM on macOS & Linux) if you intend to run components locally
 
 ### Cargo Features

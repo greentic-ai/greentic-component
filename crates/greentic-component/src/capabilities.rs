@@ -74,13 +74,14 @@ fn validate_host(host: &HostCapabilities) -> Result<(), CapabilityError> {
     if let Some(secrets) = &host.secrets {
         validate_secrets(secrets)?;
     }
-    if let Some(state) = &host.state {
-        if !state.read && !state.write {
-            return Err(CapabilityError::invalid(
-                "host.state",
-                "state capability must enable read and/or write",
-            ));
-        }
+    if let Some(state) = &host.state
+        && !state.read
+        && !state.write
+    {
+        return Err(CapabilityError::invalid(
+            "host.state",
+            "state capability must enable read and/or write",
+        ));
     }
     if let Some(telemetry) = &host.telemetry {
         validate_telemetry(telemetry)?;

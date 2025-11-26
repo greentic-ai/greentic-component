@@ -381,12 +381,12 @@ fn validate_profiles(profiles: &ComponentProfiles) -> Result<(), ManifestError> 
     if profiles.supported.is_empty() {
         return Err(ManifestError::MissingProfiles);
     }
-    if let Some(default) = &profiles.default {
-        if !profiles.supported.iter().any(|entry| entry == default) {
-            return Err(ManifestError::InvalidProfileDefault {
-                default: default.clone(),
-            });
-        }
+    if let Some(default) = &profiles.default
+        && !profiles.supported.iter().any(|entry| entry == default)
+    {
+        return Err(ManifestError::InvalidProfileDefault {
+            default: default.clone(),
+        });
     }
     Ok(())
 }
