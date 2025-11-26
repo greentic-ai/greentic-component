@@ -40,6 +40,7 @@ jobs:
           GIT_COMMITTER_EMAIL: ci-bot@users.noreply.github.com
         run: |
           set -euo pipefail
+          export PATH="$HOME/.cargo/bin:$PATH"
           source scripts/version-tools.sh
 
           if ! PREV_HASH=$(git rev-parse HEAD^ 2>/dev/null); then
