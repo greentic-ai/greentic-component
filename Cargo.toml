@@ -65,6 +65,6 @@ walkdir = "2"
 wasm-encoder = "0.241"
 wasm-metadata = "0.241"
 wasmparser = "0.241"
-wasmtime = { version = "38", default-features = false, features = ["component-model", "cranelift", "runtime"] }
+wasmtime = { version = "39", default-features = false, features = ["component-model", "cranelift", "runtime"] }
 wit-component = "0.241"
 wit-parser = "0.241"
