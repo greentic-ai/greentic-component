@@ -25,6 +25,9 @@ jobs:
       - name: Install tomlq
         run: cargo install --locked tomlq
 
+      - name: Add cargo bin to PATH
+        run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
       - name: Ensure scripts present
         run: |
           test -f scripts/version-tools.sh
