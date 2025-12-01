@@ -25,13 +25,18 @@ paths; downstream users do not need to reference them.
 
 ```bash
 rustup target add wasm32-wasip2
-cargo install --path crates/greentic-component --features cli
-# or work locally via: make build
+cargo install cargo-binstall
+cargo binstall greentic-component           # prebuilt binaries from GitHub Releases
+cargo install --path crates/greentic-component --features cli   # or build from source locally
+# work locally via: make build
 ```
 
+Tagged releases ship binstall-ready archives (Linux, macOS, Windows), so `cargo binstall` will fetch
+prebuilt binaries when available and fall back to building from source otherwise.
+
 The CLI lives inside this workspace; running `cargo run -p greentic-component --features cli --bin greentic-component -- <command>`
-is convenient during development, while `cargo install --path crates/greentic-component --features cli`
-is ideal for day-to-day usage.
+is convenient during development. For a workspace build that tracks your working copy, use
+`cargo install --path crates/greentic-component --features cli`.
 
 ## Quickstart
 

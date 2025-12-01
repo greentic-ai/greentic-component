@@ -89,3 +89,8 @@ greentic-interfaces-guest = { workspace = true }
 [[example]]
 name = "gen_fixture"
 required-features = ["abi"]
+
+[package.metadata.binstall]
+pkg-url = "https://github.com/greentic-ai/greentic-component/releases/download/v{version}/greentic-component-v{version}-{target}.tar.gz"
+pkg-fmt = "tar.gz"
+bin-dir = "bin"
