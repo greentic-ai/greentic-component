@@ -11,9 +11,6 @@ permissions:
 jobs:
   autotag:
     runs-on: ubuntu-latest
-    env:
-      # Keep cargo installs in a known location so PATH wiring is consistent.
-      CARGO_HOME: ${{ runner.temp }}/cargo-home
     steps:
       - name: Checkout (full history for tags)
         uses: actions/checkout@v4
@@ -25,11 +22,13 @@ jobs:
           toolchain: stable
       - uses: Swatinem/rust-cache@v2
 
+      - name: Set cargo env paths
+        run: |
+          echo "CARGO_HOME=${RUNNER_TEMP}/cargo-home" >> "$GITHUB_ENV"
+          echo "${RUNNER_TEMP}/cargo-home/bin" >> "$GITHUB_PATH"
+
       - name: Install tomlq
         run: cargo install --locked tomlq
-
-      - name: Add cargo bin to PATH
-        run: echo "${CARGO_HOME}/bin" >> "$GITHUB_PATH"
 
       - name: Ensure scripts present
         run: |
@@ -43,7 +42,7 @@ jobs:
           GIT_COMMITTER_EMAIL: ci-bot@users.noreply.github.com
         run: |
           set -euo pipefail
-          export PATH="${CARGO_HOME}/bin:$PATH"
+          export PATH="${CARGO_HOME:-${RUNNER_TEMP}/cargo-home}/bin:$PATH"
           source scripts/version-tools.sh
 
           if ! PREV_HASH=$(git rev-parse HEAD^ 2>/dev/null); then
