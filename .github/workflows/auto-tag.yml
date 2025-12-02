@@ -1,92 +1,63 @@
-name: Auto tag crates on version change
+name: Auto tag using commit summary
 
 on:
   push:
     branches:
       - master
-    paths:
-      - "**/Cargo.toml"
 
 jobs:
   autotag:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: write   # needed to push tags
+      contents: write  # needed to push tags
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # we need history to diff against previous commit
+          fetch-depth: 0
 
-      - name: Compute crate tags
-        id: tags
+      - name: Get commit summary
+        id: summary
         run: |
-          python - << 'PYCODE'
-          import os
-          import subprocess
-          import pathlib
-          import tomllib  # Python 3.11+ standard TOML parser
+          # Get the first line of the commit message (the "summary")
+          summary="$(git log -1 --pretty=%s)"
+          echo "Raw summary: $summary"
 
-          sha = os.environ["GITHUB_SHA"]
+          # Sanitise to make it a valid git tag:
+          # - trim spaces
+          # - replace spaces and slashes with dashes
+          # - remove characters that are problematic for tags
+          sanitized="$(echo "$summary" \
+            | sed -e 's/^[[:space:]]*//;s/[[:space:]]*$//' \
+                  -e 's/[[:space:]]\+/-/g' \
+                  -e 's|/|-|g' \
+                  -e 's/[^A-Za-z0-9_.-]/-/g')"
 
-          # Get previous commit (handles normal pushes; if this fails, just bail)
-          try:
-            prev = subprocess.check_output(
-              ["git", "rev-parse", f"{sha}^"],
-              text=True
-            ).strip()
-          except subprocess.CalledProcessError:
-            print("No previous commit, skipping tagging")
-            print("tags=")
-            with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
-              f.write("tags=\n")
-            raise SystemExit(0)
+          echo "Sanitized summary: $sanitized"
 
-          # Find changed files in this push
-          changed = subprocess.check_output(
-            ["git", "diff", "--name-only", prev, sha],
-            text=True
-          ).splitlines()
+          if [ -z "$sanitized" ]; then
+            echo "No usable summary, skipping."
+            echo "tag_name=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
-          tags = []
-          for path in changed:
-            if not path.endswith("Cargo.toml"):
-              continue
-            p = pathlib.Path(path)
-            if not p.is_file():
-              continue
-            data = tomllib.loads(p.read_text(encoding="utf-8"))
-            pkg = data.get("package") or {}
-            name = pkg.get("name")
-            version = pkg.get("version")
-            if not name or not version:
-              continue
-            tag = f"{name}-v{version}"
-            tags.append(tag)
+          echo "tag_name=$sanitized" >> "$GITHUB_OUTPUT"
 
-          tags_str = ",".join(tags)
-          print(f"Computed tags: {tags_str or '(none)'}")
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
-            f.write(f"tags={tags_str}\n")
-          PYCODE
-
-      - name: Create and push tags
-        if: steps.tags.outputs.tags != ''
+      - name: Create and push tag
+        if: steps.summary.outputs.tag_name != ''
         run: |
-          echo "Tags to create: ${{ steps.tags.outputs.tags }}"
+          tag="${{ steps.summary.outputs.tag_name }}"
+          echo "Tag to create: $tag"
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          IFS=',' read -ra TAGS <<< "${{ steps.tags.outputs.tags }}"
-          for tag in "${TAGS[@]}"; do
-            if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
-              echo "Tag $tag already exists, skipping"
-            else
-              echo "Creating tag $tag"
-              git tag "$tag" "${GITHUB_SHA}"
-            fi
-          done
-
-          git push origin --tags
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            echo "Tag $tag already exists, skipping"
+          else
+            echo "Creating tag $tag at $GITHUB_SHA"
+            git tag "$tag" "$GITHUB_SHA"
+            git push origin "$tag"
+          fi
