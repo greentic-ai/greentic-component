@@ -25,7 +25,7 @@
 
 - **Path:** `ci/local_check.sh`, `.github/workflows/*`  
   **Role:** CI/local verification scripts and workflows (lint, tests, publish, release assets, auto-tag).  
-  **Key functionality:** Mirrors CI locally, publishes crates and binstall artifacts on tags/master pushes, auto-tags crate version bumps.
+  **Key functionality:** Mirrors CI locally; any push to `master` (or manual dispatch) runs full pipeline: build/tests, cargo publish (already-exists errors tolerated), binstall artifact builds, and GitHub Release upload. Auto-tag still bumps versions.
 
 ## 3. Work In Progress, TODOs, and Stubs
 - None noted.
