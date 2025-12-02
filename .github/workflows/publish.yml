@@ -181,9 +181,11 @@ jobs:
           tar -C dist -czf "dist/${PKG_BASE}.tgz" "${PKG_BASE}"
           echo "asset=dist/${PKG_BASE}.tgz" >> "$GITHUB_OUTPUT"
       - name: Upload release archive
-        uses: softprops/action-gh-release@v2
-        with:
-          # Avoid creating a "master" tag; use the commit SHA as the release tag.
-          tag_name: ${{ github.sha }}
-          target_commitish: ${{ github.sha }}
-          files: ${{ steps.package.outputs.asset }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.sha }}
+          ASSET: ${{ steps.package.outputs.asset }}
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --target "$GITHUB_SHA" --notes "" --title "greentic-component $TAG"
+          gh release upload "$TAG" "$ASSET" --clobber
