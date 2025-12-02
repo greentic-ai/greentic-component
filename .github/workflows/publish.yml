@@ -165,8 +165,8 @@ jobs:
             fi
             cp "$src" "${STAGING}/bin/${bin}${{ matrix.bin_suffix }}"
           done
-          tar -C dist -czf "dist/${PKG_BASE}.tar.gz" "${PKG_BASE}"
-          echo "asset=dist/${PKG_BASE}.tar.gz" >> "$GITHUB_OUTPUT"
+          tar -C dist -czf "dist/${PKG_BASE}.tgz" "${PKG_BASE}"
+          echo "asset=dist/${PKG_BASE}.tgz" >> "$GITHUB_OUTPUT"
       - name: Upload release archive
         uses: softprops/action-gh-release@v2
         with:

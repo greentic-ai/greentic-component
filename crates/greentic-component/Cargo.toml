@@ -91,6 +91,6 @@ name = "gen_fixture"
 required-features = ["abi"]
 
 [package.metadata.binstall]
-pkg-url = "https://github.com/greentic-ai/greentic-component/releases/download/v{version}/greentic-component-v{version}-{target}.tar.gz"
-pkg-fmt = "tar.gz"
+pkg-url = "https://github.com/greentic-ai/greentic-component/releases/download/v{version}/greentic-component-v{version}-{target}.tgz"
+pkg-fmt = "tgz"
 bin-dir = "bin"
