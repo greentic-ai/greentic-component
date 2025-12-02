@@ -5,7 +5,6 @@ on:
     branches: [ master ]
     tags:
       - "v*"
-      - "greentic-component-v*"
   workflow_dispatch:
 
 # Workflow-level concurrency ensures only one publish per ref; jobs must not reuse
@@ -118,6 +117,7 @@ jobs:
   binstall-release:
     # Build and upload release archives that cargo-binstall can consume.
     needs: publish
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write

@@ -76,7 +76,7 @@ jobs:
               echo "Version unchanged for ${name} (${new_version}); skipping."
               continue
             fi
-            tag="${name}-v${new_version}"
+            tag="v${new_version}"
             if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
               echo "Annotated tag ${tag} already exists; skipping."
               continue
