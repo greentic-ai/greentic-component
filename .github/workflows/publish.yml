@@ -178,6 +178,7 @@ jobs:
       - name: Upload release archive
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
+          # Avoid creating a "master" tag; use the commit SHA as the release tag.
+          tag_name: ${{ github.sha }}
           target_commitish: ${{ github.sha }}
           files: ${{ steps.package.outputs.asset }}
