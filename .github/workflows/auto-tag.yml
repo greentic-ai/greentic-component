@@ -22,10 +22,12 @@ jobs:
           toolchain: stable
       - uses: Swatinem/rust-cache@v2
 
+      - name: Configure cargo dirs for tool installs
+        run: |
+          echo "CARGO_HOME=${RUNNER_TEMP}/cargo-home" >> "$GITHUB_ENV"
+          echo "${RUNNER_TEMP}/cargo-home/bin" >> "$GITHUB_PATH"
+
       - name: Install tomlq
-        env:
-          CARGO_HOME: ${{ runner.temp }}/cargo-home
-          PATH: ${{ runner.temp }}/cargo-home/bin:${{ env.PATH }}
         run: cargo install --locked tomlq
 
       - name: Ensure scripts present
@@ -38,8 +40,6 @@ jobs:
           GIT_AUTHOR_EMAIL: ci-bot@users.noreply.github.com
           GIT_COMMITTER_NAME: ci-bot
           GIT_COMMITTER_EMAIL: ci-bot@users.noreply.github.com
-          CARGO_HOME: ${{ runner.temp }}/cargo-home
-          PATH: ${{ runner.temp }}/cargo-home/bin:${{ env.PATH }}
         run: |
           set -euo pipefail
           source scripts/version-tools.sh
