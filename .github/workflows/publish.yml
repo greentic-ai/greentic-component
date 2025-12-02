@@ -116,7 +116,6 @@ jobs:
   binstall-release:
     # Build and upload release archives that cargo-binstall can consume.
     needs: publish
-    if: ${{ needs.publish.result == 'success' && startsWith(github.ref, 'refs/tags/') }}
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
