@@ -411,10 +411,21 @@ case "$LOCAL_CHECK_PUBLISH_MODE" in
                 step "cargo publish (locked) -p $crate"
                 echo ""
                 echo "▶ cargo publish (locked) -p $crate"
-                if ! cargo publish --allow-dirty -p "$crate" --locked; then
-                    echo "[fail] cargo publish (locked) -p $crate"
-                    record_failure "cargo publish (locked) -p $crate"
+                publish_output=$(mktemp)
+                publish_status=0
+                if ! cargo publish --allow-dirty -p "$crate" --locked 2> "$publish_output"; then
+                    publish_status=$?
                 fi
+                if [ $publish_status -ne 0 ]; then
+                    if grep -qi "already exists on crates.io index" "$publish_output"; then
+                        echo "[warn] cargo publish skipped (version already on crates.io)"
+                    else
+                        cat "$publish_output"
+                        echo "[fail] cargo publish (locked) -p $crate"
+                        record_failure "cargo publish (locked) -p $crate"
+                    fi
+                fi
+                rm -f "$publish_output"
             done
         else
             skip_step "cargo publish (locked)" "${CRATES_IO_REASON:-network unavailable}"
