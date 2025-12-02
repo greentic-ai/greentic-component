@@ -25,6 +25,9 @@ jobs:
       - name: Ensure cargo in PATH
         run: |
           echo "${HOME}/.cargo/bin" >> "$GITHUB_PATH"
+          echo "PATH after update:"
+          echo "$PATH"
+          command -v cargo || (echo "cargo missing" && exit 1)
 
       - name: Install tomlq
         run: cargo install --locked tomlq
