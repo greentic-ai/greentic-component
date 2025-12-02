@@ -138,6 +138,12 @@ jobs:
             bin_suffix: ".exe"
     steps:
       - uses: actions/checkout@v4
+      - name: Set cargo env
+        shell: bash
+        run: |
+          echo "CARGO_HOME=$RUNNER_TEMP/cargo-home" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_DIR=$RUNNER_TEMP/target" >> "$GITHUB_ENV"
+          echo "$RUNNER_TEMP/cargo-home/bin" >> "$GITHUB_PATH"
       - name: Install toolchain
         uses: dtolnay/rust-toolchain@v1
         with:
