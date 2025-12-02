@@ -163,11 +163,12 @@ jobs:
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
           TARGET="${{ matrix.target }}"
+          BUILD_ROOT="${CARGO_TARGET_DIR:-target}"
           PKG_BASE="greentic-component-v${VERSION}-${TARGET}"
           STAGING="dist/${PKG_BASE}"
           mkdir -p "${STAGING}/bin"
           for bin in greentic-component component-doctor component-hash component-inspect; do
-            src="target/${TARGET}/release/${bin}${{ matrix.bin_suffix }}"
+            src="${BUILD_ROOT}/${TARGET}/release/${bin}${{ matrix.bin_suffix }}"
             if [ ! -f "$src" ]; then
               echo "Missing binary: $src" >&2
               exit 1
