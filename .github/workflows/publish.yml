@@ -159,7 +159,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION=$(cargo metadata --no-deps --format-version 1 \
+            | python3 - <<'PY'
+import json,sys
+data=json.load(sys.stdin)
+for pkg in data.get("packages", []):
+    if pkg.get("name") == "greentic-component":
+        print(pkg.get("version"))
+        break
+PY
+          )
+          if [ -z "${VERSION:-}" ]; then
+            echo "Failed to determine greentic-component version" >&2
+            exit 1
+          fi
           TARGET="${{ matrix.target }}"
           BUILD_ROOT="${CARGO_TARGET_DIR:-target}"
           PKG_BASE="greentic-component-v${VERSION}-${TARGET}"
