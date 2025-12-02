@@ -2,6 +2,7 @@ name: Publish crates
 
 on:
   push:
+    branches: [ master ]
     tags:
       - "v*"
   workflow_dispatch:
