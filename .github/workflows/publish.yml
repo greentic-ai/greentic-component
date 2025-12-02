@@ -180,12 +180,13 @@ jobs:
           done
           tar -C dist -czf "dist/${PKG_BASE}.tgz" "${PKG_BASE}"
           echo "asset=dist/${PKG_BASE}.tgz" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
       - name: Upload release archive
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.sha }}
+          TAG: greentic-component-v${{ steps.package.outputs.version }}
           ASSET: ${{ steps.package.outputs.asset }}
         run: |
           set -euo pipefail
-          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --target "$GITHUB_SHA" --notes "" --title "greentic-component $TAG"
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --target "$GITHUB_SHA" --notes "" --title "$TAG"
           gh release upload "$TAG" "$ASSET" --clobber
