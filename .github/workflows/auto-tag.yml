@@ -11,6 +11,8 @@ permissions:
 jobs:
   autotag:
     runs-on: ubuntu-latest
+    env:
+      CARGO_HOME: ${{ runner.temp }}/cargo-home
     steps:
       - name: Checkout (full history for tags)
         uses: actions/checkout@v4
@@ -22,14 +24,15 @@ jobs:
           toolchain: stable
       - uses: Swatinem/rust-cache@v2
 
-      - name: Ensure cargo in PATH
+      - name: Prepare cargo bin path
         run: |
+          mkdir -p "${CARGO_HOME}/bin"
+          echo "${CARGO_HOME}/bin" >> "$GITHUB_PATH"
           echo "${HOME}/.cargo/bin" >> "$GITHUB_PATH"
-          echo "PATH after update:"
-          echo "$PATH"
-          command -v cargo || (echo "cargo missing" && exit 1)
 
       - name: Install tomlq
+        env:
+          PATH: "${CARGO_HOME}/bin:${HOME}/.cargo/bin:${PATH}"
         run: cargo install --locked tomlq
 
       - name: Ensure scripts present
@@ -45,7 +48,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          export PATH="$HOME/.cargo/bin:$PATH"
+          export PATH="${CARGO_HOME}/bin:${HOME}/.cargo/bin:$PATH"
           command -v tomlq >/dev/null 2>&1 || { echo "tomlq not found in PATH"; exit 127; }
           source scripts/version-tools.sh
 
