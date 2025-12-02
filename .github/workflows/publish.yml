@@ -161,12 +161,12 @@ jobs:
           set -euo pipefail
           VERSION=$(
             cargo metadata --no-deps --format-version 1 | python3 - <<'PY'
-import json, sys
-data = json.load(sys.stdin)
-for pkg in data.get("packages", []):
-    if pkg.get("name") == "greentic-component":
-        print(pkg.get("version"))
-        break
+    import json, sys
+    data = json.load(sys.stdin)
+    for pkg in data.get("packages", []):
+        if pkg.get("name") == "greentic-component":
+            print(pkg.get("version"))
+            break
 PY
           )
           if [ -z "${VERSION:-}" ]; then
