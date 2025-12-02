@@ -90,9 +90,3 @@ greentic-interfaces-guest = { workspace = true }
 name = "gen_fixture"
 required-features = ["abi"]
 
-[package.metadata.binstall]
-# Release tags are created as v{version}.
-pkg-url = "https://github.com/greentic-ai/greentic-component/releases/download/v{version}/greentic-component-v{version}-{target}.tgz"
-pkg-fmt = "tgz"
-# Binaries are at the archive root (no bin/ prefix).
-bin-dir = ""
