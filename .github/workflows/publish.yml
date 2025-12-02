@@ -159,7 +159,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          VERSION=$(cargo metadata --no-deps --format-version 1 \
+          VERSION=$(
+            cargo metadata --no-deps --format-version 1 \
             | python3 - <<'PY'
 import json,sys
 data=json.load(sys.stdin)
