@@ -153,6 +153,8 @@ jobs:
         with:
           toolchain: stable
           targets: ${{ matrix.target }}
+      - name: Ensure target installed
+        run: rustup target add ${{ matrix.target }}
       - name: Build release binaries
         run: |
           cargo build --locked --release --target ${{ matrix.target }} \
