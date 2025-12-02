@@ -5,6 +5,7 @@ on:
     branches: [ master ]
     tags:
       - "v*"
+      - "greentic-component-v*"
   workflow_dispatch:
 
 # Workflow-level concurrency ensures only one publish per ref; jobs must not reuse
