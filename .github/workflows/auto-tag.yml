@@ -11,8 +11,6 @@ permissions:
 jobs:
   autotag:
     runs-on: ubuntu-latest
-    env:
-      CARGO_HOME: ${{ runner.temp }}/cargo-home
     steps:
       - name: Checkout (full history for tags)
         uses: actions/checkout@v4
@@ -23,6 +21,10 @@ jobs:
         with:
           toolchain: stable
       - uses: Swatinem/rust-cache@v2
+
+      - name: Set cargo env
+        run: |
+          echo "CARGO_HOME=$RUNNER_TEMP/cargo-home" >> "$GITHUB_ENV"
 
       - name: Prepare cargo bin path
         run: |
@@ -48,6 +50,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          export CARGO_HOME="${CARGO_HOME:-$RUNNER_TEMP/cargo-home}"
           export PATH="${CARGO_HOME}/bin:${HOME}/.cargo/bin:$PATH"
           command -v tomlq >/dev/null 2>&1 || { echo "tomlq not found in PATH"; exit 127; }
           source scripts/version-tools.sh
