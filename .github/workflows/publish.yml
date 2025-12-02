@@ -120,6 +120,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
+    defaults:
+      run:
+        shell: bash
     env:
       CARGO_TERM_COLOR: always
       CARGO_NET_RETRY: 5
