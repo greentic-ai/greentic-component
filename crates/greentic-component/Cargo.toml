@@ -90,3 +90,4 @@ greentic-interfaces-guest = { workspace = true }
 name = "gen_fixture"
 required-features = ["abi"]
 
+

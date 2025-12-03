@@ -174,14 +174,14 @@ jobs:
           BUILD_ROOT="${CARGO_TARGET_DIR:-target}"
           PKG_BASE="greentic-component-v${VERSION}-${TARGET}"
           STAGING="dist/${PKG_BASE}"
-          mkdir -p "${STAGING}/bin"
+          mkdir -p "${STAGING}"
           for bin in greentic-component component-doctor component-hash component-inspect; do
             src="${BUILD_ROOT}/${TARGET}/release/${bin}${{ matrix.bin_suffix }}"
             if [ ! -f "$src" ]; then
               echo "Missing binary: $src" >&2
               exit 1
             fi
-            cp "$src" "${STAGING}/bin/${bin}${{ matrix.bin_suffix }}"
+            cp "$src" "${STAGING}/${bin}${{ matrix.bin_suffix }}"
           done
           tar -C dist -czf "dist/${PKG_BASE}.tgz" "${PKG_BASE}"
           echo "asset=dist/${PKG_BASE}.tgz" >> "$GITHUB_OUTPUT"
