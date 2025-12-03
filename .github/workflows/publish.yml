@@ -174,24 +174,22 @@ jobs:
           BUILD_ROOT="${CARGO_TARGET_DIR:-target}"
           PKG_BASE="greentic-component-v${VERSION}-${TARGET}"
           STAGING="dist/${PKG_BASE}"
-          mkdir -p "${STAGING}"
+          mkdir -p "${STAGING}/bin"
           for bin in greentic-component component-doctor component-hash component-inspect; do
             src="${BUILD_ROOT}/${TARGET}/release/${bin}${{ matrix.bin_suffix }}"
             if [ ! -f "$src" ]; then
               echo "Missing binary: $src" >&2
               exit 1
             fi
-            cp "$src" "${STAGING}/${bin}${{ matrix.bin_suffix }}"
+            cp "$src" "${STAGING}/bin/${bin}${{ matrix.bin_suffix }}"
           done
-          cp LICENSE* "${STAGING}/" 2>/dev/null || true
-          cp README.md "${STAGING}/" 2>/dev/null || true
           tar -C dist -czf "dist/${PKG_BASE}.tgz" "${PKG_BASE}"
           echo "asset=dist/${PKG_BASE}.tgz" >> "$GITHUB_OUTPUT"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
       - name: Upload release archive
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: greentic-component-v${{ steps.package.outputs.version }}
+          TAG: v${{ steps.package.outputs.version }}
           ASSET: ${{ steps.package.outputs.asset }}
         run: |
           set -euo pipefail

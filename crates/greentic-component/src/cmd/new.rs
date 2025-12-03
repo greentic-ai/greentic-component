@@ -1,7 +1,7 @@
 #![cfg(feature = "cli")]
 
 use std::env;
-use std::io::Write;
+use std::io::{Write, stdout};
 use std::path::{Path, PathBuf};
 use std::process::{self, Command};
 use std::time::Instant;
@@ -78,7 +78,22 @@ pub fn run(args: NewArgs, engine: &ScaffoldEngine) -> Result<()> {
             return Err(err.into());
         }
     };
+    if !args.json {
+        println!("processing...");
+        println!(
+            "  - template: {} -> {}",
+            request.template_id,
+            request.path.display()
+        );
+        stdout().flush().ok();
+    }
+    let scaffold_started = Instant::now();
     let outcome = engine.scaffold(request)?;
+    if !args.json {
+        println!("scaffolded files in {:.2?}", scaffold_started.elapsed());
+        stdout().flush().ok();
+    }
+    let post_started = Instant::now();
     let skip_git = should_skip_git(&args);
     let post_init = post::run_post_init(&outcome, skip_git);
     let compile_check = run_compile_check(&outcome.path, args.no_check)?;
@@ -91,6 +106,7 @@ pub fn run(args: NewArgs, engine: &ScaffoldEngine) -> Result<()> {
         print_json(&payload)?;
     } else {
         print_human(&outcome, &compile_check, &post_init);
+        println!("post-init + checks in {:.2?}", post_started.elapsed());
     }
     if compile_check.ran && !compile_check.passed {
         anyhow::bail!("cargo check --target wasm32-wasip2 failed");
