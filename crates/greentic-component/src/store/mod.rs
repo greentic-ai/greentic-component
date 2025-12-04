@@ -1,14 +1,15 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[cfg(not(feature = "oci"))]
 use anyhow::bail;
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow};
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
 use self::cache::Cache;
+use crate::path_safety::normalize_under_root;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ComponentId(pub String);
@@ -79,7 +80,10 @@ impl ComponentStore {
         }
 
         let bytes = match loc {
-            ComponentLocator::Fs { path } => fs_source::fetch(path).await?,
+            ComponentLocator::Fs { path } => {
+                let (fs_root, candidate) = filesystem_root_and_path(path)?;
+                fs_source::fetch(&fs_root, &candidate).await?
+            }
             ComponentLocator::Oci { reference } => {
                 #[cfg(feature = "oci")]
                 {
@@ -99,6 +103,28 @@ impl ComponentStore {
         self.cache.store(loc, &cb).await?;
         Ok(cb)
     }
+}
+
+fn filesystem_root_and_path(path: &PathBuf) -> Result<(PathBuf, PathBuf)> {
+    let canonical = path
+        .canonicalize()
+        .with_context(|| format!("failed to canonicalize {}", path.display()))?;
+    let root = canonical
+        .parent()
+        .map(Path::to_path_buf)
+        .context("filesystem source path has no parent")?;
+    let relative = canonical
+        .strip_prefix(&root)
+        .with_context(|| {
+            format!(
+                "failed to compute relative path for {}",
+                canonical.display()
+            )
+        })?
+        .to_path_buf();
+    // Double-check containment under the discovered root to enforce policy.
+    normalize_under_root(&root, &relative)?;
+    Ok((root, relative))
 }
 
 mod cache;

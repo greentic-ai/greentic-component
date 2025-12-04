@@ -8,6 +8,7 @@ use tokio::fs as tfs;
 use tokio::io::AsyncWriteExt;
 
 use super::{ComponentBytes, ComponentId, ComponentLocator, meta};
+use crate::path_safety::normalize_under_root;
 
 #[derive(Clone, Debug)]
 pub struct Cache {
@@ -30,9 +31,9 @@ impl Cache {
         Cache { root }
     }
 
-    fn entry_path_for_id(&self, id: &ComponentId) -> PathBuf {
+    async fn entry_path_for_id(&self, id: &ComponentId) -> Result<PathBuf> {
         let sanitized = id.0.replace(':', "_");
-        self.root.join(sanitized)
+        self.normalize_in_root(Path::new(&sanitized)).await
     }
 
     fn key_for_locator(loc: &ComponentLocator) -> String {
@@ -42,22 +43,30 @@ impl Cache {
         }
     }
 
-    fn hint_path_for_locator(&self, loc: &ComponentLocator) -> PathBuf {
+    async fn hint_path_for_locator(&self, loc: &ComponentLocator) -> Result<PathBuf> {
         let mut hasher = Sha256::new();
         hasher.update(Self::key_for_locator(loc));
         let digest = hex::encode(hasher.finalize());
-        self.root.join("_loc").join(digest)
+        let candidate = PathBuf::from("_loc").join(digest);
+        self.normalize_in_root(&candidate).await
+    }
+
+    async fn normalize_in_root(&self, candidate: &Path) -> Result<PathBuf> {
+        tfs::create_dir_all(&self.root)
+            .await
+            .with_context(|| format!("unable to create cache root at {}", self.root.display()))?;
+        normalize_under_root(&self.root, candidate)
     }
 
     pub async fn try_load(&self, loc: &ComponentLocator) -> Result<Option<ComponentBytes>> {
-        let hint_path = self.hint_path_for_locator(loc);
+        let hint_path = self.hint_path_for_locator(loc).await?;
         if !path_exists(&hint_path).await {
             return Ok(None);
         }
 
         let id_hex = tfs::read_to_string(&hint_path).await?;
         let id = ComponentId(id_hex.trim().to_owned());
-        let data_path = self.entry_path_for_id(&id);
+        let data_path = self.entry_path_for_id(&id).await?;
         if !path_exists(&data_path).await {
             return Ok(None);
         }
@@ -83,7 +92,7 @@ impl Cache {
             .await
             .with_context(|| format!("unable to create cache root at {}", self.root.display()))?;
 
-        let path = self.entry_path_for_id(&cb.id);
+        let path = self.entry_path_for_id(&cb.id).await?;
         if let Some(parent) = path.parent() {
             tfs::create_dir_all(parent).await?;
         }
@@ -96,7 +105,7 @@ impl Cache {
     }
 
     async fn write_hint(&self, loc: &ComponentLocator, id: &ComponentId) -> Result<()> {
-        let hint_path = self.hint_path_for_locator(loc);
+        let hint_path = self.hint_path_for_locator(loc).await?;
         if let Some(parent) = hint_path.parent() {
             tfs::create_dir_all(parent).await?;
         }

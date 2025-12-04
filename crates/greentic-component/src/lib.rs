@@ -11,6 +11,7 @@ pub mod limits;
 #[cfg(feature = "loader")]
 pub mod loader;
 pub mod manifest;
+pub mod path_safety;
 #[cfg(feature = "prepare")]
 pub mod prepare;
 pub mod provenance;
