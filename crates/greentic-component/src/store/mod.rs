@@ -81,7 +81,7 @@ impl ComponentStore {
 
         let bytes = match loc {
             ComponentLocator::Fs { path } => {
-                let (fs_root, candidate) = filesystem_root_and_path(path)?;
+                let (fs_root, candidate) = filesystem_root_and_path(path.as_path())?;
                 fs_source::fetch(&fs_root, &candidate).await?
             }
             ComponentLocator::Oci { reference } => {
@@ -105,7 +105,7 @@ impl ComponentStore {
     }
 }
 
-fn filesystem_root_and_path(path: &PathBuf) -> Result<(PathBuf, PathBuf)> {
+fn filesystem_root_and_path(path: &Path) -> Result<(PathBuf, PathBuf)> {
     let canonical = path
         .canonicalize()
         .with_context(|| format!("failed to canonicalize {}", path.display()))?;

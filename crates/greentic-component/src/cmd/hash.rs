@@ -34,7 +34,7 @@ pub fn run(args: HashArgs) -> Result<()> {
         .canonicalize()
         .context("failed to canonicalize workspace root")?;
     let manifest_path =
-        normalize_under_root(&workspace_root, &args.manifest).with_context(|| {
+        normalize_or_canonicalize(&workspace_root, &args.manifest).with_context(|| {
             format!(
                 "manifest path escapes workspace root: {}",
                 args.manifest.display()
@@ -55,12 +55,13 @@ pub fn run(args: HashArgs) -> Result<()> {
             )
         })?;
     let wasm_candidate = resolve_wasm_path(&manifest, args.wasm.as_deref())?;
-    let wasm_path = normalize_under_root(&manifest_root, &wasm_candidate).with_context(|| {
-        format!(
-            "wasm path escapes manifest root {}",
-            manifest_root.display()
-        )
-    })?;
+    let wasm_path =
+        normalize_or_canonicalize(&manifest_root, &wasm_candidate).with_context(|| {
+            format!(
+                "wasm path escapes manifest root {}",
+                manifest_root.display()
+            )
+        })?;
     let wasm_bytes = fs::read(&wasm_path)
         .with_context(|| format!("failed to read wasm at {}", wasm_path.display()))?;
     let digest = blake3::hash(&wasm_bytes).to_hex().to_string();
@@ -86,4 +87,13 @@ fn resolve_wasm_path(manifest: &Value, override_path: Option<&Path>) -> Result<P
         .and_then(Value::as_str)
         .ok_or_else(|| anyhow::anyhow!("manifest is missing artifacts.component_wasm"))?;
     Ok(PathBuf::from(artifact))
+}
+
+fn normalize_or_canonicalize(root: &Path, candidate: &Path) -> Result<PathBuf> {
+    if candidate.is_absolute() {
+        return candidate
+            .canonicalize()
+            .with_context(|| format!("failed to canonicalize {}", candidate.display()));
+    }
+    normalize_under_root(root, candidate)
 }
