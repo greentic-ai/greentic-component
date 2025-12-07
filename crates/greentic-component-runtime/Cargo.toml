@@ -18,7 +18,7 @@ serde = []
 [dependencies]
 anyhow.workspace = true
 async-trait.workspace = true
-component-manifest.workspace = true
+greentic-component-manifest.workspace = true
 greentic-component-store.workspace = true
 futures.workspace = true
 greentic-interfaces-host.workspace = true

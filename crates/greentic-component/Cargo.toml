@@ -52,6 +52,7 @@ include_dir = { workspace = true, optional = true }
 handlebars = { workspace = true, optional = true }
 miette = { workspace = true, optional = true }
 jsonschema = { workspace = true }
+greentic-component-manifest = { workspace = true }
 oci-distribution = { workspace = true, optional = true }
 once_cell = { workspace = true }
 pathdiff = { workspace = true }
@@ -61,6 +62,7 @@ semver = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_with = { workspace = true }
+serde_yaml = { workspace = true }
 sha2 = { workspace = true }
 thiserror = { workspace = true }
 displaydoc = { workspace = true }
@@ -89,5 +91,3 @@ greentic-interfaces-guest = { workspace = true }
 [[example]]
 name = "gen_fixture"
 required-features = ["abi"]
-
-

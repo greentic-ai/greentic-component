@@ -1,4 +1,5 @@
 pub mod doctor;
+pub mod flow;
 pub mod hash;
 pub mod inspect;
 pub mod new;

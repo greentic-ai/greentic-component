@@ -2,7 +2,7 @@
 
 This workspace houses the core pieces needed to load, validate, and execute Greentic components without baking any component-specific knowledge into the runner. It is organised into three crates:
 
-- `component-manifest` — strongly-typed parsing and validation for component self-descriptions. It validates capability lists, export declarations, config schemas, and WIT compatibility using JSON Schema tooling.
+- `greentic-component-manifest` — strongly-typed parsing and validation for component self-descriptions. It validates capability lists, export declarations, config schemas, and WIT compatibility using JSON Schema tooling.
 - `greentic-component-store` — fetches component artifacts from supported stores (filesystem, HTTP, OCI/Warg placeholders) with caching and digest/signature policy enforcement.
 - `greentic-component-runtime` — uses Wasmtime’s component model to load components, bind tenant configuration/secrets, and invoke exported operations via the generic Greentic interfaces.
 
@@ -79,6 +79,14 @@ hello-world/
 
 The generator wires `component.manifest.json`, schema stubs, a WIT world, CI workflow, and a local Makefile
 so the project is immediately buildable (`cargo check --target wasm32-wasip2`) and testable.
+
+## Config flows (convention)
+
+- Config flows are normal flows (`id`, `kind`, `description`, `nodes`) whose last node emits a payload of the form `{ "node_id": "...", "node": { ... } }`. The engine treats `kind: component-config` as a hint only.
+- `greentic-component flow scaffold` reads `component.manifest.json` (`id`, `mode`/`kind`, `config_schema`) and writes `flows/default.ygtc` (required fields with defaults only) plus `flows/custom.ygtc` (questions for every non-hidden field, emitting state-backed config).
+- Defaults are only applied when the manifest supplies them; required fields without defaults are omitted from `default.ygtc`. Fields marked `x_flow_hidden: true` are skipped in `custom.ygtc` prompts.
+- Overwrite behaviour: create new files silently; if files exist, prompt in a TTY, error in non-interactive shells unless `--force` is supplied.
+- Mode detection is tolerant (`mode`, then `kind`, else `"tool"`); the scaffold uses a generic node id `COMPONENT_STEP` and leaves `NEXT_NODE_PLACEHOLDER` routing untouched for downstream tooling to rewire.
 
 ## Next steps
 
