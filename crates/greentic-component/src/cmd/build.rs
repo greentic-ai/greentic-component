@@ -21,6 +21,9 @@ pub struct BuildArgs {
     /// Path to component.manifest.json (or directory containing it)
     #[arg(long = "manifest", value_name = "PATH", default_value = DEFAULT_MANIFEST)]
     pub manifest: PathBuf,
+    /// Path to the cargo binary (fallback: $CARGO, then `cargo` on PATH)
+    #[arg(long = "cargo", value_name = "PATH")]
+    pub cargo_bin: Option<PathBuf>,
     /// Overwrite existing flows without prompting
     #[arg(long = "force")]
     pub force: bool,
@@ -57,12 +60,32 @@ struct BuildSummary {
 
 pub fn run(args: BuildArgs) -> Result<()> {
     let manifest_path = resolve_manifest_path(&args.manifest);
+    let cwd = std::env::current_dir().context("failed to read current directory")?;
+    let manifest_path = if manifest_path.is_absolute() {
+        manifest_path
+    } else {
+        cwd.join(manifest_path)
+    };
+    if !manifest_path.exists() {
+        bail!("manifest not found at {}", manifest_path.display());
+    }
+    let cargo_bin = args
+        .cargo_bin
+        .clone()
+        .or_else(|| std::env::var_os("CARGO").map(PathBuf::from))
+        .unwrap_or_else(|| PathBuf::from("cargo"));
     let inference_opts = ConfigInferenceOptions {
         allow_infer: !args.no_infer_config,
         write_schema: !args.no_write_schema,
         force_write_schema: args.force_write_schema,
         validate: !args.no_validate,
     };
+    println!(
+        "Using manifest at {} (cargo: {})",
+        manifest_path.display(),
+        cargo_bin.display()
+    );
+
     let config = load_manifest_with_schema(&manifest_path, &inference_opts)?;
     let flow_result = if args.no_flow {
         None
@@ -70,10 +93,8 @@ pub fn run(args: BuildArgs) -> Result<()> {
         Some(scaffold_with_manifest(&config, args.force)?)
     };
 
-    let manifest_dir = manifest_path
-        .parent()
-        .ok_or_else(|| anyhow!("manifest path has no parent: {}", manifest_path.display()))?;
-    build_wasm(manifest_dir)?;
+    let manifest_dir = manifest_path.parent().unwrap_or_else(|| Path::new("."));
+    build_wasm(manifest_dir, &cargo_bin)?;
 
     let mut manifest_to_write = config.manifest.clone();
     if !config.persist_schema {
@@ -122,15 +143,20 @@ pub fn run(args: BuildArgs) -> Result<()> {
     Ok(())
 }
 
-fn build_wasm(manifest_dir: &Path) -> Result<()> {
-    let status = Command::new("cargo")
+fn build_wasm(manifest_dir: &Path, cargo_bin: &Path) -> Result<()> {
+    println!(
+        "Running cargo build via {} in {}",
+        cargo_bin.display(),
+        manifest_dir.display()
+    );
+    let status = Command::new(cargo_bin)
         .arg("build")
         .arg("--target")
         .arg("wasm32-wasip2")
         .arg("--release")
         .current_dir(manifest_dir)
         .status()
-        .context("failed to run cargo build")?;
+        .with_context(|| format!("failed to run cargo build via {}", cargo_bin.display()))?;
 
     if !status.success() {
         bail!(

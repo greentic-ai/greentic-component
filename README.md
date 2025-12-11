@@ -87,7 +87,7 @@ so the project is immediately buildable (`cargo check --target wasm32-wasip2`) a
 - Defaults are only applied when the manifest supplies them; required fields without defaults are omitted from `default.ygtc`. Fields marked `x_flow_hidden: true` are skipped in `custom.ygtc` prompts.
 - Overwrite behaviour: create new files silently; if files exist, prompt in a TTY, error in non-interactive shells unless `--force` is supplied.
 - Mode detection is tolerant (`mode`, then `kind`, else `"tool"`); the scaffold uses a generic node id `COMPONENT_STEP` and leaves `NEXT_NODE_PLACEHOLDER` routing untouched for downstream tooling to rewire.
-- `greentic-component build` is the one-stop entrypoint: it infers `config_schema` from WIT (fallback to manifest or stub), scaffolds config flows, builds the wasm (`wasm32-wasip2`), and refreshes `artifacts`/`hashes` in `component.manifest.json`. Use `--no-flow`, `--no-infer-config`, or `--no-write-schema` to dial back parts of the pipeline.
+- `greentic-component build` is the one-stop entrypoint: it infers `config_schema` from WIT (fallback to manifest or stub), scaffolds config flows, builds the wasm (`wasm32-wasip2`), and refreshes `artifacts`/`hashes` in `component.manifest.json`. Use `--no-flow`, `--no-infer-config`, or `--no-write-schema` to dial back parts of the pipeline. Override the cargo binary via `--cargo /path/to/cargo` (or `CARGO=/path/to/cargo`) if your PATH differs from the CLI’s environment.
 - Templates default to the `greentic:component/component@0.5.0` world and expose a `@config` record in WIT so config_schema/flows can be inferred automatically. `supports` in the manifest accepts `messaging`, `event`, `component_config`, `job`, or `http` depending on your surface.
 
 ## Next steps
