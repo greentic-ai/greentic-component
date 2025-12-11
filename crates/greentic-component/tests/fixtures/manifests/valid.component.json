@@ -4,7 +4,7 @@
   "version": "0.3.0",
   "world": "root:root/root",
   "describe_export": "describe",
-  "supports": ["messaging", "events"],
+  "supports": ["messaging", "event"],
   "profiles": {
     "default": "stateless",
     "supported": ["stateless", "cached"]

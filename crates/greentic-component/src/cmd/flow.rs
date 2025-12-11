@@ -10,7 +10,11 @@ use clap::{Args, Subcommand};
 use component_manifest::validate_config_schema;
 use serde::Serialize;
 use serde_json::Value as JsonValue;
-use serde_yaml::{Mapping, Value as YamlValue};
+use serde_yaml_bw::{Mapping, Sequence as YamlSequence, Value as YamlValue};
+
+use crate::config::{
+    ConfigInferenceOptions, ConfigOutcome, load_manifest_with_schema, resolve_manifest_path,
+};
 
 const DEFAULT_MANIFEST: &str = "component.manifest.json";
 const DEFAULT_NODE_ID: &str = "COMPONENT_STEP";
@@ -30,40 +34,100 @@ pub struct FlowScaffoldArgs {
     /// Overwrite existing flows without prompting
     #[arg(long = "force")]
     pub force: bool,
+    /// Skip config inference; fail if config_schema is missing
+    #[arg(long = "no-infer-config")]
+    pub no_infer_config: bool,
+    /// Do not write inferred config_schema back to the manifest
+    #[arg(long = "no-write-schema")]
+    pub no_write_schema: bool,
+    /// Overwrite existing config_schema with inferred schema
+    #[arg(long = "force-write-schema")]
+    pub force_write_schema: bool,
+    /// Skip schema validation
+    #[arg(long = "no-validate")]
+    pub no_validate: bool,
 }
 
 pub fn run(command: FlowCommand) -> Result<()> {
     match command {
-        FlowCommand::Scaffold(args) => scaffold(args),
+        FlowCommand::Scaffold(args) => {
+            scaffold(args)?;
+            Ok(())
+        }
     }
 }
 
-fn scaffold(args: FlowScaffoldArgs) -> Result<()> {
+#[derive(Debug, Clone, Copy, Default, Serialize)]
+pub struct FlowScaffoldResult {
+    pub default_written: bool,
+    pub custom_written: bool,
+}
+
+pub fn scaffold(args: FlowScaffoldArgs) -> Result<FlowScaffoldResult> {
     let manifest_path = resolve_manifest_path(&args.manifest);
+    let inference_opts = ConfigInferenceOptions {
+        allow_infer: !args.no_infer_config,
+        write_schema: !args.no_write_schema,
+        force_write_schema: args.force_write_schema,
+        validate: !args.no_validate,
+    };
+    let config = load_manifest_with_schema(&manifest_path, &inference_opts)?;
+    let result = scaffold_with_manifest(&config, args.force)?;
+    if !args.no_write_schema && config.schema_written {
+        println!(
+            "Updated {} with inferred config_schema ({:?})",
+            manifest_path.display(),
+            config.source
+        );
+    }
+    if result.default_written {
+        println!(
+            "Wrote {}",
+            manifest_path
+                .parent()
+                .unwrap()
+                .join("flows/default.ygtc")
+                .display()
+        );
+    }
+    if result.custom_written {
+        println!(
+            "Wrote {}",
+            manifest_path
+                .parent()
+                .unwrap()
+                .join("flows/custom.ygtc")
+                .display()
+        );
+    }
+    if !result.default_written && !result.custom_written {
+        println!("No flows written (existing files kept).");
+    }
+    Ok(result)
+}
+
+pub fn scaffold_with_manifest(config: &ConfigOutcome, force: bool) -> Result<FlowScaffoldResult> {
+    let manifest_path = &config.manifest_path;
     let manifest_dir = manifest_path
         .parent()
         .ok_or_else(|| anyhow!("manifest path has no parent: {}", manifest_path.display()))?;
-    let manifest_raw = fs::read_to_string(&manifest_path)
-        .with_context(|| format!("failed to read {}", manifest_path.display()))?;
-    let manifest_json: JsonValue = serde_json::from_str(&manifest_raw)
-        .with_context(|| format!("failed to parse {}", manifest_path.display()))?;
 
-    let component_id = manifest_json
+    let component_id = config
+        .manifest
         .get("id")
         .and_then(|value| value.as_str())
         .ok_or_else(|| anyhow!("component.manifest.json must contain a string `id` field"))?;
-    let mode = manifest_json
+    let mode = config
+        .manifest
         .get("mode")
-        .or_else(|| manifest_json.get("kind"))
+        .or_else(|| config.manifest.get("kind"))
         .and_then(|value| value.as_str())
         .unwrap_or("tool");
-    let config_schema = manifest_json
-        .get("config_schema")
-        .ok_or_else(|| anyhow!("component.manifest.json is missing `config_schema`"))?;
-    validate_config_schema(config_schema)
+
+    validate_config_schema(&config.schema)
         .map_err(|err| anyhow!("config_schema failed validation: {err}"))?;
 
-    let fields = collect_fields(config_schema)?;
+    let fields = collect_fields(&config.schema)?;
 
     let flows_dir = manifest_dir.join("flows");
     fs::create_dir_all(&flows_dir).with_context(|| {
@@ -75,32 +139,16 @@ fn scaffold(args: FlowScaffoldArgs) -> Result<()> {
 
     let default_flow = render_default_flow(component_id, mode, &fields)?;
     let default_path = flows_dir.join("default.ygtc");
-    let default_written = write_flow_file(&default_path, &default_flow, args.force)?;
+    let default_written = write_flow_file(&default_path, &default_flow, force)?;
 
     let custom_flow = render_custom_flow(component_id, mode, &fields)?;
     let custom_path = flows_dir.join("custom.ygtc");
-    let custom_written = write_flow_file(&custom_path, &custom_flow, args.force)?;
+    let custom_written = write_flow_file(&custom_path, &custom_flow, force)?;
 
-    if !default_written && !custom_written {
-        println!("No flows written (existing files kept).");
-    } else {
-        if default_written {
-            println!("Wrote {}", default_path.display());
-        }
-        if custom_written {
-            println!("Wrote {}", custom_path.display());
-        }
-    }
-
-    Ok(())
-}
-
-fn resolve_manifest_path(path: &Path) -> PathBuf {
-    if path.is_dir() {
-        path.join(DEFAULT_MANIFEST)
-    } else {
-        path.to_path_buf()
-    }
+    Ok(FlowScaffoldResult {
+        default_written,
+        custom_written,
+    })
 }
 
 fn write_flow_file(path: &Path, contents: &str, force: bool) -> Result<bool> {
@@ -109,6 +157,21 @@ fn write_flow_file(path: &Path, contents: &str, force: bool) -> Result<bool> {
     }
     fs::write(path, contents).with_context(|| format!("failed to write {}", path.display()))?;
     Ok(true)
+}
+
+fn yaml_string<S: Into<String>>(s: S) -> YamlValue {
+    YamlValue::String(s.into(), None)
+}
+
+fn yaml_null() -> YamlValue {
+    YamlValue::Null(None)
+}
+
+fn yaml_seq(items: Vec<YamlValue>) -> YamlValue {
+    YamlValue::Sequence(YamlSequence {
+        anchor: None,
+        elements: items,
+    })
 }
 
 fn confirm_overwrite(path: &Path, force: bool) -> Result<bool> {
@@ -311,10 +374,7 @@ fn render_default_flow(component_id: &str, mode: &str, fields: &[ConfigField]) -
 
     let emit_template = render_emit_template(component_id, mode, field_values);
     let mut emit_node = Mapping::new();
-    emit_node.insert(
-        YamlValue::String("template".into()),
-        YamlValue::String(emit_template),
-    );
+    emit_node.insert(yaml_string("template"), yaml_string(emit_template));
 
     let mut nodes = BTreeMap::new();
     nodes.insert("emit_config".to_string(), YamlValue::Mapping(emit_node));
@@ -338,57 +398,42 @@ fn render_custom_flow(component_id: &str, mode: &str, fields: &[ConfigField]) ->
     let mut question_fields = Vec::new();
     for field in &visible_fields {
         let mut mapping = Mapping::new();
+        mapping.insert(yaml_string("id"), yaml_string(field.name.clone()));
+        mapping.insert(yaml_string("prompt"), yaml_string(field.prompt()));
         mapping.insert(
-            YamlValue::String("id".into()),
-            YamlValue::String(field.name.clone()),
-        );
-        mapping.insert(
-            YamlValue::String("prompt".into()),
-            YamlValue::String(field.prompt()),
-        );
-        mapping.insert(
-            YamlValue::String("type".into()),
-            YamlValue::String(field.question_type().to_string()),
+            yaml_string("type"),
+            yaml_string(field.question_type().to_string()),
         );
         if !field.enum_options.is_empty() {
             let options = field
                 .enum_options
                 .iter()
-                .map(|value| YamlValue::String(value.clone()))
+                .map(|value| yaml_string(value.clone()))
                 .collect::<Vec<_>>();
-            mapping.insert(
-                YamlValue::String("options".into()),
-                YamlValue::Sequence(options),
-            );
+            mapping.insert(yaml_string("options"), yaml_seq(options));
         }
         if let Some(default_value) = &field.default_value {
             mapping.insert(
-                YamlValue::String("default".into()),
-                serde_yaml::to_value(default_value.clone()).unwrap_or(YamlValue::Null),
+                yaml_string("default"),
+                serde_yaml_bw::to_value(default_value.clone()).unwrap_or_else(|_| yaml_null()),
             );
         }
         question_fields.push(YamlValue::Mapping(mapping));
     }
 
     let mut questions_inner = Mapping::new();
-    questions_inner.insert(
-        YamlValue::String("fields".into()),
-        YamlValue::Sequence(question_fields),
-    );
+    questions_inner.insert(yaml_string("fields"), yaml_seq(question_fields));
 
     let mut ask_node = Mapping::new();
     ask_node.insert(
-        YamlValue::String("questions".into()),
+        yaml_string("questions"),
         YamlValue::Mapping(questions_inner),
     );
     ask_node.insert(
-        YamlValue::String("routing".into()),
-        YamlValue::Sequence(vec![{
+        yaml_string("routing"),
+        yaml_seq(vec![{
             let mut route = Mapping::new();
-            route.insert(
-                YamlValue::String("to".into()),
-                YamlValue::String("emit_config".into()),
-            );
+            route.insert(yaml_string("to"), yaml_string("emit_config"));
             YamlValue::Mapping(route)
         }]),
     );
@@ -406,10 +451,7 @@ fn render_custom_flow(component_id: &str, mode: &str, fields: &[ConfigField]) ->
         .collect::<Vec<_>>();
     let emit_template = render_emit_template(component_id, mode, emit_field_values);
     let mut emit_node = Mapping::new();
-    emit_node.insert(
-        YamlValue::String("template".into()),
-        YamlValue::String(emit_template),
-    );
+    emit_node.insert(yaml_string("template"), yaml_string(emit_template));
 
     let mut nodes = BTreeMap::new();
     nodes.insert("ask_config".to_string(), YamlValue::Mapping(ask_node));
@@ -485,7 +527,7 @@ struct FlowDocument {
 }
 
 fn flow_to_string(doc: &FlowDocument) -> Result<String> {
-    let mut yaml = serde_yaml::to_string(doc).context("failed to render YAML")?;
+    let mut yaml = serde_yaml_bw::to_string(doc).context("failed to render YAML")?;
     if yaml.starts_with("---\n") {
         yaml = yaml.replacen("---\n", "", 1);
     }

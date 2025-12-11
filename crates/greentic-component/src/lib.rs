@@ -3,6 +3,8 @@
 #[cfg(feature = "abi")]
 pub mod abi;
 pub mod capabilities;
+#[cfg(feature = "cli")]
+pub mod config;
 #[cfg(feature = "describe")]
 pub mod describe;
 pub mod error;

@@ -47,7 +47,7 @@
       "minItems": 1,
       "items": {
         "type": "string",
-        "enum": ["messaging", "events"]
+        "enum": ["messaging", "event", "component_config", "job", "http"]
       }
     },
     "profiles": {

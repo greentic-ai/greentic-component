@@ -1,9 +1,17 @@
-.PHONY: build test lint check
+.PHONY: build test lint check flows wasm
+
+BUILD_FLAGS ?=
 
 default: build
 
 build:
-	cargo build --target wasm32-wasip2
+	greentic-component build $(BUILD_FLAGS)
+
+flows:
+	greentic-component flow scaffold --force
+
+wasm:
+	cargo build --target wasm32-wasip2 --release
 
 check:
 	cargo check --target wasm32-wasip2

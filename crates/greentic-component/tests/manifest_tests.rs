@@ -23,7 +23,7 @@ fn round_trip_manifest_parse() {
     assert_eq!(manifest.describe_export.kind(), DescribeKind::Export);
     assert_eq!(
         manifest.supports,
-        vec![FlowKind::Messaging, FlowKind::Events]
+        vec![FlowKind::Messaging, FlowKind::Event]
     );
     assert_eq!(
         manifest.profiles.supported,

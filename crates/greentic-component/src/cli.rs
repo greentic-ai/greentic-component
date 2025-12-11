@@ -2,8 +2,8 @@ use anyhow::{Error, Result, bail};
 use clap::{Parser, Subcommand};
 
 use crate::cmd::{
-    self, doctor::DoctorArgs, flow::FlowCommand, hash::HashArgs, inspect::InspectArgs,
-    new::NewArgs, store::StoreCommand, templates::TemplatesArgs,
+    self, build::BuildArgs, doctor::DoctorArgs, flow::FlowCommand, hash::HashArgs,
+    inspect::InspectArgs, new::NewArgs, store::StoreCommand, templates::TemplatesArgs,
 };
 use crate::scaffold::engine::ScaffoldEngine;
 
@@ -33,6 +33,8 @@ enum Commands {
     Inspect(InspectArgs),
     /// Recompute manifest hashes
     Hash(HashArgs),
+    /// Build component wasm + scaffold config flows
+    Build(BuildArgs),
     /// Flow utilities (config flow scaffolding)
     #[command(subcommand)]
     Flow(FlowCommand),
@@ -60,6 +62,7 @@ pub fn main() -> Result<()> {
             Ok(())
         }
         Commands::Hash(args) => cmd::hash::run(args),
+        Commands::Build(args) => cmd::build::run(args),
         Commands::Flow(flow_cmd) => cmd::flow::run(flow_cmd),
         Commands::Store(store_cmd) => cmd::store::run(store_cmd),
     }

@@ -1,3 +1,4 @@
+pub mod build;
 pub mod doctor;
 pub mod flow;
 pub mod hash;

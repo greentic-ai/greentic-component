@@ -41,9 +41,14 @@ fn scaffold_rust_wasi_template() {
 
     assert_snapshot!("scaffold_cargo_toml", normalize_text(cargo.trim()));
     assert_snapshot!("scaffold_manifest", normalize_text(manifest.trim()));
+    let wit_dir = component_dir.join("wit");
     assert!(
-        !component_dir.join("wit").exists(),
-        "template should not emit raw WIT files"
+        wit_dir.exists(),
+        "template should emit WIT files for config inference"
+    );
+    assert!(
+        wit_dir.join("world.wit").exists(),
+        "world.wit should be scaffolded"
     );
 
     assert!(

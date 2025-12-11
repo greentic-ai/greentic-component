@@ -28,10 +28,11 @@
   **Key functionality:** Mirrors CI locally; any push to `master` (or manual dispatch) runs build/tests, cargo publish (already-exists errors tolerated), binstall artifact builds, and creates/updates GitHub Releases using the plain version tag (e.g., `v0.4.10`). Auto-tag still bumps versions.
 
 ## 3. Work In Progress, TODOs, and Stubs
-- None noted.
+- Templates and docs now target `greentic:component/component@0.5.0` and accept expanded `supports` (`messaging`, `event`, `component_config`, `job`, `http`); keep downstream references in sync if you bump interfaces again.
+- Config inference + flow scaffolding is integrated into `greentic-component build`; manifests are updated with inferred `config_schema` when missing.
 
 ## 4. Broken, Failing, or Conflicting Areas
-- Workspace tests (`cargo test --workspace --locked`) pass locally; no failing areas observed.
+- None currently; `ci/local_check.sh` passes aside from skipped network-dependent steps when crates.io is unreachable.
 
 ## 5. Notes for Future Work
-- None noted.
+- If crates.io remains unreachable, publishing/packaging steps will continue to skip/fail; rerun when network is available.
