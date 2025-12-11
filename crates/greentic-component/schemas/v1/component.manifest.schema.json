@@ -10,6 +10,7 @@
     "version",
     "world",
     "describe_export",
+    "config_schema",
     "supports",
     "profiles",
     "capabilities",
@@ -41,6 +42,17 @@
     "describe_export": {
       "type": "string",
       "minLength": 1
+    },
+    "config_schema": {
+      "type": "object",
+      "description": "JSON Schema describing component configuration (inferred from WIT or provided manually)",
+      "properties": {
+        "$schema": { "type": "string" },
+        "type": { "const": "object" },
+        "properties": { "type": "object" },
+        "required": { "type": "array", "items": { "type": "string" } },
+        "additionalProperties": { "type": "boolean" }
+      }
     },
     "supports": {
       "type": "array",
