@@ -8,7 +8,7 @@ build:
 	greentic-component build $(BUILD_FLAGS)
 
 flows:
-	greentic-component flow scaffold --force
+	greentic-component flow update
 
 wasm:
 	cargo build --target wasm32-wasip2 --release

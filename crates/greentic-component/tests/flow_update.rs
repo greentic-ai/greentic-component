@@ -4,12 +4,10 @@ use std::fs;
 
 use assert_cmd::cargo::cargo_bin_cmd;
 use assert_fs::TempDir;
-use predicates::str::contains;
 use serde_json::Value as JsonValue;
-use serde_yaml_bw::Value as YamlValue;
 
 #[test]
-fn scaffolds_config_flows_from_manifest_schema() {
+fn updates_dev_flows_from_manifest_schema() {
     let temp = TempDir::new().expect("tempdir");
     let manifest = r#"
 {
@@ -45,45 +43,37 @@ fn scaffolds_config_flows_from_manifest_schema() {
     fs::write(temp.path().join("component.manifest.json"), manifest).expect("write manifest");
 
     let mut cmd = cargo_bin_cmd!("greentic-component");
-    cmd.current_dir(temp.path()).arg("flow").arg("scaffold");
+    cmd.current_dir(temp.path()).arg("flow").arg("update");
     cmd.assert().success();
 
-    let default_flow =
-        fs::read_to_string(temp.path().join("flows/default.ygtc")).expect("default flow");
-    let custom_flow =
-        fs::read_to_string(temp.path().join("flows/custom.ygtc")).expect("custom flow");
+    let manifest_after =
+        fs::read_to_string(temp.path().join("component.manifest.json")).expect("manifest");
+    let value: JsonValue = serde_json::from_str(&manifest_after).expect("json manifest");
 
-    let default_yaml: YamlValue =
-        serde_yaml_bw::from_str(&default_flow).expect("default flow parses as yaml");
-    assert_eq!(
-        default_yaml["id"],
-        YamlValue::String("component-demo.default".into(), None)
-    );
-    assert_eq!(
-        default_yaml["kind"],
-        YamlValue::String("component-config".into(), None)
-    );
-    let default_template = default_yaml["nodes"]["emit_config"]["template"]
+    let default_flow = &value["dev_flows"]["default"];
+    assert_eq!(default_flow["format"], "flow-ir-json");
+    let default_graph = &default_flow["graph"];
+    assert_eq!(default_graph["id"], "component-demo.default");
+    assert_eq!(default_graph["kind"], "component-config");
+    let default_template = default_graph["nodes"]["emit_config"]["template"]
         .as_str()
-        .expect("template string");
+        .expect("default template");
     let default_payload: JsonValue =
-        serde_json::from_str(default_template).expect("default template to be valid json");
+        serde_json::from_str(default_template).expect("default template json");
     assert_eq!(default_payload["node"]["qa"]["component"], "component-demo");
     assert_eq!(default_payload["node"]["qa"]["title"], "Hello world");
     assert_eq!(default_payload["node"]["qa"]["threshold"], 0.42);
     assert!(
         default_payload["node"]["qa"].get("kind").is_none(),
-        "optional fields should not appear in default flow"
+        "optional fields should be omitted in default flow"
     );
 
-    let custom_yaml: YamlValue =
-        serde_yaml_bw::from_str(&custom_flow).expect("custom flow parses as yaml");
-    assert_eq!(
-        custom_yaml["id"],
-        YamlValue::String("component-demo.custom".into(), None)
-    );
-    let question_fields = custom_yaml["nodes"]["ask_config"]["questions"]["fields"]
-        .as_sequence()
+    let custom_flow = &value["dev_flows"]["custom"];
+    assert_eq!(custom_flow["format"], "flow-ir-json");
+    let custom_graph = &custom_flow["graph"];
+    assert_eq!(custom_graph["id"], "component-demo.custom");
+    let question_fields = custom_graph["nodes"]["ask_config"]["questions"]["fields"]
+        .as_array()
         .expect("question fields");
     let field_ids: Vec<String> = question_fields
         .iter()
@@ -92,9 +82,9 @@ fn scaffolds_config_flows_from_manifest_schema() {
     assert_eq!(field_ids, vec!["kind", "threshold", "title"]);
     let kind_field = question_fields
         .iter()
-        .find(|entry| entry["id"] == YamlValue::String("kind".into(), None))
+        .find(|entry| entry["id"] == "kind")
         .expect("kind field");
-    let options = kind_field["options"].as_sequence().expect("enum options");
+    let options = kind_field["options"].as_array().expect("enum options");
     assert_eq!(
         options
             .iter()
@@ -102,7 +92,7 @@ fn scaffolds_config_flows_from_manifest_schema() {
             .collect::<Vec<_>>(),
         vec!["Text", "Number"]
     );
-    let custom_template = custom_yaml["nodes"]["emit_config"]["template"]
+    let custom_template = custom_graph["nodes"]["emit_config"]["template"]
         .as_str()
         .expect("template string");
     assert!(
@@ -124,19 +114,22 @@ fn scaffolds_config_flows_from_manifest_schema() {
 }
 
 #[test]
-fn requires_force_for_existing_flows_in_non_interactive_mode() {
+fn flow_update_is_idempotent() {
     let temp = TempDir::new().expect("tempdir");
     let manifest = r#"{"id":"component-demo","config_schema":{"type":"object","properties":{},"required":[]}}"#;
     fs::write(temp.path().join("component.manifest.json"), manifest).expect("write manifest");
-    let flows = temp.path().join("flows");
-    fs::create_dir_all(&flows).expect("create flows dir");
-    fs::write(flows.join("default.ygtc"), "existing").expect("default");
 
-    let mut cmd = cargo_bin_cmd!("greentic-component");
-    cmd.current_dir(temp.path()).arg("flow").arg("scaffold");
-    cmd.assert()
-        .failure()
-        .stderr(contains("already exists; rerun with --force"));
+    let mut first = cargo_bin_cmd!("greentic-component");
+    first.current_dir(temp.path()).arg("flow").arg("update");
+    first.assert().success();
+    let initial = fs::read_to_string(temp.path().join("component.manifest.json")).unwrap();
+
+    let mut second = cargo_bin_cmd!("greentic-component");
+    second.current_dir(temp.path()).arg("flow").arg("update");
+    second.assert().success();
+    let after = fs::read_to_string(temp.path().join("component.manifest.json")).unwrap();
+
+    assert_eq!(initial, after, "running update twice should be stable");
 }
 
 #[test]
@@ -167,19 +160,18 @@ world component {
     .expect("write wit");
 
     let mut cmd = cargo_bin_cmd!("greentic-component");
-    cmd.current_dir(temp.path()).arg("flow").arg("scaffold");
+    cmd.current_dir(temp.path()).arg("flow").arg("update");
     cmd.assert().success();
 
-    let default_flow =
-        fs::read_to_string(temp.path().join("flows/default.ygtc")).expect("default flow");
-    assert!(
-        default_flow.contains("component-demo.default"),
-        "default flow should be generated"
-    );
     let manifest_after =
         fs::read_to_string(temp.path().join("component.manifest.json")).expect("manifest");
+    let manifest_json: JsonValue = serde_json::from_str(&manifest_after).unwrap();
     assert!(
-        manifest_after.contains("\"config_schema\""),
+        manifest_json.get("config_schema").is_some(),
         "inferred schema should be written by default"
+    );
+    assert!(
+        manifest_json["dev_flows"].get("default").is_some(),
+        "default dev flow should be generated"
     );
 }

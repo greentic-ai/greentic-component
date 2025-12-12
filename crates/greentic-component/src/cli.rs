@@ -33,9 +33,9 @@ enum Commands {
     Inspect(InspectArgs),
     /// Recompute manifest hashes
     Hash(HashArgs),
-    /// Build component wasm + scaffold config flows
+    /// Build component wasm + update config flows
     Build(BuildArgs),
-    /// Flow utilities (config flow scaffolding)
+    /// Flow utilities (config flow regeneration)
     #[command(subcommand)]
     Flow(FlowCommand),
     /// Interact with the component store

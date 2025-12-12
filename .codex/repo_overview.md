@@ -29,7 +29,7 @@
 
 ## 3. Work In Progress, TODOs, and Stubs
 - Templates and docs now target `greentic:component/component@0.5.0` and accept expanded `supports` (`messaging`, `event`, `component_config`, `job`, `http`); keep downstream references in sync if you bump interfaces again.
-- Config inference + flow scaffolding is integrated into `greentic-component build`; manifests are updated with inferred `config_schema` when missing.
+- Config inference + flow regeneration is integrated into `greentic-component build`; flows are embedded into `dev_flows` (FlowIR JSON) and manifests are updated with inferred `config_schema` when missing.
 
 ## 4. Broken, Failing, or Conflicting Areas
 - None currently; `ci/local_check.sh` passes aside from skipped network-dependent steps when crates.io is unreachable.

@@ -2,15 +2,13 @@
 
 use std::collections::{BTreeMap, HashSet};
 use std::fs;
-use std::io::{self, IsTerminal, Write};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Context, Result, anyhow};
 use clap::{Args, Subcommand};
 use component_manifest::validate_config_schema;
 use serde::Serialize;
-use serde_json::Value as JsonValue;
-use serde_yaml_bw::{Mapping, Sequence as YamlSequence, Value as YamlValue};
+use serde_json::{Map as JsonMap, Value as JsonValue, json};
 
 use crate::config::{
     ConfigInferenceOptions, ConfigOutcome, load_manifest_with_schema, resolve_manifest_path,
@@ -22,18 +20,15 @@ const DEFAULT_KIND: &str = "component-config";
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum FlowCommand {
-    /// Scaffold config flows (default/custom) from component.manifest.json
-    Scaffold(FlowScaffoldArgs),
+    /// Regenerate config flows and embed them into component.manifest.json
+    Update(FlowUpdateArgs),
 }
 
 #[derive(Args, Debug, Clone)]
-pub struct FlowScaffoldArgs {
+pub struct FlowUpdateArgs {
     /// Path to component.manifest.json (or directory containing it)
     #[arg(long = "manifest", value_name = "PATH", default_value = DEFAULT_MANIFEST)]
     pub manifest: PathBuf,
-    /// Overwrite existing flows without prompting
-    #[arg(long = "force")]
-    pub force: bool,
     /// Skip config inference; fail if config_schema is missing
     #[arg(long = "no-infer-config")]
     pub no_infer_config: bool,
@@ -50,20 +45,26 @@ pub struct FlowScaffoldArgs {
 
 pub fn run(command: FlowCommand) -> Result<()> {
     match command {
-        FlowCommand::Scaffold(args) => {
-            scaffold(args)?;
+        FlowCommand::Update(args) => {
+            update(args)?;
             Ok(())
         }
     }
 }
 
 #[derive(Debug, Clone, Copy, Default, Serialize)]
-pub struct FlowScaffoldResult {
-    pub default_written: bool,
-    pub custom_written: bool,
+pub struct FlowUpdateResult {
+    pub default_updated: bool,
+    pub custom_updated: bool,
 }
 
-pub fn scaffold(args: FlowScaffoldArgs) -> Result<FlowScaffoldResult> {
+#[derive(Debug)]
+pub struct FlowUpdateOutcome {
+    pub manifest: JsonValue,
+    pub result: FlowUpdateResult,
+}
+
+pub fn update(args: FlowUpdateArgs) -> Result<FlowUpdateResult> {
     let manifest_path = resolve_manifest_path(&args.manifest);
     let inference_opts = ConfigInferenceOptions {
         allow_infer: !args.no_infer_config,
@@ -72,46 +73,37 @@ pub fn scaffold(args: FlowScaffoldArgs) -> Result<FlowScaffoldResult> {
         validate: !args.no_validate,
     };
     let config = load_manifest_with_schema(&manifest_path, &inference_opts)?;
-    let result = scaffold_with_manifest(&config, args.force)?;
-    if !args.no_write_schema && config.schema_written {
+    let FlowUpdateOutcome {
+        mut manifest,
+        result,
+    } = update_with_manifest(&config)?;
+
+    if !config.persist_schema {
+        manifest
+            .as_object_mut()
+            .map(|obj| obj.remove("config_schema"));
+    }
+
+    write_manifest(&manifest_path, &manifest)?;
+
+    if config.schema_written && config.persist_schema {
         println!(
             "Updated {} with inferred config_schema ({:?})",
             manifest_path.display(),
             config.source
         );
     }
-    if result.default_written {
-        println!(
-            "Wrote {}",
-            manifest_path
-                .parent()
-                .unwrap()
-                .join("flows/default.ygtc")
-                .display()
-        );
-    }
-    if result.custom_written {
-        println!(
-            "Wrote {}",
-            manifest_path
-                .parent()
-                .unwrap()
-                .join("flows/custom.ygtc")
-                .display()
-        );
-    }
-    if !result.default_written && !result.custom_written {
-        println!("No flows written (existing files kept).");
-    }
+    println!(
+        "Updated dev_flows (default: {}, custom: {}) in {}",
+        result.default_updated,
+        result.custom_updated,
+        manifest_path.display()
+    );
+
     Ok(result)
 }
 
-pub fn scaffold_with_manifest(config: &ConfigOutcome, force: bool) -> Result<FlowScaffoldResult> {
-    let manifest_path = &config.manifest_path;
-    let manifest_dir = manifest_path
-        .parent()
-        .ok_or_else(|| anyhow!("manifest path has no parent: {}", manifest_path.display()))?;
-
+pub fn update_with_manifest(config: &ConfigOutcome) -> Result<FlowUpdateOutcome> {
     let component_id = config
         .manifest
         .get("id")
@@ -129,73 +121,50 @@ pub fn scaffold_with_manifest(config: &ConfigOutcome, force: bool) -> Result<Flo
 
     let fields = collect_fields(&config.schema)?;
 
-    let flows_dir = manifest_dir.join("flows");
-    fs::create_dir_all(&flows_dir).with_context(|| {
-        format!(
-            "failed to create flows directory at {}",
-            flows_dir.display()
-        )
-    })?;
-
     let default_flow = render_default_flow(component_id, mode, &fields)?;
-    let default_path = flows_dir.join("default.ygtc");
-    let default_written = write_flow_file(&default_path, &default_flow, force)?;
-
     let custom_flow = render_custom_flow(component_id, mode, &fields)?;
-    let custom_path = flows_dir.join("custom.ygtc");
-    let custom_written = write_flow_file(&custom_path, &custom_flow, force)?;
 
-    Ok(FlowScaffoldResult {
-        default_written,
-        custom_written,
+    let mut manifest = config.manifest.clone();
+    let manifest_obj = manifest
+        .as_object_mut()
+        .ok_or_else(|| anyhow!("manifest must be a JSON object"))?;
+    let dev_flows_entry = manifest_obj
+        .entry("dev_flows")
+        .or_insert_with(|| JsonValue::Object(JsonMap::new()));
+    let dev_flows = dev_flows_entry
+        .as_object_mut()
+        .ok_or_else(|| anyhow!("dev_flows must be an object"))?;
+
+    let mut merged = BTreeMap::new();
+    for (key, value) in dev_flows.iter() {
+        if key != "custom" && key != "default" {
+            merged.insert(key.clone(), value.clone());
+        }
+    }
+    merged.insert(
+        "custom".to_string(),
+        json!({
+            "format": "flow-ir-json",
+            "graph": custom_flow,
+        }),
+    );
+    merged.insert(
+        "default".to_string(),
+        json!({
+            "format": "flow-ir-json",
+            "graph": default_flow,
+        }),
+    );
+
+    *dev_flows = merged.into_iter().collect();
+
+    Ok(FlowUpdateOutcome {
+        manifest,
+        result: FlowUpdateResult {
+            default_updated: true,
+            custom_updated: true,
+        },
     })
-}
-
-fn write_flow_file(path: &Path, contents: &str, force: bool) -> Result<bool> {
-    if path.exists() && !confirm_overwrite(path, force)? {
-        return Ok(false);
-    }
-    fs::write(path, contents).with_context(|| format!("failed to write {}", path.display()))?;
-    Ok(true)
-}
-
-fn yaml_string<S: Into<String>>(s: S) -> YamlValue {
-    YamlValue::String(s.into(), None)
-}
-
-fn yaml_null() -> YamlValue {
-    YamlValue::Null(None)
-}
-
-fn yaml_seq(items: Vec<YamlValue>) -> YamlValue {
-    YamlValue::Sequence(YamlSequence {
-        anchor: None,
-        elements: items,
-    })
-}
-
-fn confirm_overwrite(path: &Path, force: bool) -> Result<bool> {
-    if force {
-        return Ok(true);
-    }
-    if !path.exists() {
-        return Ok(true);
-    }
-    if io::stdin().is_terminal() {
-        print!("{} already exists. Overwrite? [y/N]: ", path.display());
-        io::stdout().flush().ok();
-        let mut input = String::new();
-        io::stdin()
-            .read_line(&mut input)
-            .context("failed to read response")?;
-        let normalized = input.trim().to_ascii_lowercase();
-        Ok(normalized == "y" || normalized == "yes")
-    } else {
-        bail!(
-            "{} already exists; rerun with --force to overwrite",
-            path.display()
-        );
-    }
 }
 
 fn collect_fields(config_schema: &JsonValue) -> Result<Vec<ConfigField>> {
@@ -353,7 +322,11 @@ fn humanize(raw: &str) -> String {
     result
 }
 
-fn render_default_flow(component_id: &str, mode: &str, fields: &[ConfigField]) -> Result<String> {
+fn render_default_flow(
+    component_id: &str,
+    mode: &str,
+    fields: &[ConfigField],
+) -> Result<JsonValue> {
     let required_with_defaults = fields
         .iter()
         .filter(|field| field.required && field.default_value.is_some())
@@ -373,11 +346,13 @@ fn render_default_flow(component_id: &str, mode: &str, fields: &[ConfigField]) -
         .collect::<Vec<_>>();
 
     let emit_template = render_emit_template(component_id, mode, field_values);
-    let mut emit_node = Mapping::new();
-    emit_node.insert(yaml_string("template"), yaml_string(emit_template));
-
     let mut nodes = BTreeMap::new();
-    nodes.insert("emit_config".to_string(), YamlValue::Mapping(emit_node));
+    nodes.insert(
+        "emit_config".to_string(),
+        json!({
+            "template": emit_template,
+        }),
+    );
 
     let doc = FlowDocument {
         id: format!("{component_id}.default"),
@@ -386,10 +361,10 @@ fn render_default_flow(component_id: &str, mode: &str, fields: &[ConfigField]) -
         nodes,
     };
 
-    flow_to_string(&doc)
+    flow_to_value(&doc)
 }
 
-fn render_custom_flow(component_id: &str, mode: &str, fields: &[ConfigField]) -> Result<String> {
+fn render_custom_flow(component_id: &str, mode: &str, fields: &[ConfigField]) -> Result<JsonValue> {
     let visible_fields = fields
         .iter()
         .filter(|field| !field.hidden)
@@ -397,45 +372,39 @@ fn render_custom_flow(component_id: &str, mode: &str, fields: &[ConfigField]) ->
 
     let mut question_fields = Vec::new();
     for field in &visible_fields {
-        let mut mapping = Mapping::new();
-        mapping.insert(yaml_string("id"), yaml_string(field.name.clone()));
-        mapping.insert(yaml_string("prompt"), yaml_string(field.prompt()));
+        let mut mapping = JsonMap::new();
+        mapping.insert("id".into(), JsonValue::String(field.name.clone()));
+        mapping.insert("prompt".into(), JsonValue::String(field.prompt()));
         mapping.insert(
-            yaml_string("type"),
-            yaml_string(field.question_type().to_string()),
+            "type".into(),
+            JsonValue::String(field.question_type().to_string()),
         );
         if !field.enum_options.is_empty() {
-            let options = field
-                .enum_options
-                .iter()
-                .map(|value| yaml_string(value.clone()))
-                .collect::<Vec<_>>();
-            mapping.insert(yaml_string("options"), yaml_seq(options));
-        }
-        if let Some(default_value) = &field.default_value {
             mapping.insert(
-                yaml_string("default"),
-                serde_yaml_bw::to_value(default_value.clone()).unwrap_or_else(|_| yaml_null()),
+                "options".into(),
+                JsonValue::Array(
+                    field
+                        .enum_options
+                        .iter()
+                        .map(|value| JsonValue::String(value.clone()))
+                        .collect(),
+                ),
             );
         }
-        question_fields.push(YamlValue::Mapping(mapping));
+        if let Some(default_value) = &field.default_value {
+            mapping.insert("default".into(), default_value.clone());
+        }
+        question_fields.push(JsonValue::Object(mapping));
     }
 
-    let mut questions_inner = Mapping::new();
-    questions_inner.insert(yaml_string("fields"), yaml_seq(question_fields));
+    let mut questions_inner = JsonMap::new();
+    questions_inner.insert("fields".into(), JsonValue::Array(question_fields));
 
-    let mut ask_node = Mapping::new();
+    let mut ask_node = JsonMap::new();
+    ask_node.insert("questions".into(), JsonValue::Object(questions_inner));
     ask_node.insert(
-        yaml_string("questions"),
-        YamlValue::Mapping(questions_inner),
-    );
-    ask_node.insert(
-        yaml_string("routing"),
-        yaml_seq(vec![{
-            let mut route = Mapping::new();
-            route.insert(yaml_string("to"), yaml_string("emit_config"));
-            YamlValue::Mapping(route)
-        }]),
+        "routing".into(),
+        JsonValue::Array(vec![json!({ "to": "emit_config" })]),
     );
 
     let emit_field_values = visible_fields
@@ -450,12 +419,13 @@ fn render_custom_flow(component_id: &str, mode: &str, fields: &[ConfigField]) ->
         })
         .collect::<Vec<_>>();
     let emit_template = render_emit_template(component_id, mode, emit_field_values);
-    let mut emit_node = Mapping::new();
-    emit_node.insert(yaml_string("template"), yaml_string(emit_template));
 
     let mut nodes = BTreeMap::new();
-    nodes.insert("ask_config".to_string(), YamlValue::Mapping(ask_node));
-    nodes.insert("emit_config".to_string(), YamlValue::Mapping(emit_node));
+    nodes.insert("ask_config".to_string(), JsonValue::Object(ask_node));
+    nodes.insert(
+        "emit_config".to_string(),
+        json!({ "template": emit_template }),
+    );
 
     let doc = FlowDocument {
         id: format!("{component_id}.custom"),
@@ -464,7 +434,7 @@ fn render_custom_flow(component_id: &str, mode: &str, fields: &[ConfigField]) ->
         nodes,
     };
 
-    flow_to_string(&doc)
+    flow_to_value(&doc)
 }
 
 fn render_emit_template(component_id: &str, mode: &str, fields: Vec<EmitField>) -> String {
@@ -523,16 +493,15 @@ struct FlowDocument {
     id: String,
     kind: String,
     description: String,
-    nodes: BTreeMap<String, YamlValue>,
+    nodes: BTreeMap<String, JsonValue>,
 }
 
-fn flow_to_string(doc: &FlowDocument) -> Result<String> {
-    let mut yaml = serde_yaml_bw::to_string(doc).context("failed to render YAML")?;
-    if yaml.starts_with("---\n") {
-        yaml = yaml.replacen("---\n", "", 1);
-    }
-    if !yaml.ends_with('\n') {
-        yaml.push('\n');
-    }
-    Ok(yaml)
+fn flow_to_value(doc: &FlowDocument) -> Result<JsonValue> {
+    serde_json::to_value(doc).context("failed to render flow to JSON")
+}
+
+fn write_manifest(manifest_path: &PathBuf, manifest: &JsonValue) -> Result<()> {
+    let formatted = serde_json::to_string_pretty(manifest)?;
+    fs::write(manifest_path, formatted + "\n")
+        .with_context(|| format!("failed to write {}", manifest_path.display()))
 }

@@ -8,7 +8,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use clap::Args;
 use serde_json::Value as JsonValue;
 
-use crate::cmd::flow::{FlowScaffoldResult, scaffold_with_manifest};
+use crate::cmd::flow::{FlowUpdateResult, update_with_manifest};
 use crate::config::{
     ConfigInferenceOptions, ConfigSchemaSource, load_manifest_with_schema, resolve_manifest_path,
 };
@@ -24,10 +24,7 @@ pub struct BuildArgs {
     /// Path to the cargo binary (fallback: $CARGO, then `cargo` on PATH)
     #[arg(long = "cargo", value_name = "PATH")]
     pub cargo_bin: Option<PathBuf>,
-    /// Overwrite existing flows without prompting
-    #[arg(long = "force")]
-    pub force: bool,
-    /// Skip flow scaffolding
+    /// Skip flow regeneration
     #[arg(long = "no-flow")]
     pub no_flow: bool,
     /// Skip config inference; fail if config_schema is missing
@@ -55,7 +52,7 @@ struct BuildSummary {
     config_source: ConfigSchemaSource,
     schema_written: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    flows: Option<FlowScaffoldResult>,
+    flows: Option<FlowUpdateResult>,
 }
 
 pub fn run(args: BuildArgs) -> Result<()> {
@@ -87,16 +84,19 @@ pub fn run(args: BuildArgs) -> Result<()> {
     );
 
     let config = load_manifest_with_schema(&manifest_path, &inference_opts)?;
-    let flow_result = if args.no_flow {
+    let flow_outcome = if args.no_flow {
         None
     } else {
-        Some(scaffold_with_manifest(&config, args.force)?)
+        Some(update_with_manifest(&config)?)
     };
 
     let manifest_dir = manifest_path.parent().unwrap_or_else(|| Path::new("."));
     build_wasm(manifest_dir, &cargo_bin)?;
 
-    let mut manifest_to_write = config.manifest.clone();
+    let mut manifest_to_write = flow_outcome
+        .as_ref()
+        .map(|outcome| outcome.manifest.clone())
+        .unwrap_or_else(|| config.manifest.clone());
     if !config.persist_schema {
         manifest_to_write
             .as_object_mut()
@@ -112,7 +112,7 @@ pub fn run(args: BuildArgs) -> Result<()> {
             wasm_hash,
             config_source: config.source,
             schema_written: config.schema_written && config.persist_schema,
-            flows: flow_result,
+            flows: flow_outcome.as_ref().map(|outcome| outcome.result),
         };
         serde_json::to_writer_pretty(std::io::stdout(), &payload)?;
         println!();
@@ -126,17 +126,14 @@ pub fn run(args: BuildArgs) -> Result<()> {
                 config.source
             );
         }
-        if let Some(flows) = flow_result {
-            if flows.default_written || flows.custom_written {
-                println!(
-                    "Flows scaffolded (default: {}, custom: {})",
-                    flows.default_written, flows.custom_written
-                );
-            } else {
-                println!("Flows left unchanged");
-            }
+        if let Some(outcome) = flow_outcome {
+            let flows = outcome.result;
+            println!(
+                "Flows updated (default: {}, custom: {})",
+                flows.default_updated, flows.custom_updated
+            );
         } else {
-            println!("Flow scaffolding skipped (--no-flow)");
+            println!("Flow regeneration skipped (--no-flow)");
         }
     }
 
