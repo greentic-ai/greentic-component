@@ -352,6 +352,26 @@
           "x-capability": "signing"
         }
       }
+    },
+    "dev_flows": {
+      "type": "object",
+      "description": "Development-time flows (FlowIR JSON) keyed by FlowId",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["graph"],
+        "properties": {
+          "format": {
+            "type": "string",
+            "enum": ["flow-ir-json"],
+            "default": "flow-ir-json"
+          },
+          "graph": {
+            "type": "object",
+            "description": "FlowIR JSON graph"
+          }
+        }
+      }
     }
   }
 }

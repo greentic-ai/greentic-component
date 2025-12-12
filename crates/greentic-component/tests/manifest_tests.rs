@@ -75,3 +75,25 @@ fn validate_manifest_round_trip() {
     let raw = fixture("valid.component.json");
     validate_manifest(&raw).expect("schema-valid manifest");
 }
+
+#[test]
+fn manifest_preserves_dev_flows() {
+    let mut value: Value = serde_json::from_str(&fixture("valid.component.json")).unwrap();
+    value["dev_flows"] = serde_json::json!({
+        "default": {
+            "format": "flow-ir-json",
+            "graph": {
+                "nodes": [
+                    { "id": "start", "type": "start" },
+                    { "id": "end", "type": "end" }
+                ],
+                "edges": [
+                    { "from": "start", "to": "end" }
+                ]
+            }
+        }
+    });
+    let serialized = serde_json::to_string(&value).unwrap();
+    parse_manifest(&serialized).expect("manifest with dev_flows parses");
+    validate_manifest(&serialized).expect("schema-valid manifest with dev_flows");
+}

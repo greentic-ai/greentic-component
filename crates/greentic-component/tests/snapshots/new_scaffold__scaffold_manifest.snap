@@ -10,6 +10,12 @@ expression: manifest.trim()
   "version": "0.1.0",
   "world": "greentic:component/component@0.5.0",
   "describe_export": "get-manifest",
+  "config_schema": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  },
   "supports": ["messaging"],
   "profiles": {
     "default": "stateless",
@@ -46,5 +52,19 @@ expression: manifest.trim()
   },
   "hashes": {
     "component_wasm": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "dev_flows": {
+    "default": {
+      "format": "flow-ir-json",
+      "graph": {
+        "nodes": [
+          { "id": "start", "type": "start" },
+          { "id": "end", "type": "end" }
+        ],
+        "edges": [
+          { "from": "start", "to": "end" }
+        ]
+      }
+    }
   }
 }

@@ -5,6 +5,12 @@
   "version": "{{ version }}",
   "world": "{{ wit_world }}",
   "describe_export": "get-manifest",
+  "config_schema": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  },
   "supports": ["messaging"],
   "profiles": {
     "default": "stateless",
@@ -41,5 +47,19 @@
   },
   "hashes": {
     "component_wasm": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "dev_flows": {
+    "default": {
+      "format": "flow-ir-json",
+      "graph": {
+        "nodes": [
+          { "id": "start", "type": "start" },
+          { "id": "end", "type": "end" }
+        ],
+        "edges": [
+          { "from": "start", "to": "end" }
+        ]
+      }
+    }
   }
 }

@@ -340,6 +340,26 @@ world node {
                 "default": "stateless",
                 "supported": ["stateless"]
             },
+            "config_schema": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+                "additionalProperties": false
+            },
+            "dev_flows": {
+                "default": {
+                    "format": "flow-ir-json",
+                    "graph": {
+                        "nodes": [
+                            { "id": "start", "type": "start" },
+                            { "id": "end", "type": "end" }
+                        ],
+                        "edges": [
+                            { "from": "start", "to": "end" }
+                        ]
+                    }
+                }
+            },
             "capabilities": {
                 "wasi": {
                     "filesystem": {

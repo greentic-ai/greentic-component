@@ -4,6 +4,12 @@
   "version": "0.3.0",
   "world": "root:root/root",
   "describe_export": "describe",
+  "config_schema": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  },
   "supports": ["messaging", "event"],
   "profiles": {
     "default": "stateless",
@@ -76,5 +82,19 @@
   },
   "hashes": {
     "component_wasm": "blake3:d16030e523b5117990de34af8c3d7981717fc7f603b2f0b15507b6f388ffb1e3"
+  },
+  "dev_flows": {
+    "default": {
+      "format": "flow-ir-json",
+      "graph": {
+        "nodes": [
+          { "id": "start", "type": "start" },
+          { "id": "end", "type": "end" }
+        ],
+        "edges": [
+          { "from": "start", "to": "end" }
+        ]
+      }
+    }
   }
 }
