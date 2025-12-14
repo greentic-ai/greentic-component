@@ -14,6 +14,7 @@ use crate::limits::Limits;
 use crate::provenance::Provenance;
 use crate::telemetry::TelemetrySpec;
 use greentic_types::flow::FlowKind;
+use greentic_types::{SecretKey, SecretRequirement};
 
 static RAW_SCHEMA: &str = include_str!("../../schemas/v1/component.manifest.schema.json");
 
@@ -23,7 +24,7 @@ static COMPILED_SCHEMA: Lazy<Validator> = Lazy::new(|| {
     validator_for(&value).expect("component manifest schema must compile")
 });
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct ComponentManifest {
     pub id: ManifestId,
     pub name: String,
@@ -33,6 +34,8 @@ pub struct ComponentManifest {
     pub world: World,
     #[serde(default)]
     pub capabilities: Capabilities,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub secret_requirements: Vec<SecretRequirement>,
     pub profiles: ComponentProfiles,
     #[serde(default)]
     pub configurators: Option<ComponentConfigurators>,
@@ -237,6 +240,10 @@ pub enum ManifestError {
     InvalidHashFormat { hash: String },
     #[error("capability validation failed: {0}")]
     Capability(String),
+    #[error("duplicate secret requirement `{0}` detected")]
+    DuplicateSecretRequirement(String),
+    #[error("secret requirement `{key}` is invalid: {reason}")]
+    InvalidSecretRequirement { key: String, reason: String },
     #[error("limits invalid: {0}")]
     Limits(String),
     #[error("provenance invalid: {0}")]
@@ -253,6 +260,8 @@ struct RawManifest {
     supports: Vec<FlowKind>,
     #[serde(default)]
     capabilities: Capabilities,
+    #[serde(default)]
+    secret_requirements: Vec<SecretRequirement>,
     #[serde(default)]
     profiles: ComponentProfiles,
     #[serde(default)]
@@ -300,6 +309,8 @@ impl TryFrom<RawManifest> for ComponentManifest {
         validate_capabilities(&raw.capabilities)
             .map_err(|err| ManifestError::Capability(err.to_string()))?;
 
+        validate_secret_requirements(&raw.secret_requirements)?;
+
         if let Some(limits) = &raw.limits {
             limits
                 .validate()
@@ -319,6 +330,7 @@ impl TryFrom<RawManifest> for ComponentManifest {
             world,
             supports: raw.supports,
             capabilities: raw.capabilities,
+            secret_requirements: raw.secret_requirements,
             profiles: raw.profiles,
             configurators: raw.configurators,
             limits: raw.limits,
@@ -373,6 +385,70 @@ fn ensure_relative(path: &str) -> Result<(), ManifestError> {
         return Err(ManifestError::InvalidArtifactPath {
             path: path.to_string(),
         });
+    }
+    Ok(())
+}
+
+fn validate_secret_requirements(requirements: &[SecretRequirement]) -> Result<(), ManifestError> {
+    let mut seen = std::collections::HashSet::new();
+    for req in requirements {
+        if !seen.insert(req.key.as_str().to_string()) {
+            return Err(ManifestError::DuplicateSecretRequirement(
+                req.key.as_str().to_string(),
+            ));
+        }
+
+        SecretKey::new(req.key.as_str()).map_err(|err| {
+            ManifestError::InvalidSecretRequirement {
+                key: req.key.as_str().to_string(),
+                reason: err.to_string(),
+            }
+        })?;
+
+        let scope = req
+            .scope
+            .as_ref()
+            .ok_or_else(|| ManifestError::InvalidSecretRequirement {
+                key: req.key.as_str().to_string(),
+                reason: "scope must include env and tenant".into(),
+            })?;
+
+        if scope.env.trim().is_empty() {
+            return Err(ManifestError::InvalidSecretRequirement {
+                key: req.key.as_str().to_string(),
+                reason: "scope.env must not be empty".into(),
+            });
+        }
+        if scope.tenant.trim().is_empty() {
+            return Err(ManifestError::InvalidSecretRequirement {
+                key: req.key.as_str().to_string(),
+                reason: "scope.tenant must not be empty".into(),
+            });
+        }
+        if let Some(team) = &scope.team
+            && team.trim().is_empty()
+        {
+            return Err(ManifestError::InvalidSecretRequirement {
+                key: req.key.as_str().to_string(),
+                reason: "scope.team must not be empty when provided".into(),
+            });
+        }
+
+        if req.format.is_none() {
+            return Err(ManifestError::InvalidSecretRequirement {
+                key: req.key.as_str().to_string(),
+                reason: "format must be specified".into(),
+            });
+        }
+
+        if let Some(schema) = &req.schema
+            && !schema.is_object()
+        {
+            return Err(ManifestError::InvalidSecretRequirement {
+                key: req.key.as_str().to_string(),
+                reason: "schema must be an object when provided".into(),
+            });
+        }
     }
     Ok(())
 }

@@ -1,12 +1,12 @@
 # Repository Overview
 
 ## 1. High-Level Purpose
-- Rust workspace providing the Greentic component tooling: authoring, validating, packaging, distributing, and running Greentic components that target WASI-Preview2 with Wasmtime.
-- Ships a CLI (`greentic-component` plus doctor/hash/inspect tools) and supporting libraries for manifest validation, artifact fetching/verification, and runtime loading/binding/invocation.
+- Rust workspace providing Greentic component authoring and packaging tooling: manifest/schema validation, capability enforcement, hashing/signing, and local inspection for WASI-Preview2 components.
+- Ships a CLI (`greentic-component` plus doctor/hash/inspect tools) and supporting libraries for manifest validation, artifact fetching/verification, and a lightweight invocation library used for tests/dev (production host bindings live in runner/greentic-secrets).
 
 ## 2. Main Components and Functionality
 - **Path:** `crates/greentic-component`  
-  **Role:** Main public crate and CLI entrypoint. Exposes the component API (manifest parsing/validation, capability enforcement, telemetry, signing, store access) and binaries (`greentic-component`, `component-doctor`, `component-hash`, `component-inspect`).  
+  **Role:** Main public crate and CLI entrypoint. Exposes the component API (manifest parsing/validation, capability enforcement, telemetry, signing) and binaries (`greentic-component`, `component-doctor`, `component-hash`, `component-inspect`).  
   **Key functionality:** Manifest parsing/validation and schema handling; capability/limit management; provenance and security checks; signing and hash verification; prepare/loader helpers; CLI scaffolding and inspection tools (with `cli` feature).  
   **Notes:** Feature-gated modules for ABI inspection, describe payloads, loader/prepare, and CLI.
 
@@ -20,16 +20,19 @@
   **Notes:** Provides verification policy/digest utilities reused by the main crate.
 
 - **Path:** `crates/greentic-component-runtime`  
-  **Role:** Runtime loader/invoker built on Wasmtime components.  
-  **Key functionality:** Loads components with policy controls, describes manifests, binds tenant configuration/secrets, and invokes exported operations with JSON inputs/outputs.
+  **Role:** Runtime loader/invoker library built on Wasmtime components for local/test usage.  
+  **Key functionality:** Loads components with policy controls, describes manifests, binds tenant configuration/secrets provided by the caller, and invokes exported operations with JSON inputs/outputs. Secrets-store and other production host bindings belong in greentic-runner/greentic-secrets.
 
 - **Path:** `ci/local_check.sh`, `.github/workflows/*`  
   **Role:** CI/local verification scripts and workflows (lint, tests, publish, release assets, auto-tag).  
   **Key functionality:** Mirrors CI locally; any push to `master` (or manual dispatch) runs build/tests, cargo publish (already-exists errors tolerated), binstall artifact builds, and creates/updates GitHub Releases using the plain version tag (e.g., `v0.4.10`). Auto-tag still bumps versions.
 
 ## 3. Work In Progress, TODOs, and Stubs
-- Templates and docs now target `greentic:component/component@0.5.0` and accept expanded `supports` (`messaging`, `event`, `component_config`, `job`, `http`); keep downstream references in sync if you bump interfaces again.
+- Component manifests now allow optional `secret_requirements` (validated via `greentic-types` rules: SecretKey pattern, env/tenant scope, schema must be object). Keep downstream consumers/schema docs aligned if fields evolve.
+- Runtime does not provide secrets-store; secret resolution/storage belongs to greentic-runner + greentic-secrets. HostState can carry injected secrets for tests/binder but no host bindings are exposed here.
+- Templates and docs target `greentic:component/component@0.5.0` and accept expanded `supports` (`messaging`, `event`, `component_config`, `job`, `http`); keep downstream references in sync if interfaces bump again.
 - Config inference + flow regeneration is integrated into `greentic-component build`; flows are embedded into `dev_flows` (FlowIR JSON) and manifests are updated with inferred `config_schema` when missing.
+- Downstream consumers (packc/runner/deployer) must read `secret_requirements` from component manifests/metadata; this repo only validates and emits it.
 
 ## 4. Broken, Failing, or Conflicting Areas
 - None currently; `ci/local_check.sh` passes aside from skipped network-dependent steps when crates.io is unreachable.

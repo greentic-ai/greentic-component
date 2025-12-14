@@ -156,10 +156,7 @@
               "properties": {
                 "required": {
                   "type": "array",
-                  "items": {
-                    "type": "string",
-                    "minLength": 1
-                  }
+                  "items": { "$ref": "#/$defs/host_secret_requirement" }
                 }
               }
             },
@@ -246,6 +243,11 @@
           }
         }
       }
+    },
+    "secret_requirements": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/secret_requirement" },
+      "default": []
     },
     "configurators": {
       "type": "object",
@@ -370,6 +372,82 @@
             "type": "object",
             "description": "FlowIR JSON graph"
           }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "secret_requirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "required", "scope", "format"],
+      "properties": {
+        "key": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*\\.\\.)([A-Za-z0-9._\\-/]+)$"
+        },
+        "required": { "type": "boolean" },
+        "description": { "type": "string" },
+        "scope": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["env", "tenant"],
+          "properties": {
+            "env": { "type": "string", "minLength": 1 },
+            "tenant": { "type": "string", "minLength": 1 },
+            "team": { "type": "string", "minLength": 1 },
+            "vars": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            }
+          }
+        },
+        "format": {
+          "type": "string",
+          "enum": ["bytes", "text", "json"]
+        },
+        "schema": { "type": "object" },
+        "examples": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "host_secret_requirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "required", "scope", "format"],
+      "properties": {
+        "key": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*\\.\\.)([A-Za-z0-9._\\-/]+)$"
+        },
+        "required": { "type": "boolean" },
+        "description": { "type": "string" },
+        "scope": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["env", "tenant"],
+          "properties": {
+            "env": { "type": "string", "minLength": 1 },
+            "tenant": { "type": "string", "minLength": 1 },
+            "team": { "type": "string", "minLength": 1 },
+            "vars": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            }
+          }
+        },
+        "format": {
+          "type": "string",
+          "enum": ["bytes", "text", "json"]
+        },
+        "schema": { "type": "object" },
+        "examples": {
+          "type": "array",
+          "items": { "type": "string" }
         }
       }
     }

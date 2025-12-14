@@ -29,6 +29,8 @@ fn round_trip_manifest_parse() {
         manifest.profiles.supported,
         vec!["stateless".to_string(), "cached".to_string()]
     );
+    assert_eq!(manifest.secret_requirements.len(), 1);
+    assert_eq!(manifest.secret_requirements[0].key.as_str(), "KV_API_TOKEN");
     assert!(manifest.telemetry.is_some());
 }
 

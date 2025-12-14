@@ -234,7 +234,7 @@ else
     skip_step "cargo fetch (linux target)" "${CRATES_IO_REASON:-crates.io unreachable}"
 fi
 
-run_cmd "cargo fmt" cargo fmt --all -- --check
+run_cmd "cargo fmt" cargo fmt --all --check
 run_cmd "cargo clippy" cargo clippy --locked --workspace --all-targets -- -D warnings
 run_cmd "cargo build --workspace --locked" cargo build --workspace --locked
 run_cmd "cargo test --workspace --locked" cargo test --workspace --locked -- --nocapture

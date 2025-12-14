@@ -21,6 +21,7 @@ expression: manifest.trim()
     "default": "stateless",
     "supported": ["stateless"]
   },
+  "secret_requirements": [],
   "capabilities": {
     "wasi": {
       "filesystem": {

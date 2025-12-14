@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use greentic_types::SecretRequirement;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -66,8 +67,8 @@ pub struct ComponentManifest {
     #[serde(default)]
     pub exports: Vec<ComponentExport>,
     pub config_schema: Value,
-    #[serde(default)]
-    pub secrets: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub secret_requirements: Vec<SecretRequirement>,
     pub wit_compat: WitCompat,
     #[serde(default, skip_serializing_if = "Map::is_empty")]
     pub metadata: Map<String, Value>,
@@ -94,7 +95,7 @@ pub struct ComponentInfo {
     pub capabilities: Vec<CapabilityRef>,
     pub exports: Vec<CompiledExportSchema>,
     pub config_schema: Value,
-    pub secrets: Vec<String>,
+    pub secret_requirements: Vec<SecretRequirement>,
     pub wit_compat: WitCompat,
     pub metadata: Map<String, Value>,
     pub raw: Value,
@@ -122,6 +123,8 @@ pub enum ManifestError {
     DuplicateOperation(String),
     #[error("secret name `{0}` is invalid")]
     InvalidSecret(String),
+    #[error("secret requirement `{key}` is invalid: {reason}")]
+    InvalidSecretRequirement { key: String, reason: String },
     #[error("capability `{0}` is invalid")]
     InvalidCapability(String),
     #[error("operation `{0}` is invalid")]

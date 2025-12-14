@@ -7,11 +7,11 @@ use crate::types::{
     CompiledExportSchema, ComponentExport, ComponentInfo, ComponentManifest, ManifestError,
     WitCompat,
 };
+use greentic_types::{SecretKey, SecretRequirement};
 
 pub struct ManifestValidator {
     capability_pattern: Regex,
     operation_pattern: Regex,
-    secret_pattern: Regex,
 }
 
 impl Default for ManifestValidator {
@@ -25,11 +25,11 @@ impl ManifestValidator {
         Self {
             capability_pattern: Regex::new(r"^[a-z][a-z0-9_.:-]*$").expect("valid regex"),
             operation_pattern: Regex::new(r"^[a-z][a-z0-9_.:-]*$").expect("valid regex"),
-            secret_pattern: Regex::new(r"^[A-Z0-9_][A-Z0-9_.:-]*$").expect("valid regex"),
         }
     }
 
     pub fn validate_value(&self, manifest_json: Value) -> Result<ComponentInfo, ManifestError> {
+        prevalidate_secret_keys(&manifest_json)?;
         let manifest = ComponentManifest::from_value(manifest_json.clone())?;
         self.validate_manifest(manifest, manifest_json)
     }
@@ -65,8 +65,8 @@ impl ManifestValidator {
 
         validate_wit_compat(&manifest.wit_compat)?;
 
-        if !manifest.secrets.is_empty() {
-            validate_secrets(&manifest.secrets, &self.secret_pattern)?;
+        if !manifest.secret_requirements.is_empty() {
+            validate_secret_requirements(&manifest.secret_requirements)?;
         }
 
         let config_schema = validate_config_schema(&manifest.config_schema)?;
@@ -82,7 +82,7 @@ impl ManifestValidator {
             capabilities: manifest.capabilities,
             exports: compiled_exports,
             config_schema,
-            secrets: manifest.secrets,
+            secret_requirements: manifest.secret_requirements,
             wit_compat: manifest.wit_compat,
             metadata: manifest.metadata,
             raw,
@@ -96,6 +96,25 @@ pub fn validate_config_schema(schema: &Value) -> Result<Value, ManifestError> {
     }
     validator_for(schema).map_err(|err| ManifestError::InvalidConfigSchema(err.to_string()))?;
     Ok(schema.clone())
+}
+
+fn prevalidate_secret_keys(manifest: &Value) -> Result<(), ManifestError> {
+    let Some(requirements) = manifest
+        .get("secret_requirements")
+        .and_then(Value::as_array)
+    else {
+        return Ok(());
+    };
+
+    for entry in requirements {
+        if let Some(key) = entry.get("key").and_then(Value::as_str)
+            && SecretKey::new(key).is_err()
+        {
+            return Err(ManifestError::InvalidSecret(key.to_string()));
+        }
+    }
+
+    Ok(())
 }
 
 fn compile_export_schema(export: &ComponentExport) -> Result<CompiledExportSchema, ManifestError> {
@@ -155,17 +174,56 @@ fn validate_wit_compat(wit: &WitCompat) -> Result<(), ManifestError> {
     Ok(())
 }
 
-fn validate_secrets(secrets: &[String], pattern: &Regex) -> Result<(), ManifestError> {
-    let mut seen = std::collections::HashSet::new();
-    for secret in secrets {
-        if secret.trim().is_empty() {
-            return Err(ManifestError::EmptyField("secrets"));
+fn validate_secret_requirements(requirements: &[SecretRequirement]) -> Result<(), ManifestError> {
+    crate::types::ensure_unique(
+        requirements.iter().map(|req| req.key.as_str().to_string()),
+        ManifestError::DuplicateSecret,
+    )?;
+
+    for req in requirements {
+        SecretKey::new(req.key.as_str())
+            .map_err(|_| ManifestError::InvalidSecret(req.key.as_str().to_string()))?;
+
+        let scope = req
+            .scope
+            .as_ref()
+            .ok_or_else(|| ManifestError::InvalidSecretRequirement {
+                key: req.key.as_str().to_string(),
+                reason: "scope must include env and tenant".into(),
+            })?;
+        if scope.env.trim().is_empty() {
+            return Err(ManifestError::InvalidSecretRequirement {
+                key: req.key.as_str().to_string(),
+                reason: "scope.env must not be empty".into(),
+            });
         }
-        if !pattern.is_match(secret) {
-            return Err(ManifestError::InvalidSecret(secret.clone()));
+        if scope.tenant.trim().is_empty() {
+            return Err(ManifestError::InvalidSecretRequirement {
+                key: req.key.as_str().to_string(),
+                reason: "scope.tenant must not be empty".into(),
+            });
         }
-        if !seen.insert(secret.clone()) {
-            return Err(ManifestError::DuplicateSecret(secret.clone()));
+        if let Some(team) = &scope.team
+            && team.trim().is_empty()
+        {
+            return Err(ManifestError::InvalidSecretRequirement {
+                key: req.key.as_str().to_string(),
+                reason: "scope.team must not be empty when provided".into(),
+            });
+        }
+        if req.format.is_none() {
+            return Err(ManifestError::InvalidSecretRequirement {
+                key: req.key.as_str().to_string(),
+                reason: "format must be specified".into(),
+            });
+        }
+        if let Some(schema) = &req.schema
+            && !schema.is_object()
+        {
+            return Err(ManifestError::InvalidSecretRequirement {
+                key: req.key.as_str().to_string(),
+                reason: "schema must be an object when provided".into(),
+            });
         }
     }
     Ok(())

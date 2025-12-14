@@ -15,6 +15,15 @@
     "default": "stateless",
     "supported": ["stateless", "cached"]
   },
+  "secret_requirements": [
+    {
+      "key": "KV_API_TOKEN",
+      "required": true,
+      "description": "KV token",
+      "scope": { "env": "dev", "tenant": "demo" },
+      "format": "text"
+    }
+  ],
   "capabilities": {
     "wasi": {
       "filesystem": {
@@ -35,7 +44,14 @@
     },
     "host": {
       "secrets": {
-        "required": ["KV_API_TOKEN"]
+        "required": [
+          {
+            "key": "KV_API_TOKEN",
+            "required": true,
+            "scope": { "env": "dev", "tenant": "demo" },
+            "format": "text"
+          }
+        ]
       },
       "state": {
         "read": true,

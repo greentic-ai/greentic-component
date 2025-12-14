@@ -1130,7 +1130,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 dependencies = [
  "fallible-iterator",
- "indexmap 2.11.4",
+ "indexmap 2.12.1",
  "stable_deref_trait",
 ]
 
@@ -1160,7 +1160,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-component"
-version = "0.4.18"
+version = "0.4.19"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -1207,9 +1207,10 @@ dependencies = [
 
 [[package]]
 name = "greentic-component-manifest"
-version = "0.4.18"
+version = "0.4.19"
 dependencies = [
  "anyhow",
+ "greentic-types",
  "jsonschema",
  "regex",
  "schemars 1.1.0",
@@ -1223,7 +1224,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-component-runtime"
-version = "0.4.18"
+version = "0.4.19"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1231,6 +1232,7 @@ dependencies = [
  "futures",
  "greentic-component-manifest",
  "greentic-component-store",
+ "greentic-interfaces",
  "greentic-interfaces-host",
  "greentic-types",
  "jsonschema",
@@ -1248,7 +1250,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-component-store"
-version = "0.4.18"
+version = "0.4.19"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1270,9 +1272,9 @@ dependencies = [
 
 [[package]]
 name = "greentic-interfaces"
-version = "0.4.57"
+version = "0.4.58"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2a1daed2a5e1688651377e82e53bdf42b430c2eaa7b30c3fdedd3f45aea20676"
+checksum = "daeedaad8b74e2544a02d031eeb70ae60596d677e17b246cc8d5133b34078da5"
 dependencies = [
  "anyhow",
  "greentic-types",
@@ -1287,9 +1289,9 @@ dependencies = [
 
 [[package]]
 name = "greentic-interfaces-guest"
-version = "0.4.57"
+version = "0.4.58"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8ea38b282e3991d3fe868e3be8c75416328fd6025f85128acc0adb9d72bd29a"
+checksum = "1f95dd3c9c1d6c958dc1b7b37bcdd8a15496f857c03eb627bb96df0aa0699ae6"
 dependencies = [
  "greentic-interfaces",
  "greentic-types",
@@ -1300,9 +1302,9 @@ dependencies = [
 
 [[package]]
 name = "greentic-interfaces-host"
-version = "0.4.57"
+version = "0.4.58"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd9698c524932814d80d1659934db97d03b838a65cc10e58d2029c5d82239d80"
+checksum = "e6b032fa7963cd75d0d3fb5b9e4d62b1716bfdf7ab95f486a3edd58354177f83"
 dependencies = [
  "greentic-interfaces",
  "greentic-types",
@@ -1312,14 +1314,14 @@ dependencies = [
 
 [[package]]
 name = "greentic-types"
-version = "0.4.15"
+version = "0.4.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4054eef4f7b6acc6b41b27bd67bc5ad8a861725649b7dc7fc0aac962d25b47ef"
+checksum = "edb387df59fa403bcffed7aa1fa180f6a7cd343ef2a6b3fa495e92c587c41e84"
 dependencies = [
  "chrono",
  "ciborium",
  "fnv",
- "indexmap 2.11.4",
+ "indexmap 2.12.1",
  "semver",
  "serde",
  "serde_json",
@@ -1721,9 +1723,9 @@ dependencies = [
 
 [[package]]
 name = "indexmap"
-version = "2.11.4"
+version = "2.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b0f83760fb341a774ed326568e19f5a863af4a952def8c39f9ab92fd95b88e5"
+checksum = "0ad4bb2b565bca0645f4d68c5c9af97fba094e9791da685bf83cb5f3ce74acf2"
 dependencies = [
  "equivalent",
  "hashbrown 0.16.1",
@@ -2100,7 +2102,7 @@ checksum = "ff76201f031d8863c38aa7f905eca4f53abbfa15f609db4277d44cd8938f33fe"
 dependencies = [
  "crc32fast",
  "hashbrown 0.15.5",
- "indexmap 2.11.4",
+ "indexmap 2.12.1",
  "memchr",
 ]
 
@@ -2904,7 +2906,7 @@ dependencies = [
  "chrono",
  "hex",
  "indexmap 1.9.3",
- "indexmap 2.11.4",
+ "indexmap 2.12.1",
  "schemars 0.9.0",
  "schemars 1.1.0",
  "serde_core",
@@ -3562,7 +3564,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ee093e1e1ccffa005b9b778f7a10ccfd58e25a20eccad294a1a93168d076befb"
 dependencies = [
  "anyhow",
- "indexmap 2.11.4",
+ "indexmap 2.12.1",
  "wasm-encoder 0.240.0",
  "wasmparser 0.240.0",
 ]
@@ -3574,7 +3576,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "876fe286f2fa416386deedebe8407e6f19e0b5aeaef3d03161e77a15fa80f167"
 dependencies = [
  "anyhow",
- "indexmap 2.11.4",
+ "indexmap 2.12.1",
  "wasm-encoder 0.241.2",
  "wasmparser 0.241.2",
 ]
@@ -3588,7 +3590,7 @@ dependencies = [
  "anyhow",
  "auditable-serde",
  "flate2",
- "indexmap 2.11.4",
+ "indexmap 2.12.1",
  "serde",
  "serde_derive",
  "serde_json",
@@ -3619,7 +3621,7 @@ checksum = "b722dcf61e0ea47440b53ff83ccb5df8efec57a69d150e4f24882e4eba7e24a4"
 dependencies = [
  "bitflags",
  "hashbrown 0.15.5",
- "indexmap 2.11.4",
+ "indexmap 2.12.1",
  "semver",
  "serde",
 ]
@@ -3632,7 +3634,7 @@ checksum = "46d90019b1afd4b808c263e428de644f3003691f243387d30d673211ee0cb8e8"
 dependencies = [
  "bitflags",
  "hashbrown 0.15.5",
- "indexmap 2.11.4",
+ "indexmap 2.12.1",
  "semver",
 ]
 
@@ -3644,7 +3646,7 @@ checksum = "f6d8db401b0528ec316dfbe579e6ab4152d61739cfe076706d2009127970159d"
 dependencies = [
  "bitflags",
  "hashbrown 0.15.5",
- "indexmap 2.11.4",
+ "indexmap 2.12.1",
  "semver",
  "serde",
 ]
@@ -3675,7 +3677,7 @@ dependencies = [
  "cfg-if",
  "encoding_rs",
  "hashbrown 0.15.5",
- "indexmap 2.11.4",
+ "indexmap 2.12.1",
  "libc",
  "log",
  "mach2",
@@ -3716,7 +3718,7 @@ dependencies = [
  "cranelift-bitset",
  "cranelift-entity",
  "gimli",
- "indexmap 2.11.4",
+ "indexmap 2.12.1",
  "log",
  "object",
  "postcard",
@@ -3883,7 +3885,7 @@ dependencies = [
  "anyhow",
  "bitflags",
  "heck",
- "indexmap 2.11.4",
+ "indexmap 2.12.1",
  "wit-parser 0.240.0",
 ]
 
@@ -4225,7 +4227,7 @@ checksum = "c6d585319871ca18805056f69ddec7541770fc855820f9944029cb2b75ea108f"
 dependencies = [
  "anyhow",
  "heck",
- "indexmap 2.11.4",
+ "indexmap 2.12.1",
  "prettyplease",
  "syn",
  "wasm-metadata 0.240.0",
@@ -4241,7 +4243,7 @@ checksum = "69667efa439a453e1d50dac939c6cab6d2c3ac724a9d232b6631dad2472a5b70"
 dependencies = [
  "anyhow",
  "heck",
- "indexmap 2.11.4",
+ "indexmap 2.12.1",
  "prettyplease",
  "syn",
  "wasm-metadata 0.241.2",
@@ -4287,7 +4289,7 @@ checksum = "7dc5474b078addc5fe8a72736de8da3acfb3ff324c2491133f8b59594afa1a20"
 dependencies = [
  "anyhow",
  "bitflags",
- "indexmap 2.11.4",
+ "indexmap 2.12.1",
  "log",
  "serde",
  "serde_derive",
@@ -4306,7 +4308,7 @@ checksum = "1fd0c57df25e7ee612d946d3b7646c1ddb2310f8280aa2c17e543b66e0812241"
 dependencies = [
  "anyhow",
  "bitflags",
- "indexmap 2.11.4",
+ "indexmap 2.12.1",
  "log",
  "serde",
  "serde_derive",
@@ -4325,7 +4327,7 @@ checksum = "36f9fc53513e461ce51dcf17a3e331752cb829f1d187069e54af5608fc998fe4"
 dependencies = [
  "anyhow",
  "bitflags",
- "indexmap 2.11.4",
+ "indexmap 2.12.1",
  "log",
  "serde",
  "serde_derive",
@@ -4344,7 +4346,7 @@ checksum = "9875ea3fa272f57cc1fc50f225a7b94021a7878c484b33792bccad0d93223439"
 dependencies = [
  "anyhow",
  "id-arena",
- "indexmap 2.11.4",
+ "indexmap 2.12.1",
  "log",
  "semver",
  "serde",
@@ -4362,7 +4364,7 @@ checksum = "09ef1c6ad67f35c831abd4039c02894de97034100899614d1c44e2268ad01c91"
 dependencies = [
  "anyhow",
  "id-arena",
- "indexmap 2.11.4",
+ "indexmap 2.12.1",
  "log",
  "semver",
  "serde",
@@ -4380,7 +4382,7 @@ checksum = "df983a8608e513d8997f435bb74207bf0933d0e49ca97aa9d8a6157164b9b7fc"
 dependencies = [
  "anyhow",
  "id-arena",
- "indexmap 2.11.4",
+ "indexmap 2.12.1",
  "log",
  "semver",
  "serde",

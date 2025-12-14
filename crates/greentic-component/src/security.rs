@@ -115,8 +115,8 @@ fn ensure_host(
             .secrets
             .as_ref()
             .ok_or_else(|| CapabilityError::invalid("host.secrets", "secrets access denied"))?;
-        let allowed_set: HashSet<_> = policy.required.iter().collect();
-        for key in &secrets.required {
+        let allowed_set: HashSet<_> = policy.required.iter().map(|req| req.key.as_str()).collect();
+        for key in secrets.required.iter().map(|req| req.key.as_str()) {
             if !allowed_set.contains(key) {
                 return Err(CapabilityError::invalid(
                     "host.secrets.required",

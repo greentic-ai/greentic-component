@@ -58,7 +58,11 @@ pub(crate) fn resolve_binding(
     secret_resolver: &mut dyn FnMut(&str, &TenantCtx) -> Result<String, CompError>,
 ) -> Result<TenantBinding, CompError> {
     validate_config(schema, &bindings.config)?;
-    let allowed_secrets: HashSet<String> = info.secrets.iter().cloned().collect();
+    let allowed_secrets: HashSet<String> = info
+        .secret_requirements
+        .iter()
+        .map(|req| req.key.as_str().to_string())
+        .collect();
 
     let mut resolved = HashSet::new();
     let mut secret_values = HashMap::new();
@@ -71,7 +75,7 @@ pub(crate) fn resolve_binding(
         }
         let value = secret_resolver(secret, tenant)
             .map_err(|err| CompError::secret_resolution(secret.clone(), err))?;
-        secret_values.insert(secret.clone(), value);
+        secret_values.insert(secret.clone(), value.into_bytes());
     }
 
     Ok(TenantBinding {
@@ -97,7 +101,9 @@ fn validate_config(schema: &Validator, config: &Value) -> Result<(), CompError> 
 mod tests {
     use super::*;
     use component_manifest::{CapabilityRef, ComponentInfo, WitCompat};
-    use greentic_types::{EnvId, TenantCtx, TenantId};
+    use greentic_types::{
+        EnvId, SecretFormat, SecretKey, SecretRequirement, SecretScope, TenantCtx, TenantId,
+    };
     use jsonschema::validator_for;
     use serde_json::{Map, json};
 
@@ -111,7 +117,12 @@ mod tests {
                 "required": ["enabled"],
                 "additionalProperties": false
             },
-            "secrets": ["API_TOKEN"],
+            "secret_requirements": [{
+                "key": "API_TOKEN",
+                "required": true,
+                "scope": { "env": "dev", "tenant": "tenant" },
+                "format": "text"
+            }],
             "wit_compat": {
                 "package": "greentic:component",
                 "min": "0.4.0",
@@ -121,6 +132,16 @@ mod tests {
 
         let config_schema_json = manifest_json.get("config_schema").cloned().unwrap();
         let schema = validator_for(&config_schema_json).unwrap();
+
+        let mut secret_requirement = SecretRequirement::default();
+        secret_requirement.key = SecretKey::new("API_TOKEN").unwrap();
+        secret_requirement.required = true;
+        secret_requirement.scope = Some(SecretScope {
+            env: "dev".into(),
+            tenant: "tenant".into(),
+            team: None,
+        });
+        secret_requirement.format = Some(SecretFormat::Text);
 
         let info = ComponentInfo {
             name: Some("fixture".into()),
@@ -133,7 +154,7 @@ mod tests {
                 output_schema: None,
             }],
             config_schema: config_schema_json,
-            secrets: vec!["API_TOKEN".into()],
+            secret_requirements: vec![secret_requirement],
             wit_compat: WitCompat {
                 package: "greentic:component".into(),
                 min: "0.4.0".into(),
@@ -165,7 +186,7 @@ mod tests {
         let binding = resolve_binding(&info, &schema, &bindings, &tenant, &mut resolver).unwrap();
         assert_eq!(
             binding.secrets.get("API_TOKEN").unwrap(),
-            "value-for-API_TOKEN"
+            b"value-for-API_TOKEN"
         );
     }
 

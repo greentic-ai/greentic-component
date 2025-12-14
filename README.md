@@ -287,7 +287,7 @@ println!("id={} size={}", component.id.0, component.meta.size);
 
 Automated tests cover multiple layers:
 
-- **Manifest validation** (`crates/component-manifest/tests/manifest_valid.rs`): ensures well-formed manifests pass and malformed manifests (duplicate capabilities, invalid secrets) fail.
+- **Manifest validation** (`crates/component-manifest/tests/manifest_valid.rs`): ensures well-formed manifests pass and malformed manifests (duplicate capabilities, invalid secret requirements) fail.
 - **Component store** (`crates/greentic-component-store/tests/*.rs`): verifies filesystem listings, caching behaviour, and HTTP fetching via a lightweight test server.
 - **Runtime binding** (`crates/greentic-component-runtime/src/binder.rs` tests): validates schema enforcement and secret resolution logic.
 - **Host imports** (`crates/greentic-component-runtime/src/host_imports.rs` tests): exercises telemetry gating plus the HTTP fetch host import, including policy denial and successful request/response handling.
@@ -298,7 +298,7 @@ Add new tests alongside the relevant crate to keep runtime guarantees tight.
 
 `crates/greentic-component` now owns the canonical manifest schema (`schemas/v1/component.manifest.schema.json`) and typed parser. Manifests describe an opaque `id`, human name, semantic `version`, the exported WIT `world`, and the function to call for describing configuration. Artifact metadata captures the relative wasm path plus a required `blake3` digest. Optional sections describe enforced `limits`, `telemetry` attributes, and build `provenance` (builder, commit, toolchain, timestamp).
 
-- **Capabilities** — structured WASI + host declarations (filesystem/env/random/clocks plus secrets/state/messaging/events/http/telemetry/IaC). The `security::enforce_capabilities` helper compares a manifest against a runtime `Profile` and produces precise denials (e.g. `host.secrets.required[OPENAI_API_KEY]`).
+- **Capabilities** — structured WASI + host declarations (filesystem/env/random/clocks plus secrets/state/messaging/events/http/telemetry/IaC). The `security::enforce_capabilities` helper compares a manifest against a runtime `Profile` and produces precise denials (e.g. `host.secrets.required[OPENAI_API_KEY]`). Component manifests optionally declare structured `secret_requirements` for pack tooling while keeping backwards compatibility when no secrets are needed.
 - **Describe loading order** — `describe::load` first tries to decode the embedded WIT world from the wasm, falls back to a JSON blob emitted by an exported symbol (e.g. `describe`), and finally searches `schemas/v1/*.json` for provider-supplied payloads. The resulting `DescribePayload` snapshots all known schema versions.
 - **Redaction hints** — schema utilities walk arbitrary JSON Schema documents and surface paths tagged with `x-redact`, `x-default-applied`, and `x-capability`. These hints are used by greentic-dev/runner to scrub transcripts or explain defaulted fields.
 

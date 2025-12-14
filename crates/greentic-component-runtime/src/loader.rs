@@ -102,7 +102,7 @@ pub(crate) struct ComponentInner {
 #[derive(Debug, Clone)]
 pub(crate) struct TenantBinding {
     pub config: Value,
-    pub secrets: HashMap<String, String>,
+    pub secrets: HashMap<String, Vec<u8>>,
 }
 
 impl ComponentHandle {

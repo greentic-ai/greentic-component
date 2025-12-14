@@ -27,6 +27,7 @@ url.workspace = true
 regex.workspace = true
 semver.workspace = true
 jsonschema.workspace = true
+greentic-types.workspace = true
 
 [dev-dependencies]
 anyhow.workspace = true

@@ -1,21 +1,14 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::convert::TryFrom;
 
-use base64::Engine as _;
-use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+use greentic_interfaces::runner_host_v1::{self, RunnerHost};
 use greentic_interfaces_host::component::v0_4::{
     self, ControlHost, exports::greentic::component::node,
-};
-use greentic_interfaces_host::host_import::v0_4::{
-    self as host_import_v0_4,
-    greentic::host_import::{http, secrets, telemetry},
-    greentic::types_core::types as core_types,
 };
 use greentic_types::TenantCtx;
 use reqwest::blocking::Client as HttpClient;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
-use serde_json::{Map, Value};
-use tracing::debug;
+use serde_json::Value;
 use wasmtime::component::Linker;
 use wasmtime::{Engine, Result as WasmtimeResult};
 
@@ -27,7 +20,7 @@ use crate::policy::HostPolicy;
 pub struct HostState {
     _tenant: Option<TenantCtx>,
     _config: Value,
-    secrets: HashMap<String, String>,
+    _secrets: HashMap<String, Vec<u8>>,
     policy: HostPolicy,
     http_client: HttpClient,
 }
@@ -37,7 +30,7 @@ impl HostState {
         Self {
             _tenant: None,
             _config: Value::Null,
-            secrets: HashMap::new(),
+            _secrets: HashMap::new(),
             policy,
             http_client: HttpClient::new(),
         }
@@ -46,13 +39,13 @@ impl HostState {
     pub fn from_binding(
         tenant: TenantCtx,
         config: Value,
-        secrets: HashMap<String, String>,
+        secrets: HashMap<String, Vec<u8>>,
         policy: HostPolicy,
     ) -> Self {
         Self {
             _tenant: Some(tenant),
             _config: config,
-            secrets,
+            _secrets: secrets,
             policy,
             http_client: HttpClient::new(),
         }
@@ -61,7 +54,7 @@ impl HostState {
 
 pub fn build_linker(engine: &Engine, _policy: &HostPolicy) -> Result<Linker<HostState>, CompError> {
     let mut linker = Linker::<HostState>::new(engine);
-    host_import_v0_4::add_to_linker(&mut linker, |state: &mut HostState| state)?;
+    runner_host_v1::add_to_linker(&mut linker, |state: &mut HostState| state)?;
     v0_4::add_control_to_linker(&mut linker, |state: &mut HostState| state)?;
     Ok(linker)
 }
@@ -74,141 +67,60 @@ impl ControlHost for HostState {
     fn yield_now(&mut self) {}
 }
 
-impl core_types::Host for HostState {}
-
-impl secrets::Host for HostState {
-    fn get(
+impl RunnerHost for HostState {
+    fn http_request(
         &mut self,
-        key: String,
-        _ctx: Option<core_types::TenantCtx>,
-    ) -> Result<String, core_types::IfaceError> {
-        match self.secrets.get(&key) {
-            Some(value) => Ok(value.clone()),
-            None => Err(core_types::IfaceError::NotFound),
-        }
-    }
-}
-
-impl telemetry::Host for HostState {
-    fn emit(&mut self, span_json: String, _ctx: Option<core_types::TenantCtx>) {
-        if !self.policy.allow_telemetry {
-            debug!(
-                "dropping telemetry event because policy denies telemetry: {}",
-                span_json
-            );
-            return;
-        }
-        debug!("component telemetry: {}", span_json);
-    }
-}
-
-impl http::Host for HostState {
-    fn fetch(
-        &mut self,
-        req: http::HttpRequest,
-        _ctx: Option<core_types::TenantCtx>,
-    ) -> Result<http::HttpResponse, core_types::IfaceError> {
+        method: String,
+        url: String,
+        headers: Vec<String>,
+        body: Option<Vec<u8>>,
+    ) -> WasmtimeResult<Result<Vec<u8>, String>> {
         if !self.policy.allow_http_fetch {
-            return Err(core_types::IfaceError::Denied);
+            return Ok(Err("http fetch denied by policy".into()));
         }
 
-        let method = reqwest::Method::from_bytes(req.method.as_bytes())
-            .map_err(|_| core_types::IfaceError::InvalidArg)?;
-        let url = req
-            .url
+        let method = reqwest::Method::from_bytes(method.as_bytes())
+            .map_err(|err| CompError::Runtime(err.to_string()))?;
+        let url = url
             .parse::<reqwest::Url>()
-            .map_err(|_| core_types::IfaceError::InvalidArg)?;
+            .map_err(|err| CompError::Runtime(err.to_string()))?;
 
         let mut builder = self.http_client.request(method, url);
 
-        if let Some(headers_json) = req.headers_json.as_ref() {
-            let headers_value: Value = serde_json::from_str(headers_json)
-                .map_err(|_| core_types::IfaceError::InvalidArg)?;
-            let headers_map = headers_value
-                .as_object()
-                .ok_or(core_types::IfaceError::InvalidArg)?;
+        if !headers.is_empty() {
             let mut header_map = HeaderMap::new();
-            for (key, value) in headers_map {
-                let header_name = HeaderName::from_bytes(key.as_bytes())
-                    .map_err(|_| core_types::IfaceError::InvalidArg)?;
-                match value {
-                    Value::Array(values) => {
-                        let mut queue: VecDeque<&Value> = values.iter().collect();
-                        while let Some(entry) = queue.pop_front() {
-                            if let Some(s) = entry.as_str() {
-                                let header_value = HeaderValue::from_str(s)
-                                    .map_err(|_| core_types::IfaceError::InvalidArg)?;
-                                header_map.append(header_name.clone(), header_value);
-                            } else {
-                                return Err(core_types::IfaceError::InvalidArg);
-                            }
-                        }
-                    }
-                    Value::String(single) => {
-                        let header_value = HeaderValue::from_str(single)
-                            .map_err(|_| core_types::IfaceError::InvalidArg)?;
-                        header_map.append(header_name, header_value);
-                    }
-                    _ => return Err(core_types::IfaceError::InvalidArg),
+            for entry in headers {
+                if let Some((name, value)) = entry.split_once(':') {
+                    let header_name = HeaderName::from_bytes(name.trim().as_bytes())
+                        .map_err(|err| CompError::Runtime(err.to_string()))?;
+                    let header_value = HeaderValue::from_str(value.trim())
+                        .map_err(|err| CompError::Runtime(err.to_string()))?;
+                    header_map.append(header_name, header_value);
                 }
             }
             builder = builder.headers(header_map);
         }
 
-        if let Some(body) = req.body {
-            let bytes = decode_body(body);
-            builder = builder.body(bytes);
+        if let Some(body) = body {
+            builder = builder.body(body);
         }
 
-        let response = builder.send().map_err(|err| {
-            debug!("http.fetch request failed: {}", err);
-            core_types::IfaceError::Unavailable
-        })?;
+        let response = builder
+            .send()
+            .map_err(|err| CompError::Runtime(err.to_string()))?;
+        let bytes = response
+            .bytes()
+            .map_err(|err| CompError::Runtime(err.to_string()))?;
 
-        let status = response.status().as_u16();
-        let headers_json = serialize_headers(response.headers());
-        let body_bytes = response.bytes().map_err(|err| {
-            debug!("http.fetch failed to read body: {}", err);
-            core_types::IfaceError::Unavailable
-        })?;
-        let body_base64 = if body_bytes.is_empty() {
-            None
-        } else {
-            Some(BASE64_STANDARD.encode(&body_bytes))
-        };
-
-        Ok(http::HttpResponse {
-            status,
-            headers_json,
-            body: body_base64,
-        })
-    }
-}
-
-impl host_import_v0_4::HostImports for HostState {
-    fn secrets_get(
-        &mut self,
-        key: String,
-        ctx: Option<core_types::TenantCtx>,
-    ) -> WasmtimeResult<Result<String, core_types::IfaceError>> {
-        Ok(<Self as secrets::Host>::get(self, key, ctx))
+        Ok(Ok(bytes.to_vec()))
     }
 
-    fn telemetry_emit(
-        &mut self,
-        span_json: String,
-        ctx: Option<core_types::TenantCtx>,
-    ) -> WasmtimeResult<()> {
-        <Self as telemetry::Host>::emit(self, span_json, ctx);
+    fn kv_get(&mut self, _ns: String, _key: String) -> WasmtimeResult<Option<String>> {
+        Ok(None)
+    }
+
+    fn kv_put(&mut self, _ns: String, _key: String, _val: String) -> WasmtimeResult<()> {
         Ok(())
-    }
-
-    fn http_fetch(
-        &mut self,
-        req: http::HttpRequest,
-        ctx: Option<core_types::TenantCtx>,
-    ) -> WasmtimeResult<Result<http::HttpResponse, core_types::IfaceError>> {
-        Ok(<Self as http::Host>::fetch(self, req, ctx))
     }
 }
 
@@ -217,38 +129,6 @@ pub fn make_exec_ctx(cref: &ComponentRef, tenant: &TenantCtx) -> node::ExecCtx {
         tenant: make_component_tenant_ctx(tenant),
         flow_id: cref.name.clone(),
         node_id: None,
-    }
-}
-
-fn decode_body(body: String) -> Vec<u8> {
-    BASE64_STANDARD
-        .decode(body.as_bytes())
-        .unwrap_or_else(|_| body.into_bytes())
-}
-
-fn serialize_headers(headers: &HeaderMap) -> Option<String> {
-    if headers.is_empty() {
-        return None;
-    }
-
-    let mut map = Map::new();
-    for (name, value) in headers.iter() {
-        let entry = map
-            .entry(name.as_str().to_string())
-            .or_insert_with(|| Value::Array(Vec::new()));
-        let Value::Array(arr) = entry else {
-            continue;
-        };
-        match value.to_str() {
-            Ok(text) => arr.push(Value::String(text.to_string())),
-            Err(_) => arr.push(Value::String(BASE64_STANDARD.encode(value.as_bytes()))),
-        }
-    }
-
-    if map.is_empty() {
-        None
-    } else {
-        Some(serde_json::to_string(&map).unwrap_or_default())
     }
 }
 
@@ -275,7 +155,6 @@ pub fn make_component_tenant_ctx(tenant: &TenantCtx) -> node::TenantCtx {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use greentic_interfaces_host::host_import::v0_4::greentic::host_import::http::Host as HttpHost;
     use std::io::{ErrorKind, Read, Write};
     use std::net::TcpListener;
     use std::thread;
@@ -305,7 +184,7 @@ mod tests {
         HostState {
             _tenant: None,
             _config: Value::Null,
-            secrets: HashMap::new(),
+            _secrets: HashMap::new(),
             policy: HostPolicy {
                 allow_http_fetch: allow_http,
                 allow_telemetry: true,
@@ -317,15 +196,14 @@ mod tests {
     #[test]
     fn http_fetch_denied_by_policy() {
         let mut host = host_state(false);
-        let req = http::HttpRequest {
-            method: "GET".into(),
-            url: "http://localhost".into(),
-            headers_json: None,
-            body: None,
-        };
-
-        let result = HttpHost::fetch(&mut host, req, None);
-        assert!(matches!(result, Err(core_types::IfaceError::Denied)));
+        let result = RunnerHost::http_request(
+            &mut host,
+            "GET".into(),
+            "http://localhost".into(),
+            vec![],
+            None,
+        );
+        assert!(matches!(result, Ok(Err(_))));
     }
 
     #[test]
@@ -339,20 +217,9 @@ mod tests {
             Err(err) => panic!("bind http listener: {err}"),
         };
         let mut host = host_state(true);
-        let req = http::HttpRequest {
-            method: "GET".into(),
-            url,
-            headers_json: None,
-            body: None,
-        };
-
-        let response = HttpHost::fetch(&mut host, req, None).expect("http fetch succeeds");
-        assert_eq!(response.status, 200);
-        let body = response.body.expect("body present");
-        let decoded = BASE64_STANDARD
-            .decode(body.as_bytes())
-            .expect("decode body");
-        assert_eq!(decoded, b"hello");
-        assert!(response.headers_json.is_some());
+        let response = RunnerHost::http_request(&mut host, "GET".into(), url, vec![], None)
+            .expect("http fetch");
+        let body = response.expect("http ok");
+        assert_eq!(body, b"hello");
     }
 }

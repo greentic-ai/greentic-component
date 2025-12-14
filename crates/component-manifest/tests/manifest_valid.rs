@@ -34,7 +34,14 @@ fn good_manifest() -> serde_json::Value {
             },
             "required": ["enabled"]
         },
-        "secrets": ["API_TOKEN"],
+        "secret_requirements": [{
+            "key": "configs/api_token",
+            "required": true,
+            "description": "API token",
+            "scope": { "env": "dev", "tenant": "acme" },
+            "format": "text",
+            "schema": { "type": "string" }
+        }],
         "wit_compat": {
             "package": "greentic:component",
             "min": "0.4.0",
@@ -57,7 +64,11 @@ fn validate_good_manifest() {
     assert_eq!(info.name.as_deref(), Some("example"));
     assert_eq!(info.capabilities.len(), 2);
     assert_eq!(info.exports.len(), 1);
-    assert_eq!(info.secrets, vec!["API_TOKEN".to_string()]);
+    assert_eq!(info.secret_requirements.len(), 1);
+    assert_eq!(
+        info.secret_requirements[0].key.as_str(),
+        "configs/api_token"
+    );
     assert_eq!(info.wit_compat.package, "greentic:component");
     assert_eq!(info.raw, manifest);
 }
@@ -77,11 +88,23 @@ fn reject_duplicate_capabilities() {
 #[test]
 fn reject_invalid_secret() {
     let mut manifest = good_manifest();
-    manifest["secrets"] = json!(["invalid-secret"]);
+    manifest["secret_requirements"][0]["key"] = json!("/invalid");
     let err = ManifestValidator::new()
         .validate_value(manifest)
         .expect_err("invalid secret name should be rejected");
     matches!(err, ManifestError::InvalidSecret(_))
         .then_some(())
         .expect("expected invalid secret error");
+}
+
+#[test]
+fn reject_invalid_scope() {
+    let mut manifest = good_manifest();
+    manifest["secret_requirements"][0]["scope"]["env"] = json!("");
+    let err = ManifestValidator::new()
+        .validate_value(manifest)
+        .expect_err("empty scope env should be rejected");
+    matches!(err, ManifestError::InvalidSecretRequirement { .. })
+        .then_some(())
+        .expect("expected invalid secret requirement error");
 }
