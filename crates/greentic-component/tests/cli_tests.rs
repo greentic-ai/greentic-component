@@ -7,6 +7,7 @@ use greentic_component::scaffold::deps::DependencyMode;
 use greentic_component::scaffold::engine::{DEFAULT_WIT_WORLD, ScaffoldEngine, ScaffoldRequest};
 use predicates::prelude::*;
 use serde_json::Value;
+use std::fs;
 use support::TestComponent;
 
 const TEST_WIT: &str = r#"
@@ -40,6 +41,22 @@ fn doctor_reports_success() {
 }
 
 #[test]
+fn inspect_accepts_manifest_override() {
+    let component = TestComponent::new(TEST_WIT, &["describe"]);
+    let wasm_path = component.wasm_path.to_str().unwrap();
+    let manifest_path = component.manifest_path.to_str().unwrap();
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("component-inspect");
+    cmd.arg(wasm_path)
+        .arg("--manifest")
+        .arg(manifest_path)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "component: com.greentic.test.component",
+        ));
+}
+
+#[test]
 fn doctor_detects_scaffold_directory() {
     let temp = tempfile::TempDir::new().unwrap();
     let root = temp.path().join("demo-detect");
@@ -62,6 +79,33 @@ fn doctor_detects_scaffold_directory() {
         .assert()
         .success()
         .stdout(predicate::str::contains("Detected Greentic scaffold"));
+}
+
+#[test]
+fn scaffold_makefile_uses_greentic_dev_commands() {
+    let temp = tempfile::TempDir::new().unwrap();
+    let root = temp.path().join("demo-dev");
+    let engine = ScaffoldEngine::new();
+    let request = ScaffoldRequest {
+        name: "demo-dev".into(),
+        path: root.clone(),
+        template_id: "rust-wasi-p2-min".into(),
+        org: "ai.greentic".into(),
+        version: "0.1.0".into(),
+        license: "MIT".into(),
+        wit_world: DEFAULT_WIT_WORLD.into(),
+        non_interactive: true,
+        year_override: Some(2030),
+        dependency_mode: DependencyMode::Local,
+    };
+    engine.scaffold(request).unwrap();
+
+    let makefile =
+        fs::read_to_string(root.join("Makefile")).expect("Makefile should be scaffolded");
+    assert!(makefile.contains("greentic-dev component build --manifest ./component.manifest.json"));
+    assert!(makefile.contains(
+        "greentic-dev component doctor target/wasm32-wasip2/release/demo_dev.wasm --manifest ./component.manifest.json"
+    ));
 }
 
 #[test]

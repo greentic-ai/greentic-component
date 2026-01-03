@@ -3,13 +3,16 @@ use std::path::{Path, PathBuf};
 
 use clap::{Args, Parser};
 
-use crate::{ComponentError, manifest::validate_manifest, prepare_component};
+use crate::{ComponentError, manifest::validate_manifest, prepare_component_with_manifest};
 
 #[derive(Args, Debug, Clone)]
 #[command(about = "Run health checks against a Greentic component artifact")]
 pub struct DoctorArgs {
     /// Path or identifier resolvable by the loader
     pub target: String,
+    /// Explicit path to component.manifest.json when it is not adjacent to the wasm
+    #[arg(long)]
+    pub manifest: Option<PathBuf>,
 }
 
 #[derive(Parser, Debug)]
@@ -23,11 +26,13 @@ pub fn parse_from_cli() -> DoctorArgs {
 }
 
 pub fn run(args: DoctorArgs) -> Result<(), ComponentError> {
-    if let Some(report) = detect_scaffold(&args.target) {
+    if args.manifest.is_none()
+        && let Some(report) = detect_scaffold(&args.target)
+    {
         report.print();
         return Ok(());
     }
-    let prepared = prepare_component(&args.target)?;
+    let prepared = prepare_component_with_manifest(&args.target, args.manifest.as_deref())?;
 
     let manifest_json = fs::read_to_string(&prepared.manifest_path)?;
     validate_manifest(&manifest_json)?;

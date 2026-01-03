@@ -1,13 +1,18 @@
+use std::path::PathBuf;
+
 use clap::{Args, Parser};
 use serde_json::Value;
 
-use crate::{ComponentError, PreparedComponent, prepare_component};
+use crate::{ComponentError, PreparedComponent, prepare_component_with_manifest};
 
 #[derive(Args, Debug, Clone)]
 #[command(about = "Inspect a Greentic component artifact")]
 pub struct InspectArgs {
     /// Path or identifier resolvable by the loader
     pub target: String,
+    /// Explicit path to component.manifest.json when it is not adjacent to the wasm
+    #[arg(long)]
+    pub manifest: Option<PathBuf>,
     /// Emit structured JSON instead of human output
     #[arg(long)]
     pub json: bool,
@@ -32,7 +37,7 @@ pub struct InspectResult {
 }
 
 pub fn run(args: &InspectArgs) -> Result<InspectResult, ComponentError> {
-    let prepared = prepare_component(&args.target)?;
+    let prepared = prepare_component_with_manifest(&args.target, args.manifest.as_deref())?;
     if args.json {
         let json = serde_json::to_string_pretty(&build_report(&prepared))
             .expect("serializing inspect report");

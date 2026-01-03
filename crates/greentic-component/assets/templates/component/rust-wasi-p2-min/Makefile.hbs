@@ -5,7 +5,7 @@ BUILD_FLAGS ?=
 default: build
 
 build:
-	greentic-component build $(BUILD_FLAGS)
+	greentic-dev component build --manifest ./component.manifest.json $(BUILD_FLAGS)
 
 flows:
 	greentic-component flow update
@@ -14,7 +14,7 @@ wasm:
 	cargo build --target wasm32-wasip2 --release
 
 check:
-	cargo check --target wasm32-wasip2
+	greentic-dev component doctor target/wasm32-wasip2/release/{{ name_snake }}.wasm --manifest ./component.manifest.json
 
 lint:
 	cargo fmt --all

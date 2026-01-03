@@ -20,7 +20,9 @@ pub struct ComponentHandle {
 
 #[derive(Debug, Error)]
 pub enum LoadError {
-    #[error("component not found for `{0}`")]
+    #[error(
+        "component not found for `{0}`; if pointing at a wasm file, pass --manifest <path/to/component.manifest.json>"
+    )]
     NotFound(String),
     #[error("failed to read {path}: {source}")]
     Io {
@@ -41,6 +43,16 @@ pub enum LoadError {
 }
 
 pub fn discover(path_or_id: &str) -> Result<ComponentHandle, LoadError> {
+    discover_with_manifest(path_or_id, None)
+}
+
+pub fn discover_with_manifest(
+    path_or_id: &str,
+    manifest_override: Option<&Path>,
+) -> Result<ComponentHandle, LoadError> {
+    if let Some(manifest_path) = manifest_override {
+        return load_from_manifest(manifest_path);
+    }
     if let Some(handle) = try_explicit(path_or_id)? {
         return Ok(handle);
     }

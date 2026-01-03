@@ -56,7 +56,10 @@ pub use manifest::{
     WasmHash, World, parse_manifest, schema as manifest_schema, validate_manifest,
 };
 #[cfg(feature = "prepare")]
-pub use prepare::{PackEntry, PreparedComponent, RunnerConfig, clear_cache_for, prepare_component};
+pub use prepare::{
+    PackEntry, PreparedComponent, RunnerConfig, clear_cache_for, prepare_component,
+    prepare_component_with_manifest,
+};
 pub use provenance::{Provenance, ProvenanceError};
 pub use schema::{
     JsonPath, collect_capability_hints, collect_default_annotations, collect_redactions,

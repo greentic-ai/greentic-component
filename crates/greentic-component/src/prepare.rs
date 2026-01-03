@@ -44,7 +44,14 @@ static ABI_MISSES: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(0));
 static DESCRIBE_MISSES: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(0));
 
 pub fn prepare_component(path_or_id: &str) -> Result<PreparedComponent, ComponentError> {
-    let handle = loader::discover(path_or_id)?;
+    prepare_component_with_manifest(path_or_id, None)
+}
+
+pub fn prepare_component_with_manifest(
+    path_or_id: &str,
+    manifest_override: Option<&Path>,
+) -> Result<PreparedComponent, ComponentError> {
+    let handle = loader::discover_with_manifest(path_or_id, manifest_override)?;
     let manifest = handle.manifest.clone();
     let manifest_path = handle.manifest_path.clone();
     let root = handle.root.clone();
