@@ -8,7 +8,9 @@ use anyhow::{Context, Result, anyhow, bail};
 use clap::Args;
 use serde_json::Value as JsonValue;
 
-use crate::cmd::flow::{FlowUpdateResult, update_with_manifest};
+use crate::cmd::flow::{
+    FlowUpdateResult, manifest_component_id, resolve_operation, update_with_manifest,
+};
 use crate::config::{
     ConfigInferenceOptions, ConfigSchemaSource, load_manifest_with_schema, resolve_manifest_path,
 };
@@ -84,6 +86,8 @@ pub fn run(args: BuildArgs) -> Result<()> {
     );
 
     let config = load_manifest_with_schema(&manifest_path, &inference_opts)?;
+    let component_id = manifest_component_id(&config.manifest)?;
+    let _operation = resolve_operation(&config.manifest, component_id)?;
     let flow_outcome = if args.no_flow {
         None
     } else {

@@ -83,10 +83,26 @@ so the project is immediately buildable (`cargo check --target wasm32-wasip2`) a
 ## Config flows (convention)
 
 - Config flows are normal flows (`id`, `kind`, `description`, `nodes`) whose last node emits a payload of the form `{ "node_id": "...", "node": { ... } }`. The engine treats `kind: component-config` as a hint only.
-- `greentic-component flow update` reads `component.manifest.json` (`id`, `mode`/`kind`, `config_schema`) and writes FlowIR JSON into `dev_flows.default` (required fields with defaults only) plus `dev_flows.custom` (questions for every non-hidden field, emitting state-backed config). No `.ygtc` sidecars are produced by default.
-- Defaults are only applied when the manifest supplies them; required fields without defaults are omitted from `dev_flows.default`. Fields marked `x_flow_hidden: true` are skipped in `dev_flows.custom` prompts.
-- Mode detection is tolerant (`mode`, then `kind`, else `"tool"`); the scaffold uses a generic node id `COMPONENT_STEP` and leaves `NEXT_NODE_PLACEHOLDER` routing untouched for downstream tooling to rewire.
-- `greentic-component build` is the one-stop entrypoint: it infers `config_schema` from WIT (fallback to manifest or stub), regenerates config flows into `dev_flows`, builds the wasm (`wasm32-wasip2`), and refreshes `artifacts`/`hashes` in `component.manifest.json`. Use `--no-flow`, `--no-infer-config`, or `--no-write-schema` to dial back parts of the pipeline. Override the cargo binary via `--cargo /path/to/cargo` (or `CARGO=/path/to/cargo`) if your PATH differs from the CLI’s environment.
+- `greentic-component flow update` reads `component.manifest.json` (`id`, `mode`/`kind`, `operations`, `config_schema`) and writes FlowIR JSON into `dev_flows.default` (required fields with defaults only) plus `dev_flows.custom` (questions for every non-hidden field, emitting state-backed config). No `.ygtc` sidecars are produced by default.
+- Config flow emission is strict: missing `mode`/`kind` defaults to `component.exec`, `tool` is rejected, and only pack-valid kinds are allowed. Every emitted node contains an explicit `component`, `operation`, and `input` object (config fields live under `input`).
+- Defaults are only applied when the manifest supplies them; required fields without defaults are omitted from `dev_flows.default`. Fields marked `x_flow_hidden: true` are skipped in `dev_flows.custom` prompts. The scaffold uses a generic node id `COMPONENT_STEP` and leaves `NEXT_NODE_PLACEHOLDER` routing untouched for downstream tooling to rewire.
+- Config-flow node shape:
+
+```json
+{
+  "node_id": "COMPONENT_STEP",
+  "node": {
+    "component.exec": {
+      "component": "<component_id>",
+      "operation": "<operation_name>",
+      "input": {}
+    },
+    "routing": [{ "to": "NEXT_NODE_PLACEHOLDER" }]
+  }
+}
+```
+
+- `greentic-component build` is the one-stop entrypoint: it infers `config_schema` from WIT (fallback to manifest or stub), regenerates config flows into `dev_flows`, builds the wasm (`wasm32-wasip2`), and refreshes `artifacts`/`hashes` in `component.manifest.json`. Use `--no-flow`, `--no-infer-config`, or `--no-write-schema` to dial back parts of the pipeline. Override the cargo binary via `--cargo /path/to/cargo` (or `CARGO=/path/to/cargo`) if your PATH differs from the CLI’s environment. Builds fail fast when `operations` is empty or ambiguous.
 - Templates default to the `greentic:component/component@0.5.0` world and expose a `@config` record in WIT so config_schema/flows can be inferred automatically. `supports` in the manifest accepts `messaging`, `event`, `component_config`, `job`, or `http` depending on your surface.
 
 ## Next steps

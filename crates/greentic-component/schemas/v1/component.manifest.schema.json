@@ -11,6 +11,7 @@
     "world",
     "describe_export",
     "config_schema",
+    "operations",
     "supports",
     "profiles",
     "capabilities",
@@ -53,6 +54,18 @@
         "required": { "type": "array", "items": { "type": "string" } },
         "additionalProperties": { "type": "boolean" }
       }
+    },
+    "operations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_.:-]*$"
+      }
+    },
+    "default_operation": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_.:-]*$"
     },
     "supports": {
       "type": "array",

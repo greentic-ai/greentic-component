@@ -342,6 +342,8 @@ world node {
             "version": "0.1.0",
             "world": observed_world,
             "describe_export": "describe",
+            "operations": ["describe"],
+            "default_operation": "describe",
             "supports": ["messaging"],
             "profiles": {
                 "default": "stateless",

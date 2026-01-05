@@ -2,6 +2,7 @@
 
 use assert_cmd::prelude::*;
 use insta::assert_snapshot;
+use serde_json::Value as JsonValue;
 use std::fs;
 use std::process::Command;
 use tempfile::TempDir;
@@ -38,6 +39,20 @@ fn scaffold_rust_wasi_template() {
     let cargo = fs::read_to_string(component_dir.join("Cargo.toml")).expect("Cargo.toml");
     let manifest =
         fs::read_to_string(component_dir.join("component.manifest.json")).expect("manifest");
+    let manifest_json: JsonValue = serde_json::from_str(&manifest).expect("manifest json");
+    let operations = manifest_json["operations"]
+        .as_array()
+        .expect("operations array in scaffold");
+    assert!(
+        !operations.is_empty(),
+        "scaffolded manifest should include at least one operation"
+    );
+    let first_op = operations[0].as_str().expect("operation string");
+    assert_eq!(
+        manifest_json["default_operation"].as_str(),
+        Some(first_op),
+        "default_operation should be set for scaffolds"
+    );
 
     assert_snapshot!("scaffold_cargo_toml", normalize_text(cargo.trim()));
     assert_snapshot!("scaffold_manifest", normalize_text(manifest.trim()));

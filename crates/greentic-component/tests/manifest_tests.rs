@@ -25,6 +25,11 @@ fn round_trip_manifest_parse() {
         manifest.supports,
         vec![FlowKind::Messaging, FlowKind::Event]
     );
+    assert_eq!(manifest.operations, vec!["handle_message".to_string()]);
+    assert_eq!(
+        manifest.default_operation.as_deref(),
+        Some("handle_message")
+    );
     assert_eq!(
         manifest.profiles.supported,
         vec!["stateless".to_string(), "cached".to_string()]

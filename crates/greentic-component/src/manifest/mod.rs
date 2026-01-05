@@ -1,7 +1,9 @@
+use std::collections::HashSet;
 use std::path::{Component, Path, PathBuf};
 
 use jsonschema::{Validator, validator_for};
 use once_cell::sync::Lazy;
+use regex::Regex;
 use semver::Version;
 use serde::Serialize;
 use serde_json::Value;
@@ -24,6 +26,9 @@ static COMPILED_SCHEMA: Lazy<Validator> = Lazy::new(|| {
     validator_for(&value).expect("component manifest schema must compile")
 });
 
+static OPERATION_PATTERN: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"^[a-z][a-z0-9_.:-]*$").expect("valid operation regex"));
+
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct ComponentManifest {
     pub id: ManifestId,
@@ -44,6 +49,9 @@ pub struct ComponentManifest {
     #[serde(default)]
     pub telemetry: Option<TelemetrySpec>,
     pub describe_export: DescribeExport,
+    pub operations: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_operation: Option<String>,
     #[serde(default)]
     pub provenance: Option<Provenance>,
     pub artifacts: Artifacts,
@@ -220,6 +228,14 @@ pub enum ManifestError {
     InvalidWorld { world: String },
     #[error("manifest field `{0}` cannot be empty")]
     EmptyField(&'static str),
+    #[error("component must expose at least one operation")]
+    MissingOperations,
+    #[error("operation `{operation}` is invalid")]
+    InvalidOperation { operation: String },
+    #[error("duplicate operation `{0}` detected")]
+    DuplicateOperation(String),
+    #[error("default_operation `{operation}` must match one of the declared operations")]
+    InvalidDefaultOperation { operation: String },
     #[error("component must support at least one flow kind")]
     MissingSupports,
     #[error("profiles.supported must include at least one profile identifier")]
@@ -271,6 +287,9 @@ struct RawManifest {
     #[serde(default)]
     telemetry: Option<TelemetrySpec>,
     describe_export: String,
+    operations: Vec<String>,
+    #[serde(default)]
+    default_operation: Option<String>,
     #[serde(default)]
     provenance: Option<Provenance>,
     artifacts: RawArtifacts,
@@ -323,6 +342,28 @@ impl TryFrom<RawManifest> for ComponentManifest {
                 .map_err(|err| ManifestError::Provenance(err.to_string()))?;
         }
 
+        if raw.operations.is_empty() {
+            return Err(ManifestError::MissingOperations);
+        }
+        let mut seen_operations = HashSet::new();
+        for operation in &raw.operations {
+            if !seen_operations.insert(operation) {
+                return Err(ManifestError::DuplicateOperation(operation.clone()));
+            }
+            if !OPERATION_PATTERN.is_match(operation) {
+                return Err(ManifestError::InvalidOperation {
+                    operation: operation.clone(),
+                });
+            }
+        }
+        if let Some(default_operation) = &raw.default_operation
+            && !raw.operations.iter().any(|op| op == default_operation)
+        {
+            return Err(ManifestError::InvalidDefaultOperation {
+                operation: default_operation.clone(),
+            });
+        }
+
         Ok(Self {
             id,
             name: raw.name,
@@ -336,6 +377,8 @@ impl TryFrom<RawManifest> for ComponentManifest {
             limits: raw.limits,
             telemetry: raw.telemetry,
             describe_export,
+            operations: raw.operations,
+            default_operation: raw.default_operation,
             provenance: raw.provenance,
             artifacts,
             hashes,

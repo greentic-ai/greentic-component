@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result, anyhow, bail};
 use clap::{Args, Subcommand};
 use component_manifest::validate_config_schema;
 use serde::Serialize;
@@ -17,6 +17,7 @@ use crate::config::{
 const DEFAULT_MANIFEST: &str = "component.manifest.json";
 const DEFAULT_NODE_ID: &str = "COMPONENT_STEP";
 const DEFAULT_KIND: &str = "component-config";
+pub(crate) const COMPONENT_EXEC_KIND: &str = "component.exec";
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum FlowCommand {
@@ -104,25 +105,17 @@ pub fn update(args: FlowUpdateArgs) -> Result<FlowUpdateResult> {
 }
 
 pub fn update_with_manifest(config: &ConfigOutcome) -> Result<FlowUpdateOutcome> {
-    let component_id = config
-        .manifest
-        .get("id")
-        .and_then(|value| value.as_str())
-        .ok_or_else(|| anyhow!("component.manifest.json must contain a string `id` field"))?;
-    let mode = config
-        .manifest
-        .get("mode")
-        .or_else(|| config.manifest.get("kind"))
-        .and_then(|value| value.as_str())
-        .unwrap_or("tool");
+    let component_id = manifest_component_id(&config.manifest)?;
+    let _node_kind = resolve_node_kind(&config.manifest)?;
+    let operation = resolve_operation(&config.manifest, component_id)?;
 
     validate_config_schema(&config.schema)
         .map_err(|err| anyhow!("config_schema failed validation: {err}"))?;
 
     let fields = collect_fields(&config.schema)?;
 
-    let default_flow = render_default_flow(component_id, mode, &fields)?;
-    let custom_flow = render_custom_flow(component_id, mode, &fields)?;
+    let default_flow = render_default_flow(component_id, &operation, &fields)?;
+    let custom_flow = render_custom_flow(component_id, &operation, &fields)?;
 
     let mut manifest = config.manifest.clone();
     let manifest_obj = manifest
@@ -324,7 +317,7 @@ fn humanize(raw: &str) -> String {
 
 fn render_default_flow(
     component_id: &str,
-    mode: &str,
+    operation: &str,
     fields: &[ConfigField],
 ) -> Result<JsonValue> {
     let required_with_defaults = fields
@@ -345,7 +338,7 @@ fn render_default_flow(
         })
         .collect::<Vec<_>>();
 
-    let emit_template = render_emit_template(component_id, mode, field_values);
+    let emit_template = render_emit_template(component_id, operation, field_values);
     let mut nodes = BTreeMap::new();
     nodes.insert(
         "emit_config".to_string(),
@@ -364,7 +357,11 @@ fn render_default_flow(
     flow_to_value(&doc)
 }
 
-fn render_custom_flow(component_id: &str, mode: &str, fields: &[ConfigField]) -> Result<JsonValue> {
+fn render_custom_flow(
+    component_id: &str,
+    operation: &str,
+    fields: &[ConfigField],
+) -> Result<JsonValue> {
     let visible_fields = fields
         .iter()
         .filter(|field| !field.hidden)
@@ -418,7 +415,7 @@ fn render_custom_flow(component_id: &str, mode: &str, fields: &[ConfigField]) ->
             },
         })
         .collect::<Vec<_>>();
-    let emit_template = render_emit_template(component_id, mode, emit_field_values);
+    let emit_template = render_emit_template(component_id, operation, emit_field_values);
 
     let mut nodes = BTreeMap::new();
     nodes.insert("ask_config".to_string(), JsonValue::Object(ask_node));
@@ -437,27 +434,25 @@ fn render_custom_flow(component_id: &str, mode: &str, fields: &[ConfigField]) ->
     flow_to_value(&doc)
 }
 
-fn render_emit_template(component_id: &str, mode: &str, fields: Vec<EmitField>) -> String {
+fn render_emit_template(component_id: &str, operation: &str, fields: Vec<EmitField>) -> String {
     let mut lines = Vec::new();
     lines.push("{".to_string());
     lines.push(format!("  \"node_id\": \"{DEFAULT_NODE_ID}\","));
     lines.push("  \"node\": {".to_string());
-    lines.push(format!("    \"{mode}\": {{"));
-    lines.push(format!(
-        "      \"component\": \"{component_id}\"{}",
-        if fields.is_empty() { "" } else { "," }
-    ));
-
+    lines.push(format!("    \"{COMPONENT_EXEC_KIND}\": {{"));
+    lines.push(format!("      \"component\": \"{component_id}\","));
+    lines.push(format!("      \"operation\": \"{operation}\","));
+    lines.push("      \"input\": {".to_string());
     for (idx, field) in fields.iter().enumerate() {
         let suffix = if idx + 1 == fields.len() { "" } else { "," };
         lines.push(format!(
-            "      \"{}\": {}{}",
+            "        \"{}\": {}{}",
             field.name,
             field.value.render(),
             suffix
         ));
     }
-
+    lines.push("      }".to_string());
     lines.push("    },".to_string());
     lines.push("    \"routing\": [".to_string());
     lines.push("      { \"to\": \"NEXT_NODE_PLACEHOLDER\" }".to_string());
@@ -465,6 +460,79 @@ fn render_emit_template(component_id: &str, mode: &str, fields: Vec<EmitField>) 
     lines.push("  }".to_string());
     lines.push("}".to_string());
     lines.join("\n")
+}
+
+pub(crate) fn manifest_component_id(manifest: &JsonValue) -> Result<&str> {
+    manifest
+        .get("id")
+        .and_then(|value| value.as_str())
+        .ok_or_else(|| anyhow!("component.manifest.json must contain a string `id` field"))
+}
+
+fn resolve_node_kind(manifest: &JsonValue) -> Result<&'static str> {
+    let requested = manifest
+        .get("mode")
+        .or_else(|| manifest.get("kind"))
+        .and_then(|value| value.as_str());
+    let resolved = requested.unwrap_or(COMPONENT_EXEC_KIND);
+    if resolved == "tool" {
+        bail!("mode/kind `tool` is no longer supported for config flows");
+    }
+    if resolved != COMPONENT_EXEC_KIND {
+        bail!(
+            "unsupported config flow node kind `{resolved}`; allowed kinds: {COMPONENT_EXEC_KIND}"
+        );
+    }
+    Ok(COMPONENT_EXEC_KIND)
+}
+
+pub(crate) fn resolve_operation(manifest: &JsonValue, component_id: &str) -> Result<String> {
+    let missing_msg = || {
+        anyhow!(
+            "Component {component_id} has no operations; add at least one operation (e.g. handle_message)"
+        )
+    };
+    let operations_value = manifest.get("operations").ok_or_else(missing_msg)?;
+    let operations_array = operations_value
+        .as_array()
+        .ok_or_else(|| anyhow!("`operations` must be an array of strings"))?;
+    let mut operations = Vec::new();
+    for entry in operations_array {
+        let op = entry
+            .as_str()
+            .ok_or_else(|| anyhow!("`operations` entries must be strings"))?;
+        if op.trim().is_empty() {
+            return Err(missing_msg());
+        }
+        operations.push(op.to_string());
+    }
+    if operations.is_empty() {
+        return Err(missing_msg());
+    }
+
+    let default_operation = manifest
+        .get("default_operation")
+        .and_then(|value| value.as_str());
+    let chosen = if let Some(default) = default_operation {
+        if default.trim().is_empty() {
+            return Err(anyhow!("default_operation cannot be empty"));
+        }
+        if operations.iter().any(|op| op == default) {
+            default.to_string()
+        } else {
+            return Err(anyhow!(
+                "default_operation `{default}` must match one of the declared operations"
+            ));
+        }
+    } else if operations.len() == 1 {
+        operations[0].clone()
+    } else {
+        return Err(anyhow!(
+            "Component {component_id} declares multiple operations {:?}; set `default_operation` to pick one",
+            operations
+        ));
+    };
+    Ok(chosen)
 }
 
 struct EmitField {

@@ -12,7 +12,8 @@ fn updates_dev_flows_from_manifest_schema() {
     let manifest = r#"
 {
   "id": "component-demo",
-  "mode": "qa",
+  "operations": ["handle_message"],
+  "default_operation": "handle_message",
   "config_schema": {
     "type": "object",
     "properties": {
@@ -60,11 +61,15 @@ fn updates_dev_flows_from_manifest_schema() {
         .expect("default template");
     let default_payload: JsonValue =
         serde_json::from_str(default_template).expect("default template json");
-    assert_eq!(default_payload["node"]["qa"]["component"], "component-demo");
-    assert_eq!(default_payload["node"]["qa"]["title"], "Hello world");
-    assert_eq!(default_payload["node"]["qa"]["threshold"], 0.42);
+    let exec_node = &default_payload["node"]["component.exec"];
+    assert_eq!(exec_node["component"], "component-demo");
+    assert_eq!(exec_node["operation"], "handle_message");
+    assert_eq!(exec_node["input"]["title"], "Hello world");
+    assert_eq!(exec_node["input"]["threshold"], 0.42);
     assert!(
-        default_payload["node"]["qa"].get("kind").is_none(),
+        default_payload["node"]["component.exec"]["input"]
+            .get("kind")
+            .is_none(),
         "optional fields should be omitted in default flow"
     );
 
@@ -96,8 +101,13 @@ fn updates_dev_flows_from_manifest_schema() {
         .as_str()
         .expect("template string");
     assert!(
-        custom_template.contains(r#""component": "component-demo""#),
-        "component id should be embedded"
+        custom_template.contains(r#""component.exec": {"#),
+        "component.exec node should be emitted"
+    );
+    assert!(
+        custom_template.contains(r#""component": "component-demo""#)
+            && custom_template.contains(r#""operation": "handle_message""#),
+        "component id and operation should be embedded"
     );
     assert!(
         custom_template.contains(r#""title": "{{state.title}}""#),
@@ -116,7 +126,7 @@ fn updates_dev_flows_from_manifest_schema() {
 #[test]
 fn flow_update_is_idempotent() {
     let temp = TempDir::new().expect("tempdir");
-    let manifest = r#"{"id":"component-demo","config_schema":{"type":"object","properties":{},"required":[]}}"#;
+    let manifest = r#"{"id":"component-demo","operations":["handle_message"],"config_schema":{"type":"object","properties":{},"required":[]}}"#;
     fs::write(temp.path().join("component.manifest.json"), manifest).expect("write manifest");
 
     let mut first = cargo_bin_cmd!("greentic-component");
@@ -135,7 +145,7 @@ fn flow_update_is_idempotent() {
 #[test]
 fn infers_schema_from_wit_when_missing() {
     let temp = TempDir::new().expect("tempdir");
-    let manifest = r#"{"id":"component-demo","world":"demo:component/component@0.1.0"}"#;
+    let manifest = r#"{"id":"component-demo","world":"demo:component/component@0.1.0","operations":["handle_message"]}"#;
     fs::write(temp.path().join("component.manifest.json"), manifest).expect("write manifest");
     let wit_dir = temp.path().join("wit");
     fs::create_dir_all(&wit_dir).expect("create wit dir");

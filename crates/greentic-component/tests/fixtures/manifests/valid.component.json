@@ -4,6 +4,8 @@
   "version": "0.3.0",
   "world": "root:root/root",
   "describe_export": "describe",
+  "operations": ["handle_message"],
+  "default_operation": "handle_message",
   "config_schema": {
     "type": "object",
     "properties": {},
