@@ -81,6 +81,17 @@ fn build_emits_pack_valid_config_flow() {
         serde_json::to_string_pretty(&manifest).unwrap(),
     )
     .expect("write manifest");
+    let schema_dir = temp.path().join("schemas/io");
+    fs::create_dir_all(&schema_dir).expect("schema dir");
+    fs::write(
+        schema_dir.join("input.schema.json"),
+        r#"{
+  "type": "object",
+  "properties": { "title": { "type": "string", "default": "Hi" } },
+  "required": ["title"]
+}"#,
+    )
+    .expect("write input schema");
 
     let fake_cargo = write_fake_cargo(temp.path(), "component.wasm");
 
@@ -112,6 +123,7 @@ fn build_emits_pack_valid_config_flow() {
     );
     let parsed: JsonValue = serde_json::from_str(template).expect("template json");
     let exec = &parsed["node"]["component.exec"];
+    assert_eq!(parsed["node_id"], "example");
     assert_eq!(exec["component"], "ai.greentic.example");
     assert_eq!(exec["operation"], "handle_message");
     assert_eq!(exec["input"]["title"], "Hi");
@@ -127,6 +139,10 @@ fn build_emits_pack_valid_config_flow() {
             .map(|op| !op.trim().is_empty())
             .unwrap_or(false),
         "operation should not be empty"
+    );
+    assert!(
+        !template.contains("COMPONENT_STEP") && !template.contains("\"tool\""),
+        "template should be add-step ready"
     );
 }
 

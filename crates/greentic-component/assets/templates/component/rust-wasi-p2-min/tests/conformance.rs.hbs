@@ -1,4 +1,5 @@
 use {{ name_snake }}::{describe_payload, handle_message};
+use greentic_interfaces_guest::component::node::InvokeResult;
 
 #[test]
 fn describe_mentions_world() {
@@ -9,6 +10,9 @@ fn describe_mentions_world() {
 
 #[test]
 fn handle_echoes_input() {
-    let response = handle_message("invoke", "ping");
-    assert!(response.contains("ping"));
+    let response = handle_message("invoke".to_string(), "ping".to_string());
+    match response {
+        InvokeResult::Ok(body) => assert!(body.contains("ping")),
+        other => panic!("expected Ok response, got {:?}", other),
+    }
 }

@@ -80,6 +80,26 @@ hello-world/
 The generator wires `component.manifest.json`, schema stubs, a WIT world, CI workflow, and a local Makefile
 so the project is immediately buildable (`cargo check --target wasm32-wasip2`) and testable.
 
+## Authoring pattern
+
+Scaffolded components expose only two functions in `src/lib.rs`, wired to the exports by
+`greentic_interfaces_guest::component_entrypoint!`:
+
+```rust
+use greentic_interfaces_guest::component_entrypoint;
+
+component_entrypoint!({
+    manifest: crate::describe_payload,
+    invoke: crate::handle_message,
+    invoke_stream: true,
+});
+
+pub fn describe_payload() -> String { /* return manifest JSON */ }
+pub fn handle_message(operation: &str, input: &str) -> String { /* your logic */ }
+```
+
+This keeps export glue out of your way while preserving the WASI marker and expected interfaces.
+
 ## Config flows (convention)
 
 - Config flows are normal flows (`id`, `kind`, `description`, `nodes`) whose last node emits a payload of the form `{ "node_id": "...", "node": { ... } }`. The engine treats `kind: component-config` as a hint only.

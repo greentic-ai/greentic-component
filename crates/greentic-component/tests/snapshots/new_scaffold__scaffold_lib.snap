@@ -1,3 +1,8 @@
+---
+source: crates/greentic-component/tests/new_scaffold.rs
+assertion_line: 71
+expression: lib_rs.trim()
+---
 use greentic_interfaces_guest::component::node::InvokeResult;
 use greentic_interfaces_guest::component_entrypoint;
 
@@ -15,10 +20,10 @@ component_entrypoint!({
 pub fn describe_payload() -> String {
     serde_json::json!({
         "component": {
-            "name": "{{ name }}",
-            "org": "{{ org }}",
-            "version": "{{ version }}",
-            "world": "{{ wit_world }}",
+            "name": "demo-component",
+            "org": "ai.greentic",
+            "version": "0.1.0",
+            "world": "greentic:component/component@0.5.0",
             "schemas": {
                 "component": "schemas/component.schema.json",
                 "input": "schemas/io/input.schema.json",
@@ -30,7 +35,7 @@ pub fn describe_payload() -> String {
 }
 
 pub fn handle_message(operation: String, input: String) -> InvokeResult {
-    InvokeResult::Ok(format!("{{ name }}::{operation} => {}", input.trim()))
+    InvokeResult::Ok(format!("demo-component::{operation} => {}", input.trim()))
 }
 
 #[cfg(test)]
@@ -41,7 +46,7 @@ mod tests {
     fn describe_payload_is_json() {
         let payload = describe_payload();
         let json: serde_json::Value = serde_json::from_str(&payload).expect("valid json");
-        assert_eq!(json["component"]["name"], "{{ name }}");
+        assert_eq!(json["component"]["name"], "demo-component");
     }
 
     #[test]

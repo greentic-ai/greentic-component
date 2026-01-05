@@ -20,6 +20,6 @@ running `greentic-component inspect --json target/wasm32-wasip2/release/{{ name_
 
 ## Next Steps
 
-- Implement domain-specific logic inside `src/lib.rs`.
+- Implement domain-specific logic inside `src/lib.rs` (the `component_entrypoint!` macro wires exports for you).
 - Extend `schemas/` with the inputs/outputs your component expects.
 - Wire additional capabilities or telemetry requirements into `component.manifest.json`.

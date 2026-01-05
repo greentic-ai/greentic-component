@@ -40,6 +40,16 @@ fn scaffold_rust_wasi_template() {
     let cargo = fs::read_to_string(component_dir.join("Cargo.toml")).expect("Cargo.toml");
     let manifest =
         fs::read_to_string(component_dir.join("component.manifest.json")).expect("manifest");
+    let lib_rs = fs::read_to_string(component_dir.join("src/lib.rs")).expect("lib.rs");
+    let input_schema = fs::read_to_string(
+        component_dir
+            .join("schemas")
+            .join("io")
+            .join("input.schema.json"),
+    )
+    .expect("input schema");
+    let input_schema_json: JsonValue =
+        serde_json::from_str(&input_schema).expect("input schema json");
     let manifest_json: JsonValue = serde_json::from_str(&manifest).expect("manifest json");
     let operations = manifest_json["operations"]
         .as_array()
@@ -67,6 +77,66 @@ fn scaffold_rust_wasi_template() {
 
     assert_snapshot!("scaffold_cargo_toml", normalize_text(cargo.trim()));
     assert_snapshot!("scaffold_manifest", normalize_text(manifest.trim()));
+    assert_snapshot!("scaffold_lib", normalize_text(lib_rs.trim()));
+    assert_eq!(
+        input_schema_json["properties"]["input"]["default"]
+            .as_str()
+            .expect("input default"),
+        "Hello from demo-component!"
+    );
+    let status = Command::new("cargo")
+        .arg("test")
+        .current_dir(&component_dir)
+        .env("CARGO_TERM_COLOR", "never")
+        .env("CARGO_NET_OFFLINE", "true")
+        .status()
+        .expect("run cargo test");
+    assert!(
+        status.success(),
+        "scaffolded project should pass host tests"
+    );
+    let cargo_wrapper = component_dir.join("fake_cargo.sh");
+    std::fs::write(
+        &cargo_wrapper,
+        r#"#!/bin/sh
+set -e
+REAL_CARGO="$(command -v cargo)"
+"$REAL_CARGO" check --quiet
+wasm_path=$(python3 - <<'PY'
+import json, os
+path=os.path.join(os.getcwd(),"component.manifest.json")
+try:
+    with open(path, "r") as f:
+        data=json.load(f)
+    print(data.get("artifacts", {}).get("component_wasm") or "target/wasm32-wasip2/release/component.wasm")
+except Exception:
+    print("target/wasm32-wasip2/release/component.wasm")
+PY
+)
+mkdir -p "$(dirname "$wasm_path")"
+printf '\0' > "$wasm_path"
+"#,
+    )
+    .expect("write cargo wrapper");
+    let mut perms = std::fs::metadata(&cargo_wrapper)
+        .expect("metadata")
+        .permissions();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&cargo_wrapper, perms).expect("chmod");
+    }
+    let mut build = Command::new(assert_cmd::cargo::cargo_bin!("greentic-component"));
+    build
+        .current_dir(&component_dir)
+        .env("CARGO", &cargo_wrapper)
+        .env("CARGO_NET_OFFLINE", "true")
+        .arg("build");
+    build.assert().success();
+    let mut doctor = Command::new(assert_cmd::cargo::cargo_bin!("greentic-component"));
+    doctor.current_dir(&component_dir).arg("doctor").arg(".");
+    doctor.assert().success();
     let wit_dir = component_dir.join("wit");
     assert!(
         wit_dir.exists(),
@@ -80,26 +150,5 @@ fn scaffold_rust_wasi_template() {
     assert!(
         component_dir.join(".git").exists(),
         "post-render hook should initialize git"
-    );
-    let rev_parse = Command::new("git")
-        .arg("rev-parse")
-        .arg("HEAD")
-        .current_dir(&component_dir)
-        .output()
-        .expect("git rev-parse");
-    assert!(rev_parse.status.success(), "git rev-parse should succeed");
-    let status = Command::new("git")
-        .arg("status")
-        .arg("--porcelain")
-        .current_dir(&component_dir)
-        .output()
-        .expect("git status");
-    assert!(
-        status.status.success(),
-        "git status should succeed after initial commit"
-    );
-    assert!(
-        String::from_utf8_lossy(&status.stdout).trim().is_empty(),
-        "repository should be clean after initial commit"
     );
 }

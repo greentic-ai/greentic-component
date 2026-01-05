@@ -12,6 +12,7 @@ fn updates_dev_flows_from_manifest_schema() {
     let manifest = r#"
 {
   "id": "component-demo",
+  "name": "component-demo",
   "operations": [
     {
       "name": "handle_message",
@@ -48,6 +49,22 @@ fn updates_dev_flows_from_manifest_schema() {
 }
 "#;
     fs::write(temp.path().join("component.manifest.json"), manifest).expect("write manifest");
+    let schema_dir = temp.path().join("schemas/io");
+    fs::create_dir_all(&schema_dir).expect("schema dir");
+    fs::write(
+        schema_dir.join("input.schema.json"),
+        r#"{
+  "type": "object",
+  "properties": {
+    "title": { "type": "string", "default": "Hello world" },
+    "threshold": { "type": "number", "default": 0.42 },
+    "kind": { "enum": ["Text", "Number"], "default": "Text" },
+    "internal": { "type": "string", "default": "skip-me", "x_flow_hidden": true }
+  },
+  "required": ["title", "threshold"]
+}"#,
+    )
+    .expect("write input schema");
 
     let mut cmd = cargo_bin_cmd!("greentic-component");
     cmd.current_dir(temp.path()).arg("flow").arg("update");
@@ -67,6 +84,13 @@ fn updates_dev_flows_from_manifest_schema() {
         .expect("default template");
     let default_payload: JsonValue =
         serde_json::from_str(default_template).expect("default template json");
+    assert!(
+        default_template.contains("NEXT_NODE_PLACEHOLDER")
+            && !default_template.contains("COMPONENT_STEP")
+            && !default_template.contains("\"tool\""),
+        "template should be add-step ready"
+    );
+    assert_eq!(default_payload["node_id"], "component-demo");
     let exec_node = &default_payload["node"]["component.exec"];
     assert_eq!(exec_node["component"], "component-demo");
     assert_eq!(exec_node["operation"], "handle_message");
@@ -107,7 +131,8 @@ fn updates_dev_flows_from_manifest_schema() {
         .as_str()
         .expect("template string");
     assert!(
-        custom_template.contains(r#""component.exec": {"#),
+        custom_template.contains(r#""component.exec": {"#)
+            && custom_template.contains(r#""node_id": "component-demo""#),
         "component.exec node should be emitted"
     );
     assert!(
@@ -132,8 +157,19 @@ fn updates_dev_flows_from_manifest_schema() {
 #[test]
 fn flow_update_is_idempotent() {
     let temp = TempDir::new().expect("tempdir");
-    let manifest = r#"{"id":"component-demo","operations":[{"name":"handle_message","input_schema":{},"output_schema":{}}],"config_schema":{"type":"object","properties":{},"required":[]}}"#;
+    let manifest = r#"{"id":"component-demo","name":"component-demo","operations":[{"name":"handle_message","input_schema":{},"output_schema":{}}],"config_schema":{"type":"object","properties":{},"required":[]}}"#;
     fs::write(temp.path().join("component.manifest.json"), manifest).expect("write manifest");
+    let schema_dir = temp.path().join("schemas/io");
+    fs::create_dir_all(&schema_dir).expect("schema dir");
+    fs::write(
+        schema_dir.join("input.schema.json"),
+        r#"{
+  "type": "object",
+  "properties": { "input": { "type": "string", "default": "hi" } },
+  "required": ["input"]
+}"#,
+    )
+    .expect("write input schema");
 
     let mut first = cargo_bin_cmd!("greentic-component");
     first.current_dir(temp.path()).arg("flow").arg("update");
@@ -151,8 +187,19 @@ fn flow_update_is_idempotent() {
 #[test]
 fn infers_schema_from_wit_when_missing() {
     let temp = TempDir::new().expect("tempdir");
-    let manifest = r#"{"id":"component-demo","world":"demo:component/component@0.1.0","operations":[{"name":"handle_message","input_schema":{},"output_schema":{}}]}"#;
+    let manifest = r#"{"id":"component-demo","name":"component-demo","world":"demo:component/component@0.1.0","operations":[{"name":"handle_message","input_schema":{},"output_schema":{}}]}"#;
     fs::write(temp.path().join("component.manifest.json"), manifest).expect("write manifest");
+    let schema_dir = temp.path().join("schemas/io");
+    fs::create_dir_all(&schema_dir).expect("schema dir");
+    fs::write(
+        schema_dir.join("input.schema.json"),
+        r#"{
+  "type": "object",
+  "properties": { "input": { "type": "string", "default": "hi" } },
+  "required": ["input"]
+}"#,
+    )
+    .expect("write input schema");
     let wit_dir = temp.path().join("wit");
     fs::create_dir_all(&wit_dir).expect("create wit dir");
     fs::write(
@@ -190,4 +237,28 @@ world component {
         manifest_json["dev_flows"].get("default").is_some(),
         "default dev flow should be generated"
     );
+}
+
+#[test]
+fn fails_when_required_defaults_missing() {
+    let temp = TempDir::new().expect("tempdir");
+    let manifest = r#"{"id":"component-demo","name":"component-demo","operations":[{"name":"handle_message","input_schema":{},"output_schema":{}}],"config_schema":{"type":"object","properties":{},"required":[]}}"#;
+    fs::write(temp.path().join("component.manifest.json"), manifest).expect("write manifest");
+    let schema_dir = temp.path().join("schemas/io");
+    fs::create_dir_all(&schema_dir).expect("schema dir");
+    fs::write(
+        schema_dir.join("input.schema.json"),
+        r#"{
+  "type": "object",
+  "properties": { "input": { "type": "string" } },
+  "required": ["input"]
+}"#,
+    )
+    .expect("write input schema");
+
+    let mut cmd = cargo_bin_cmd!("greentic-component");
+    cmd.current_dir(temp.path()).arg("flow").arg("update");
+    cmd.assert().failure().stderr(predicates::str::contains(
+        "Required field input has no default; cannot generate default dev_flow",
+    ));
 }

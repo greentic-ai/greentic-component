@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, HashSet};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow, bail};
 use clap::{Args, Subcommand};
@@ -15,7 +15,6 @@ use crate::config::{
 };
 
 const DEFAULT_MANIFEST: &str = "component.manifest.json";
-const DEFAULT_NODE_ID: &str = "COMPONENT_STEP";
 const DEFAULT_KIND: &str = "component-config";
 pub(crate) const COMPONENT_EXEC_KIND: &str = "component.exec";
 
@@ -106,16 +105,18 @@ pub fn update(args: FlowUpdateArgs) -> Result<FlowUpdateResult> {
 
 pub fn update_with_manifest(config: &ConfigOutcome) -> Result<FlowUpdateOutcome> {
     let component_id = manifest_component_id(&config.manifest)?;
+    let component_name = manifest_component_name(&config.manifest)?;
     let _node_kind = resolve_node_kind(&config.manifest)?;
     let operation = resolve_operation(&config.manifest, component_id)?;
+    let input_schema = load_operation_input_schema(&config.manifest_path, &config.manifest)?;
 
     validate_config_schema(&config.schema)
         .map_err(|err| anyhow!("config_schema failed validation: {err}"))?;
 
-    let fields = collect_fields(&config.schema)?;
+    let fields = collect_fields(&input_schema)?;
 
-    let default_flow = render_default_flow(component_id, &operation, &fields)?;
-    let custom_flow = render_custom_flow(component_id, &operation, &fields)?;
+    let default_flow = render_default_flow(component_id, component_name, &operation, &fields)?;
+    let custom_flow = render_custom_flow(component_id, component_name, &operation, &fields)?;
 
     let mut manifest = config.manifest.clone();
     let manifest_obj = manifest
@@ -317,28 +318,13 @@ fn humanize(raw: &str) -> String {
 
 fn render_default_flow(
     component_id: &str,
+    component_name: &str,
     operation: &str,
     fields: &[ConfigField],
 ) -> Result<JsonValue> {
-    let required_with_defaults = fields
-        .iter()
-        .filter(|field| field.required && field.default_value.is_some())
-        .collect::<Vec<_>>();
+    let field_values = compute_default_fields(fields)?;
 
-    let field_values = required_with_defaults
-        .iter()
-        .map(|field| {
-            let literal =
-                serde_json::to_string(field.default_value.as_ref().expect("filtered to Some"))
-                    .expect("json serialize default");
-            EmitField {
-                name: field.name.clone(),
-                value: EmitFieldValue::Literal(literal),
-            }
-        })
-        .collect::<Vec<_>>();
-
-    let emit_template = render_emit_template(component_id, operation, field_values);
+    let emit_template = render_emit_template(component_id, component_name, operation, field_values);
     let mut nodes = BTreeMap::new();
     nodes.insert(
         "emit_config".to_string(),
@@ -359,6 +345,7 @@ fn render_default_flow(
 
 fn render_custom_flow(
     component_id: &str,
+    component_name: &str,
     operation: &str,
     fields: &[ConfigField],
 ) -> Result<JsonValue> {
@@ -415,7 +402,8 @@ fn render_custom_flow(
             },
         })
         .collect::<Vec<_>>();
-    let emit_template = render_emit_template(component_id, operation, emit_field_values);
+    let emit_template =
+        render_emit_template(component_id, component_name, operation, emit_field_values);
 
     let mut nodes = BTreeMap::new();
     nodes.insert("ask_config".to_string(), JsonValue::Object(ask_node));
@@ -434,10 +422,15 @@ fn render_custom_flow(
     flow_to_value(&doc)
 }
 
-fn render_emit_template(component_id: &str, operation: &str, fields: Vec<EmitField>) -> String {
+fn render_emit_template(
+    component_id: &str,
+    component_name: &str,
+    operation: &str,
+    fields: Vec<EmitField>,
+) -> String {
     let mut lines = Vec::new();
     lines.push("{".to_string());
-    lines.push(format!("  \"node_id\": \"{DEFAULT_NODE_ID}\","));
+    lines.push(format!("  \"node_id\": \"{component_name}\","));
     lines.push("  \"node\": {".to_string());
     lines.push(format!("    \"{COMPONENT_EXEC_KIND}\": {{"));
     lines.push(format!("      \"component\": \"{component_id}\","));
@@ -467,6 +460,13 @@ pub(crate) fn manifest_component_id(manifest: &JsonValue) -> Result<&str> {
         .get("id")
         .and_then(|value| value.as_str())
         .ok_or_else(|| anyhow!("component.manifest.json must contain a string `id` field"))
+}
+
+fn manifest_component_name(manifest: &JsonValue) -> Result<&str> {
+    manifest
+        .get("name")
+        .and_then(|value| value.as_str())
+        .ok_or_else(|| anyhow!("component.manifest.json must contain a string `name` field"))
 }
 
 fn resolve_node_kind(manifest: &JsonValue) -> Result<&'static str> {
@@ -587,4 +587,42 @@ fn write_manifest(manifest_path: &PathBuf, manifest: &JsonValue) -> Result<()> {
     let formatted = serde_json::to_string_pretty(manifest)?;
     fs::write(manifest_path, formatted + "\n")
         .with_context(|| format!("failed to write {}", manifest_path.display()))
+}
+
+fn load_operation_input_schema(manifest_path: &Path, manifest: &JsonValue) -> Result<JsonValue> {
+    let manifest_dir = manifest_path
+        .parent()
+        .ok_or_else(|| anyhow!("manifest path has no parent: {}", manifest_path.display()))?;
+    let schema_path = manifest
+        .get("schemas")
+        .and_then(|entry| entry.get("input"))
+        .and_then(|value| value.as_str())
+        .map(|path| manifest_dir.join(path))
+        .unwrap_or_else(|| manifest_dir.join("schemas/io/input.schema.json"));
+    let text = fs::read_to_string(&schema_path)
+        .with_context(|| format!("failed to read {}", schema_path.display()))?;
+    serde_json::from_str(&text)
+        .with_context(|| format!("failed to parse {}", schema_path.display()))
+}
+
+fn compute_default_fields(fields: &[ConfigField]) -> Result<Vec<EmitField>> {
+    let mut emit_fields = Vec::new();
+    for field in fields {
+        if field.required {
+            if let Some(default_value) = &field.default_value {
+                let literal = serde_json::to_string(default_value)
+                    .context("failed to serialize default value")?;
+                emit_fields.push(EmitField {
+                    name: field.name.clone(),
+                    value: EmitFieldValue::Literal(literal),
+                });
+            } else {
+                bail!(
+                    "Required field {} has no default; cannot generate default dev_flow. Provide defaults or use custom mode.",
+                    field.name
+                );
+            }
+        }
+    }
+    Ok(emit_fields)
 }
