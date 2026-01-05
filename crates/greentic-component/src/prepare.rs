@@ -342,7 +342,13 @@ world node {
             "version": "0.1.0",
             "world": observed_world,
             "describe_export": "describe",
-            "operations": ["describe"],
+            "operations": [
+                {
+                    "name": "describe",
+                    "input_schema": {},
+                    "output_schema": {}
+                }
+            ],
             "default_operation": "describe",
             "supports": ["messaging"],
             "profiles": {

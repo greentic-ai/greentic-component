@@ -4,7 +4,13 @@
   "version": "0.3.0",
   "world": "root:root/root",
   "describe_export": "describe",
-  "operations": ["handle_message"],
+  "operations": [
+    {
+      "name": "handle_message",
+      "input_schema": {},
+      "output_schema": {}
+    }
+  ],
   "default_operation": "handle_message",
   "config_schema": {
     "type": "object",

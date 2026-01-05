@@ -5,7 +5,13 @@
   "version": "{{ version }}",
   "world": "{{ wit_world }}",
   "describe_export": "get-manifest",
-  "operations": ["handle_message"],
+  "operations": [
+    {
+      "name": "handle_message",
+      "input_schema": {},
+      "output_schema": {}
+    }
+  ],
   "default_operation": "handle_message",
   "config_schema": {
     "type": "object",

@@ -10,7 +10,13 @@ expression: manifest.trim()
   "version": "0.1.0",
   "world": "greentic:component/component@0.5.0",
   "describe_export": "get-manifest",
-  "operations": ["handle_message"],
+  "operations": [
+    {
+      "name": "handle_message",
+      "input_schema": {},
+      "output_schema": {}
+    }
+  ],
   "default_operation": "handle_message",
   "config_schema": {
     "type": "object",

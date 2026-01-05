@@ -28,7 +28,13 @@ fn minimal_manifest() -> JsonValue {
         "version": "0.1.0",
         "world": "greentic:component/component@0.5.0",
         "describe_export": "get-manifest",
-        "operations": ["handle_message"],
+        "operations": [
+            {
+                "name": "handle_message",
+                "input_schema": {},
+                "output_schema": {}
+            }
+        ],
         "default_operation": "handle_message",
         "config_schema": {
             "type": "object",
@@ -86,6 +92,12 @@ fn build_emits_pack_valid_config_flow() {
 
     let manifest_after = fs::read_to_string(&manifest_path).expect("read manifest");
     let value: JsonValue = serde_json::from_str(&manifest_after).expect("manifest json");
+    let operations = value["operations"].as_array().expect("operations array");
+    assert_eq!(operations.len(), 1);
+    let operation = operations[0].as_object().expect("operation object");
+    assert_eq!(operation["name"], "handle_message");
+    assert!(operation["input_schema"].is_object());
+    assert!(operation["output_schema"].is_object());
     let default_flow = &value["dev_flows"]["default"];
     let template = default_flow["graph"]["nodes"]["emit_config"]["template"]
         .as_str()

@@ -37,13 +37,23 @@ impl TestComponent {
         let hash = blake3_hash(&wasm_bytes);
         let world_value = world_ref.clone();
         let default_operation = funcs.first().copied().unwrap_or("run");
+        let operations = funcs
+            .iter()
+            .map(|name| {
+                json!({
+                    "name": name,
+                    "input_schema": {},
+                    "output_schema": {}
+                })
+            })
+            .collect::<Vec<_>>();
         let manifest_json = json!({
             "id": "com.greentic.test.component",
             "name": "Test Component",
             "version": "0.1.0",
             "world": world_value,
             "describe_export": "describe",
-            "operations": funcs,
+            "operations": operations,
             "default_operation": default_operation,
             "supports": ["messaging"],
             "profiles": {

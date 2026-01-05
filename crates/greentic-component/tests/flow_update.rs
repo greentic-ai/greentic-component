@@ -12,7 +12,13 @@ fn updates_dev_flows_from_manifest_schema() {
     let manifest = r#"
 {
   "id": "component-demo",
-  "operations": ["handle_message"],
+  "operations": [
+    {
+      "name": "handle_message",
+      "input_schema": {},
+      "output_schema": {}
+    }
+  ],
   "default_operation": "handle_message",
   "config_schema": {
     "type": "object",
@@ -126,7 +132,7 @@ fn updates_dev_flows_from_manifest_schema() {
 #[test]
 fn flow_update_is_idempotent() {
     let temp = TempDir::new().expect("tempdir");
-    let manifest = r#"{"id":"component-demo","operations":["handle_message"],"config_schema":{"type":"object","properties":{},"required":[]}}"#;
+    let manifest = r#"{"id":"component-demo","operations":[{"name":"handle_message","input_schema":{},"output_schema":{}}],"config_schema":{"type":"object","properties":{},"required":[]}}"#;
     fs::write(temp.path().join("component.manifest.json"), manifest).expect("write manifest");
 
     let mut first = cargo_bin_cmd!("greentic-component");
@@ -145,7 +151,7 @@ fn flow_update_is_idempotent() {
 #[test]
 fn infers_schema_from_wit_when_missing() {
     let temp = TempDir::new().expect("tempdir");
-    let manifest = r#"{"id":"component-demo","world":"demo:component/component@0.1.0","operations":["handle_message"]}"#;
+    let manifest = r#"{"id":"component-demo","world":"demo:component/component@0.1.0","operations":[{"name":"handle_message","input_schema":{},"output_schema":{}}]}"#;
     fs::write(temp.path().join("component.manifest.json"), manifest).expect("write manifest");
     let wit_dir = temp.path().join("wit");
     fs::create_dir_all(&wit_dir).expect("create wit dir");

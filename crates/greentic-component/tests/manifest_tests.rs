@@ -25,7 +25,10 @@ fn round_trip_manifest_parse() {
         manifest.supports,
         vec![FlowKind::Messaging, FlowKind::Event]
     );
-    assert_eq!(manifest.operations, vec!["handle_message".to_string()]);
+    assert_eq!(manifest.operations.len(), 1);
+    assert_eq!(manifest.operations[0].name, "handle_message".to_string());
+    assert!(manifest.operations[0].input_schema.is_object());
+    assert!(manifest.operations[0].output_schema.is_object());
     assert_eq!(
         manifest.default_operation.as_deref(),
         Some("handle_message")
@@ -42,6 +45,17 @@ fn round_trip_manifest_parse() {
 #[test]
 fn schema_validation_fails_for_missing_fields() {
     let raw = fixture("invalid.component.json");
+    match parse_manifest(&raw).unwrap_err() {
+        ManifestError::Schema(_) => {}
+        err => panic!("expected schema error, got {err:?}"),
+    }
+}
+
+#[test]
+fn schema_validation_fails_for_string_operations() {
+    let mut value: Value = serde_json::from_str(&fixture("valid.component.json")).unwrap();
+    value["operations"] = serde_json::json!(["handle_message"]);
+    let raw = serde_json::to_string(&value).unwrap();
     match parse_manifest(&raw).unwrap_err() {
         ManifestError::Schema(_) => {}
         err => panic!("expected schema error, got {err:?}"),

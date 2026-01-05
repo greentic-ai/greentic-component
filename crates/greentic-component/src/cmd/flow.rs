@@ -495,16 +495,31 @@ pub(crate) fn resolve_operation(manifest: &JsonValue, component_id: &str) -> Res
     let operations_value = manifest.get("operations").ok_or_else(missing_msg)?;
     let operations_array = operations_value
         .as_array()
-        .ok_or_else(|| anyhow!("`operations` must be an array of strings"))?;
+        .ok_or_else(|| anyhow!("`operations` must be an array of objects"))?;
     let mut operations = Vec::new();
     for entry in operations_array {
         let op = entry
-            .as_str()
-            .ok_or_else(|| anyhow!("`operations` entries must be strings"))?;
-        if op.trim().is_empty() {
+            .as_object()
+            .ok_or_else(|| anyhow!("`operations` entries must be objects"))?;
+        let name = op
+            .get("name")
+            .and_then(|value| value.as_str())
+            .ok_or_else(|| anyhow!("`operations` entries must include a string `name` field"))?;
+        if name.trim().is_empty() {
             return Err(missing_msg());
         }
-        operations.push(op.to_string());
+        let input_schema = op.get("input_schema").ok_or_else(|| {
+            anyhow!("`operations` entries must include input_schema and output_schema")
+        })?;
+        let output_schema = op.get("output_schema").ok_or_else(|| {
+            anyhow!("`operations` entries must include input_schema and output_schema")
+        })?;
+        if !input_schema.is_object() || !output_schema.is_object() {
+            return Err(anyhow!(
+                "`operations` input_schema/output_schema must be objects"
+            ));
+        }
+        operations.push(name.to_string());
     }
     if operations.is_empty() {
         return Err(missing_msg());

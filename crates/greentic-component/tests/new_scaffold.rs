@@ -1,6 +1,7 @@
 #![cfg(feature = "cli")]
 
 use assert_cmd::prelude::*;
+use greentic_types::component::ComponentManifest as TypesManifest;
 use insta::assert_snapshot;
 use serde_json::Value as JsonValue;
 use std::fs;
@@ -47,12 +48,22 @@ fn scaffold_rust_wasi_template() {
         !operations.is_empty(),
         "scaffolded manifest should include at least one operation"
     );
-    let first_op = operations[0].as_str().expect("operation string");
+    let first_op = operations[0].as_object().expect("operation object");
+    assert!(first_op["input_schema"].is_object());
+    assert!(first_op["output_schema"].is_object());
+    let first_op_name = first_op["name"].as_str().expect("operation name");
     assert_eq!(
         manifest_json["default_operation"].as_str(),
-        Some(first_op),
+        Some(first_op_name),
         "default_operation should be set for scaffolds"
     );
+    let manifest_parsed: TypesManifest =
+        serde_json::from_str(&manifest).expect("manifest parses as greentic-types");
+    assert!(
+        !manifest_parsed.operations.is_empty(),
+        "operations should deserialize"
+    );
+    assert_eq!(manifest_parsed.operations[0].name, "handle_message");
 
     assert_snapshot!("scaffold_cargo_toml", normalize_text(cargo.trim()));
     assert_snapshot!("scaffold_manifest", normalize_text(manifest.trim()));

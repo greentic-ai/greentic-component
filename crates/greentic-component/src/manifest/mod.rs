@@ -15,6 +15,7 @@ use crate::capabilities::{
 use crate::limits::Limits;
 use crate::provenance::Provenance;
 use crate::telemetry::TelemetrySpec;
+use greentic_types::component::ComponentOperation;
 use greentic_types::flow::FlowKind;
 use greentic_types::{SecretKey, SecretRequirement};
 
@@ -49,7 +50,7 @@ pub struct ComponentManifest {
     #[serde(default)]
     pub telemetry: Option<TelemetrySpec>,
     pub describe_export: DescribeExport,
-    pub operations: Vec<String>,
+    pub operations: Vec<ComponentOperation>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_operation: Option<String>,
     #[serde(default)]
@@ -287,7 +288,7 @@ struct RawManifest {
     #[serde(default)]
     telemetry: Option<TelemetrySpec>,
     describe_export: String,
-    operations: Vec<String>,
+    operations: Vec<ComponentOperation>,
     #[serde(default)]
     default_operation: Option<String>,
     #[serde(default)]
@@ -347,17 +348,20 @@ impl TryFrom<RawManifest> for ComponentManifest {
         }
         let mut seen_operations = HashSet::new();
         for operation in &raw.operations {
-            if !seen_operations.insert(operation) {
-                return Err(ManifestError::DuplicateOperation(operation.clone()));
+            if !seen_operations.insert(&operation.name) {
+                return Err(ManifestError::DuplicateOperation(operation.name.clone()));
             }
-            if !OPERATION_PATTERN.is_match(operation) {
+            if !OPERATION_PATTERN.is_match(&operation.name) {
                 return Err(ManifestError::InvalidOperation {
-                    operation: operation.clone(),
+                    operation: operation.name.clone(),
                 });
             }
         }
         if let Some(default_operation) = &raw.default_operation
-            && !raw.operations.iter().any(|op| op == default_operation)
+            && !raw
+                .operations
+                .iter()
+                .any(|op| op.name == *default_operation)
         {
             return Err(ManifestError::InvalidDefaultOperation {
                 operation: default_operation.clone(),
