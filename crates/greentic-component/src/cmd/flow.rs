@@ -324,7 +324,7 @@ fn render_default_flow(
 ) -> Result<JsonValue> {
     let field_values = compute_default_fields(fields)?;
 
-    let emit_template = render_emit_template(component_id, component_name, operation, field_values);
+    let emit_template = render_emit_template(component_name, operation, field_values);
     let mut nodes = BTreeMap::new();
     nodes.insert(
         "emit_config".to_string(),
@@ -402,8 +402,7 @@ fn render_custom_flow(
             },
         })
         .collect::<Vec<_>>();
-    let emit_template =
-        render_emit_template(component_id, component_name, operation, emit_field_values);
+    let emit_template = render_emit_template(component_name, operation, emit_field_values);
 
     let mut nodes = BTreeMap::new();
     nodes.insert("ask_config".to_string(), JsonValue::Object(ask_node));
@@ -422,19 +421,12 @@ fn render_custom_flow(
     flow_to_value(&doc)
 }
 
-fn render_emit_template(
-    component_id: &str,
-    component_name: &str,
-    operation: &str,
-    fields: Vec<EmitField>,
-) -> String {
+fn render_emit_template(component_name: &str, operation: &str, fields: Vec<EmitField>) -> String {
     let mut lines = Vec::new();
     lines.push("{".to_string());
     lines.push(format!("  \"node_id\": \"{component_name}\","));
     lines.push("  \"node\": {".to_string());
-    lines.push(format!("    \"{COMPONENT_EXEC_KIND}\": {{"));
-    lines.push(format!("      \"component\": \"{component_id}\","));
-    lines.push(format!("      \"operation\": \"{operation}\","));
+    lines.push(format!("    \"{operation}\": {{"));
     lines.push("      \"input\": {".to_string());
     for (idx, field) in fields.iter().enumerate() {
         let suffix = if idx + 1 == fields.len() { "" } else { "," };

@@ -91,13 +91,11 @@ fn updates_dev_flows_from_manifest_schema() {
         "template should be add-step ready"
     );
     assert_eq!(default_payload["node_id"], "component-demo");
-    let exec_node = &default_payload["node"]["component.exec"];
-    assert_eq!(exec_node["component"], "component-demo");
-    assert_eq!(exec_node["operation"], "handle_message");
+    let exec_node = &default_payload["node"]["handle_message"];
     assert_eq!(exec_node["input"]["title"], "Hello world");
     assert_eq!(exec_node["input"]["threshold"], 0.42);
     assert!(
-        default_payload["node"]["component.exec"]["input"]
+        default_payload["node"]["handle_message"]["input"]
             .get("kind")
             .is_none(),
         "optional fields should be omitted in default flow"
@@ -131,14 +129,9 @@ fn updates_dev_flows_from_manifest_schema() {
         .as_str()
         .expect("template string");
     assert!(
-        custom_template.contains(r#""component.exec": {"#)
+        custom_template.contains(r#""handle_message": {"#)
             && custom_template.contains(r#""node_id": "component-demo""#),
-        "component.exec node should be emitted"
-    );
-    assert!(
-        custom_template.contains(r#""component": "component-demo""#)
-            && custom_template.contains(r#""operation": "handle_message""#),
-        "component id and operation should be embedded"
+        "operation node should be emitted"
     );
     assert!(
         custom_template.contains(r#""title": "{{state.title}}""#),

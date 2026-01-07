@@ -118,27 +118,18 @@ fn build_emits_pack_valid_config_flow() {
         "config flows must not emit tool nodes"
     );
     assert!(
-        template.contains("\"component.exec\""),
-        "component.exec node should be emitted"
+        template.contains("\"handle_message\""),
+        "operation node emitted"
     );
     let parsed: JsonValue = serde_json::from_str(template).expect("template json");
-    let exec = &parsed["node"]["component.exec"];
+    let exec = &parsed["node"]["handle_message"];
     assert_eq!(parsed["node_id"], "example");
-    assert_eq!(exec["component"], "ai.greentic.example");
-    assert_eq!(exec["operation"], "handle_message");
     assert_eq!(exec["input"]["title"], "Hi");
     assert_eq!(
         parsed["node"]["routing"][0]["to"]
             .as_str()
             .expect("routing target"),
         "NEXT_NODE_PLACEHOLDER"
-    );
-    assert!(
-        exec["operation"]
-            .as_str()
-            .map(|op| !op.trim().is_empty())
-            .unwrap_or(false),
-        "operation should not be empty"
     );
     assert!(
         !template.contains("COMPONENT_STEP") && !template.contains("\"tool\""),
