@@ -1,91 +1,48 @@
-# Greentic Component Workspace
+# Greentic components
 
-This workspace houses the core pieces needed to load, validate, and execute Greentic components without baking any component-specific knowledge into the runner. It is organised into three crates:
+Greentic components are portable WASM building blocks that declare their capabilities up front (manifest + schemas) and expose a tiny, consistent surface area (describe + invoke). This repo ships the authoring CLI, manifest tooling, and flow generator that keep components easy to create, configure, and ship.
 
-- `greentic-component-manifest` — strongly-typed parsing and validation for component self-descriptions. It validates capability lists, export declarations, config schemas, and WIT compatibility using JSON Schema tooling.
-- `greentic-component-store` — fetches component artifacts from supported stores (filesystem, HTTP, OCI/Warg placeholders) with caching and digest/signature policy enforcement.
-- `greentic-component-runtime` — uses Wasmtime’s component model to load components, bind tenant configuration/secrets, and invoke exported operations via the generic Greentic interfaces.
-
-## Crates & publishing
-
-Only the `greentic-component` crate is published on crates.io. Internal crates such as
-`greentic-component-store` and `greentic-component-runtime` exist for code organization inside this
-workspace and are marked `publish = false`. If you want to consume Greentic tooling from crates.io,
-depend on `greentic-component` only:
-
-```toml
-[dependencies]
-greentic-component = "0.4"
-```
-
-Developers working in this repository interact directly with the internal crates via their workspace
-paths; downstream users do not need to reference them.
-
-## Installation
+If you just want the CLI:
 
 ```bash
 rustup target add wasm32-wasip2
-cargo install cargo-binstall
-cargo binstall greentic-component           # prebuilt binaries from GitHub Releases
-cargo install --path crates/greentic-component --features cli   # or build from source locally
-# work locally via: make build
+cargo binstall greentic-component           # or: cargo install --path crates/greentic-component --features cli
 ```
 
-Tagged releases ship binstall-ready archives (Linux, macOS, Windows), so `cargo binstall` will fetch
-prebuilt binaries when available and fall back to building from source otherwise.
+Full CLI reference lives in `docs/cli.md` — skim it when you want every flag and subcommand.
 
-The CLI lives inside this workspace; running `cargo run -p greentic-component --features cli --bin greentic-component -- <command>`
-is convenient during development. For a workspace build that tracks your working copy, use
-`cargo install --path crates/greentic-component --features cli`.
+## Why components?
 
-## Quickstart
+- **Everything is a component**: describe inputs/outputs, wire a single invoke surface, and let flows orchestrate them.
+- **Predictable config**: manifests + JSON schemas drive rich prompts and defaults; config flows are regenerated for you.
+- **Portable**: wasm32-wasip2 targets + explicit capabilities mean minimal host assumptions.
+
+## Quick start (copy/paste)
 
 ```bash
-# 1. Discover templates (built-in + ~/.greentic/templates/component/*)
-greentic-component templates
+greentic-component new \
+  --name hello-world \
+  --org ai.greentic \
+  --path ./hello-world \
+  --non-interactive \
+  --no-check   # drop --no-check to run the initial cargo check
 
-# 2. Scaffold a component (runs cargo check --target wasm32-wasip2)
-greentic-component new --name hello-world --org ai.greentic
-
-# 3. Inspect / doctor the generated project
-component-doctor ./hello-world
+cd hello-world
+greentic-component flow update   # regenerates dev_flows with defaults from schemas/io/input.schema.json
 ```
 
-Need the full CLI reference? `greentic-component new --help` and `greentic-component templates --help`
-describe every flag (JSON output, custom templates, reverse-DNS org names, etc.).
+What you get:
 
-## Templates
+- `component.manifest.json` with operations, schemas, and a default dev_flow in the YGTc v2 shape.
+- `src/lib.rs` already wired with the exports macro.
+- A WIT world (`greentic:component/component@0.5.0`) so config inference works.
 
-- Built-in template: `rust-wasi-p2-min` (a Rust 2024 `cdylib` that targets WASI-P2 via `wit-bindgen`).
-- User templates: `~/.greentic/templates/component/<template-id>/` with an optional `template.json`
-  describing `{ "id", "description", "tags" }` (override via `GREENTIC_TEMPLATE_ROOT=...`).
-- Metadata is surfaced by `greentic-component templates --json`, making it script-friendly.
+## Author the logic
 
-## Structure of a scaffolded component
-
-```
-hello-world/
-├── Cargo.toml
-├── src/lib.rs
-├── component.manifest.json
-├── schemas/
-│   ├── component.schema.json
-│   └── io/{input,output}.schema.json
-├── wit/world.wit
-├── tests/conformance.rs
-├── .github/workflows/ci.yml
-└── README.md / LICENSE / Makefile
-```
-
-The generator wires `component.manifest.json`, schema stubs, a WIT world, CI workflow, and a local Makefile
-so the project is immediately buildable (`cargo check --target wasm32-wasip2`) and testable.
-
-## Authoring pattern
-
-Scaffolded components expose only two functions in `src/lib.rs`, wired to the exports by
-`greentic_interfaces_guest::component_entrypoint!`:
+Scaffolds keep the glue in a macro so you only implement two functions:
 
 ```rust
+use greentic_interfaces_guest::component::node::InvokeResult;
 use greentic_interfaces_guest::component_entrypoint;
 
 component_entrypoint!({
@@ -94,110 +51,63 @@ component_entrypoint!({
     invoke_stream: true,
 });
 
-pub fn describe_payload() -> String { /* return manifest JSON */ }
-pub fn handle_message(operation: &str, input: &str) -> String { /* your logic */ }
+pub fn describe_payload() -> String {
+    serde_json::json!({
+        "component": {
+            "name": "hello-world",
+            "org": "ai.greentic",
+            "version": "0.1.0",
+            "world": "greentic:component/component@0.5.0",
+            "schemas": {
+                "component": "schemas/component.schema.json",
+                "input": "schemas/io/input.schema.json",
+                "output": "schemas/io/output.schema.json"
+            }
+        }
+    })
+    .to_string()
+}
+
+pub fn handle_message(operation: String, input: String) -> InvokeResult {
+    InvokeResult::Ok(format!("hello-world::{operation} => {}", input.trim()))
+}
 ```
 
-This keeps export glue out of your way while preserving the WASI marker and expected interfaces.
+`describe_payload` returns the manifest JSON; `handle_message` receives the resolved operation name and the raw input JSON string and returns `InvokeResult`.
 
-## Config flows (convention)
+## Config flows (YGTc v2)
 
-- Config flows are normal flows (`id`, `kind`, `description`, `nodes`) whose last node emits a payload of the form `{ "node_id": "...", "node": { ... } }`. The engine treats `kind: component-config` as a hint only.
-- `greentic-component flow update` (and `greentic-component build` unless `--no-flow` is set) reads `component.manifest.json` (`id`, `name`, `mode`/`kind`, `operations`, `schemas.io.input`) and regenerates `dev_flows.default` and `.custom` deterministically. Default flow uses the YGTc v2 shape: `node_id = manifest.name`, the node contains a single entry keyed by the operation name whose value holds the `input` object (required fields filled from defaults in `schemas/io/input.schema.json`), plus `routing` to `NEXT_NODE_PLACEHOLDER`. If any required field lacks a default, the update fails loudly (no silent stub left behind). No `.ygtc` sidecars are produced by default.
-- Config flow emission is strict: missing `mode`/`kind` defaults to `component.exec` as the allowed kind (but the emitted node is operation-keyed), `tool` is rejected, and only pack-valid kinds are allowed.
-- Defaults are only applied when the manifest supplies them; required fields without defaults are omitted from `dev_flows.default`. Fields marked `x_flow_hidden: true` are skipped in `dev_flows.custom` prompts. The scaffold uses a generic node id `COMPONENT_STEP` and leaves `NEXT_NODE_PLACEHOLDER` routing untouched for downstream tooling to rewire.
-- Config-flow node shape:
+`greentic-component flow update` (and `build`) regenerate `dev_flows` based on your manifest and input schema defaults. The default flow now emits the new YGTc v2 shape — keyed by operation, no `component.exec` wrapper:
 
 ```json
 {
-  "node_id": "COMPONENT_STEP",
+  "node_id": "hello-world",
   "node": {
-    "component.exec": {
-      "component": "<component_id>",
-      "operation": "<operation_name>",
-      "input": {}
+    "handle_message": {
+      "input": {
+        "input": "Hello from hello-world!"
+      }
     },
     "routing": [{ "to": "NEXT_NODE_PLACEHOLDER" }]
   }
 }
 ```
 
-- `greentic-component build` is the one-stop entrypoint: it infers `config_schema` from WIT (fallback to manifest or stub), regenerates config flows into `dev_flows`, builds the wasm (`wasm32-wasip2`), and refreshes `artifacts`/`hashes` in `component.manifest.json`. Use `--no-flow`, `--no-infer-config`, or `--no-write-schema` to dial back parts of the pipeline. Override the cargo binary via `--cargo /path/to/cargo` (or `CARGO=/path/to/cargo`) if your PATH differs from the CLI’s environment. Builds fail fast when `operations` is empty or ambiguous.
-- Templates default to the `greentic:component/component@0.5.0` world and expose a `@config` record in WIT so config_schema/flows can be inferred automatically. `supports` in the manifest accepts `messaging`, `event`, `component_config`, `job`, or `http` depending on your surface.
+Routing stays untouched so downstream tools can rewire the placeholder. If any required field in `schemas/io/input.schema.json` lacks a default, flow generation fails loudly instead of emitting an invalid stub.
 
-## Next steps
+## Build, test, ship
 
-1. Implement your domain logic in `src/lib.rs` (notably the `handle` export).
-2. Extend `schemas/` and `component.manifest.json` to reflect real inputs, outputs, and capabilities.
-3. Use `component-doctor` and `component-inspect` (or `make smoke`) to validate manifests and wasm artifacts.
-4. Run `make build`, `make test`, and `make lint` to mirror CI locally.
-5. When ready, `greentic-component new --json ...` integrates nicely with automation/CI pipelines.
+- `greentic-component build` validates the manifest, refreshes dev_flows, and builds the wasm (honoring `--cargo`/`CARGO` if you need a custom toolchain).
+- `greentic-component doctor ./target/wasm32-wasip2/release/component.wasm --manifest component.manifest.json` prints schema/hash/world/lifecycle/capability health.
+- `greentic-component templates` lists built-ins and user templates under `~/.greentic/templates/component/*`.
 
-> **Validation guardrails**
->
-> The `new` subcommand validates component names (kebab/snake case), orgs
-> (reverse-DNS like `ai.greentic`), semantic versions, and target directories up
-> front. Validation failures emit actionable human output or structured JSON
-> (when `--json` is set) so CI/CD pipelines can separate invalid input from
-> later build failures.
+See `docs/cli.md` for deeper switches (offline mode, schema inference knobs, store fetch, etc.).
 
-> **Post-render hooks**
->
-> Each `greentic-component new ...` run bootstraps a git repository (unless the
-> target lives inside an existing worktree), creates an initial commit
-> `chore(init): scaffold component from <template id>`, and prints a short list
-> of “next step” commands (cd into the directory, run `component-doctor`, etc.)
-> so freshly scaffolded projects start in a clean, versioned state. Set
-> `--no-git` (or `GREENTIC_SKIP_GIT=1`) to opt out when an external tool is
-> responsible for version control; structured `post_init.events[]` entries in
-> the `--json` output capture each git step’s status for CI logs.
+## Learn more
 
-`greentic-component new --json ...` now surfaces the template description/tags
-(`scaffold.template_description`, `scaffold.template_tags`) so automation can
-record which template produced a component without shell parsing.
-
-`GREENTIC_DEP_MODE` controls how dependencies are written when scaffolding:
-`local` (default) injects workspace `path =` overrides so CI catches template
-regressions against unpublished crates, while `cratesio` emits pure semver
-constraints and fails fast if any `path =` slips into the generated
-`Cargo.toml`. The dual-mode smoke tests exercise both flavors.
-
-## Continuous Integration
-
-- `.github/workflows/ci.yml` runs on every push/PR using the stable toolchain on `ubuntu-latest`.
-- The `checks` job runs `cargo fmt`, `cargo clippy`, full workspace tests (locked + all features), targeted CLI feature tests, and verifies the published schema `$id` on pushes to `master`.
-- The `smoke` job scaffolds a temporary component via `greentic-component new`,
-  runs `component-doctor`, performs both `cargo check --target wasm32-wasip2`
-  and `cargo build --target wasm32-wasip2 --release`, and finishes with
-  `component-inspect --json`, mirroring
-  `make smoke`/`ci/local_check.sh`.
-- Run `ci/local_check.sh` before pushing to mirror the GitHub Actions pipeline (fmt, clippy, builds/tests, schema drift, CLI probes, and the smoke scaffold).
-
-## Development
-
-### Prerequisites & MSRV
-
-- Rust stable toolchain (MSRV: 1.89)
-- `wasmtime` dependencies (clang/LLVM on macOS & Linux) if you intend to run components locally
-
-### Cargo Features
-
-| Feature    | Default | Purpose |
-|------------|---------|---------|
-| `oci`      | ✅       | Enable OCI fetching for the component store. |
-| `schema`   | ⛔️       | Generate JSON Schemas via `schemars`. |
-| `abi`      | ⛔️       | Pull in the WIT/wasm tooling required for `abi::check_world` and lifecycle inspection. |
-| `describe` | ⛔️       | Enable describe payload helpers (builds on `abi`). |
-| `loader`   | ⛔️       | Component discovery APIs (`loader::discover`). |
-| `prepare`  | ⛔️       | One-stop loader (`prepare_component`) plus caching. |
-| `cli`      | ⛔️       | Build the `component-inspect` and `component-doctor` binaries (implies `prepare`). |
-
-Enable only the features you need to avoid pulling in heavy wasm tooling when you are just parsing manifests.
-
-### Integrating with greentic-dev / runner
-
-```rust
-use greentic_component::prepare_component;
+- CLI details and doctor output: `docs/cli.md`
+- Manifest and flow regeneration tests live under `crates/greentic-component/tests/*` (including the README quickstart).
+- Examples are exercised in CI so the snippets above stay correct.
 
 let prepared = prepare_component("./component.manifest.json")?;
 pack_builder.with_component(prepared.to_pack_entry()?);
@@ -385,6 +295,8 @@ cargo run --features cli --bin component-doctor ./component.manifest.json
 ```
 
 `component-inspect` emits a structured JSON report with manifest metadata, BLAKE3 hashes, lifecycle detection, describe payloads, and redaction hints sourced from `x-redact` annotations. Add `--strict` when warnings should become hard failures (default mode only exits non-zero on actual errors so smoke jobs can keep running while still surfacing warnings on stderr). `component-doctor` executes the full validation pipeline (schema validation, hash verification, world/ABI probe, lifecycle detection, describe resolution, and redaction summary) and exits non-zero on any failure—perfect for CI gates.
+
+Further CLI details: see docs/cli.md.
 
 ## Host HTTP Fetch
 
