@@ -79,12 +79,13 @@ pub fn run(args: NewArgs, engine: &ScaffoldEngine) -> Result<()> {
         }
     };
     if !args.json {
-        println!("processing...");
+        println!("scaffolding component...");
         println!(
             "  - template: {} -> {}",
             request.template_id,
             request.path.display()
         );
+        println!("  - wit world: {}", request.wit_world);
         stdout().flush().ok();
     }
     let scaffold_started = Instant::now();
@@ -96,6 +97,12 @@ pub fn run(args: NewArgs, engine: &ScaffoldEngine) -> Result<()> {
     let post_started = Instant::now();
     let skip_git = should_skip_git(&args);
     let post_init = post::run_post_init(&outcome, skip_git);
+    if !args.json && !args.no_check {
+        println!(
+            "running cargo check --target wasm32-wasip2 (downloads toolchain on first run)... "
+        );
+        stdout().flush().ok();
+    }
     let compile_check = run_compile_check(&outcome.path, args.no_check)?;
     if args.json {
         let payload = NewCliOutput {
@@ -155,7 +162,14 @@ fn print_human(outcome: &ScaffoldOutcome, check: &CompileCheckReport, post: &Pos
     if !check.ran {
         println!("cargo check (wasm32-wasip2): skipped (--no-check)");
     } else if check.passed {
-        println!("cargo check (wasm32-wasip2): ok");
+        if let Some(ms) = check.duration_ms {
+            println!(
+                "cargo check (wasm32-wasip2): ok ({:.2}s)",
+                ms as f64 / 1000.0
+            );
+        } else {
+            println!("cargo check (wasm32-wasip2): ok");
+        }
     } else {
         println!(
             "cargo check (wasm32-wasip2): FAILED (exit code {:?})",

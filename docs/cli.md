@@ -5,7 +5,7 @@ Practical notes for the main `greentic-component` subcommands: what they do, key
 ## new
 - Purpose: scaffold a new component repo from a template (default: `rust-wasi-p2-min`).
 - Usage: `greentic-component new --name hello-world --org ai.greentic [--template rust-wasi-p2-min] [--path ./hello-world] [--non-interactive] [--no-git] [--no-check] [--json]`.
-- Tips: keep `--no-check` off in CI unless you already built the wasm; use `--template` to point at custom templates (listed via `templates`); `--no-git` skips the init/commit step.
+- Tips: keep `--no-check` off in CI unless you already built the wasm; use `--template` to point at custom templates (listed via `templates`); `--no-git` skips the init/commit step. The CLI prints each step (scaffold, git, cargo check) and shows cargo check duration; the first check can take a while while the wasm toolchain downloads.
 
 ## templates
 - Purpose: list available scaffold templates (built-in + user-provided).
