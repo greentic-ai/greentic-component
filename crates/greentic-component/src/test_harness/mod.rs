@@ -23,6 +23,7 @@ pub struct HarnessConfig {
     pub flow_id: String,
     pub node_id: Option<String>,
     pub state_prefix: String,
+    pub state_seeds: Vec<(String, Vec<u8>)>,
     pub allow_state_read: bool,
     pub allow_state_write: bool,
     pub allow_state_delete: bool,
@@ -64,6 +65,9 @@ impl TestHarness {
         let secrets_store = InMemorySecretsStore::new(config.allow_secrets, config.allowed_secrets);
         let secrets_store = Arc::new(secrets_store.with_secrets(config.secrets));
         let scope = StateScope::from_tenant_ctx(&config.tenant_ctx, config.state_prefix);
+        for (key, value) in config.state_seeds {
+            state_store.write(&scope, &key, value);
+        }
 
         let exec_ctx = node::ExecCtx {
             tenant: make_component_tenant_ctx(&config.tenant_ctx),

@@ -172,6 +172,7 @@ greentic-component test \
 ```
 
 `--state-dump` prints the in-memory keys after execution so you can verify writes.
+You can also pre-seed bytes with `--state-set KEY=BASE64` if you need to test reads without an initial write step.
 
 ### 7.5 Testing secrets
 

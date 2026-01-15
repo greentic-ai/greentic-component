@@ -33,7 +33,7 @@ Practical notes for the main `greentic-component` subcommands: what they do, key
 - Purpose: invoke a component locally with an in-memory state-store and secrets harness.
 - Usage: `greentic-component test --wasm ./component.wasm --op render --input ./input.json [--pretty] [--state-dump] [--manifest path] [--output out.json]`.
 - Behavior: uses `greentic:state/store@1.0.0` in-memory storage scoped by tenant + flow/session prefix; secrets are loaded from `.env`, JSON, or `--secret` flags when declared in the manifest. State/secrets calls are denied when capabilities are not declared.
-- Tips: use `--input-json` for inline payloads; add `--secrets` and `--secret` to provide values; pass `--verbose` to print the generated session id; repeat `--op`/`--input` with `--step` between them for multi-step runs.
+- Tips: use `--input-json` for inline payloads; add `--secrets` and `--secret` to provide values; seed bytes with `--state-set KEY=BASE64`; pass `--verbose` to print the generated session id; repeat `--op`/`--input` with `--step` between them for multi-step runs.
 
 ## flow update
 - Purpose: regenerate `dev_flows.default/custom` from manifest + input schema using YGTc v2 shape.

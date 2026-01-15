@@ -3,6 +3,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use clap::{ArgAction, Args};
 use serde_json::Value;
 use uuid::Uuid;
@@ -37,6 +39,9 @@ pub struct TestArgs {
     /// Dump in-memory state after invocation.
     #[arg(long)]
     pub state_dump: bool,
+    /// Seed in-memory state as KEY=BASE64 (repeatable).
+    #[arg(long = "state-set", value_name = "KEY=BASE64")]
+    pub state_set: Vec<String>,
     /// Repeatable step marker for multi-step runs.
     #[arg(long, action = ArgAction::Count)]
     pub step: u8,
@@ -103,6 +108,9 @@ pub fn run(args: TestArgs) -> Result<()> {
 
     let (allow_state_read, allow_state_write, allow_state_delete) =
         state_permissions(&manifest_value, &manifest);
+    if !args.state_set.is_empty() && !allow_state_write {
+        bail!("manifest does not declare host.state.write; add it to use --state-set");
+    }
     let (allow_secrets, allowed_secrets) = secret_permissions(&manifest);
 
     let secrets = load_secrets(&args)?;
@@ -110,6 +118,7 @@ pub fn run(args: TestArgs) -> Result<()> {
         bail!("manifest does not declare host.secrets; add host.secrets to enable secrets access");
     }
 
+    let state_seeds = parse_state_seeds(&args)?;
     let prefix = state_prefix(args.flow.as_deref(), &session_id);
     let flow_id = args.flow.clone().unwrap_or_else(|| "test".to_string());
     let harness = TestHarness::new(HarnessConfig {
@@ -118,6 +127,7 @@ pub fn run(args: TestArgs) -> Result<()> {
         flow_id,
         node_id: args.node.clone(),
         state_prefix: prefix,
+        state_seeds,
         allow_state_read,
         allow_state_write,
         allow_state_delete,
@@ -208,12 +218,7 @@ fn collect_steps(args: &TestArgs) -> Result<Vec<(String, Value)>> {
         }
     }
 
-    Ok(args
-        .op
-        .clone()
-        .into_iter()
-        .zip(inputs.into_iter())
-        .collect())
+    Ok(args.op.clone().into_iter().zip(inputs).collect())
 }
 
 fn build_tenant_ctx(args: &TestArgs) -> Result<(TenantCtx, String, bool)> {
@@ -305,6 +310,20 @@ fn load_secrets(args: &TestArgs) -> Result<HashMap<String, String>> {
         secrets.insert(key.to_string(), value.to_string());
     }
     Ok(secrets)
+}
+
+fn parse_state_seeds(args: &TestArgs) -> Result<Vec<(String, Vec<u8>)>> {
+    let mut seeds = Vec::new();
+    for entry in &args.state_set {
+        let (key, value) = entry
+            .split_once('=')
+            .ok_or_else(|| anyhow::anyhow!("invalid --state-set `{entry}`; use KEY=BASE64"))?;
+        let bytes = BASE64_STANDARD
+            .decode(value)
+            .with_context(|| format!("invalid base64 for state key `{key}`"))?;
+        seeds.push((key.to_string(), bytes));
+    }
+    Ok(seeds)
 }
 
 fn parse_env_file(path: &Path) -> Result<HashMap<String, String>> {

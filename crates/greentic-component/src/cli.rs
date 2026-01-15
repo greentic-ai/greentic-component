@@ -41,7 +41,7 @@ enum Commands {
         long_about = "Invoke a component locally with in-memory state/secrets. \
 See docs/component-developer-guide.md for a walkthrough."
     )]
-    Test(TestArgs),
+    Test(Box<TestArgs>),
     /// Flow utilities (config flow regeneration)
     #[command(subcommand)]
     Flow(FlowCommand),
@@ -70,7 +70,7 @@ pub fn main() -> Result<()> {
         }
         Commands::Hash(args) => cmd::hash::run(args),
         Commands::Build(args) => cmd::build::run(args),
-        Commands::Test(args) => cmd::test::run(args),
+        Commands::Test(args) => cmd::test::run(*args),
         Commands::Flow(flow_cmd) => cmd::flow::run(flow_cmd),
         Commands::Store(store_cmd) => cmd::store::run(store_cmd),
     }
