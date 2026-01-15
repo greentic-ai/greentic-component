@@ -98,6 +98,7 @@ Routing stays untouched so downstream tools can rewire the placeholder. If any r
 ## Build, test, ship
 
 - `greentic-component build` validates the manifest, refreshes dev_flows, and builds the wasm (honoring `--cargo`/`CARGO` if you need a custom toolchain).
+- `greentic-component test --wasm ./component.wasm --op <op> --input ./input.json` invokes a component locally with in-memory state/secrets (see `docs/cli.md` for secrets/state flags).
 - `greentic-component doctor ./target/wasm32-wasip2/release/component.wasm --manifest component.manifest.json` prints schema/hash/world/lifecycle/capability health.
 - `greentic-component templates` lists built-ins and user templates under `~/.greentic/templates/component/*`.
 
@@ -106,6 +107,7 @@ See `docs/cli.md` for deeper switches (offline mode, schema inference knobs, sto
 ## Learn more
 
 - CLI details and doctor output: `docs/cli.md`
+- Component developer guide: `docs/component-developer-guide.md`
 - Manifest and flow regeneration tests live under `crates/greentic-component/tests/*` (including the README quickstart).
 - Examples are exercised in CI so the snippets above stay correct.
 

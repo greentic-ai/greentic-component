@@ -30,6 +30,8 @@ pub mod cli;
 pub mod cmd;
 #[cfg(feature = "cli")]
 pub mod scaffold;
+#[cfg(feature = "cli")]
+pub mod test_harness;
 #[cfg(any(
     feature = "abi",
     feature = "describe",

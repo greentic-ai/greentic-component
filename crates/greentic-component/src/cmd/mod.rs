@@ -8,3 +8,4 @@ pub mod post;
 #[cfg(feature = "cli")]
 pub mod store;
 pub mod templates;
+pub mod test;
