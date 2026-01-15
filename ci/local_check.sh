@@ -3,6 +3,10 @@
 #   LOCAL_CHECK_ONLINE=1 LOCAL_CHECK_STRICT=1 LOCAL_CHECK_VERBOSE=1 ci/local_check.sh
 # Defaults: online, non-strict, quiet.
 
+if [ -z "${BASH_VERSION:-}" ]; then
+    exec bash "$0" "$@"
+fi
+
 set -euo pipefail
 export RUSTFLAGS=""
 
@@ -14,6 +18,16 @@ TARGET_DIR=${CARGO_TARGET_DIR:-$ROOT_DIR/target}
 LOCAL_CHECK_ONLINE=${LOCAL_CHECK_ONLINE:-1}
 LOCAL_CHECK_STRICT=${LOCAL_CHECK_STRICT:-0}
 LOCAL_CHECK_VERBOSE=${LOCAL_CHECK_VERBOSE:-0}
+LOCAL_CHECK_SKIP_FMT=${LOCAL_CHECK_SKIP_FMT:-0}
+LOCAL_CHECK_SKIP_CLIPPY=${LOCAL_CHECK_SKIP_CLIPPY:-0}
+LOCAL_CHECK_SKIP_BUILD=${LOCAL_CHECK_SKIP_BUILD:-0}
+LOCAL_CHECK_SKIP_TEST=${LOCAL_CHECK_SKIP_TEST:-0}
+LOCAL_CHECK_SKIP_BUILD_ALL=${LOCAL_CHECK_SKIP_BUILD_ALL:-0}
+LOCAL_CHECK_SKIP_TEST_ALL=${LOCAL_CHECK_SKIP_TEST_ALL:-0}
+LOCAL_CHECK_SKIP_BINS=${LOCAL_CHECK_SKIP_BINS:-0}
+LOCAL_CHECK_SKIP_SCHEMA=${LOCAL_CHECK_SKIP_SCHEMA:-0}
+LOCAL_CHECK_SKIP_PACKAGE=${LOCAL_CHECK_SKIP_PACKAGE:-0}
+LOCAL_CHECK_SKIP_PUBLISH=${LOCAL_CHECK_SKIP_PUBLISH:-0}
 SMOKE_NAME=${SMOKE_NAME:-local-check}
 TREE_DIR=${LOCAL_CHECK_TREE_DIR:-$TARGET_DIR/local-check}
 SMOKE_TARGET_DIR=$TARGET_DIR/smoke
@@ -110,6 +124,12 @@ skip_step() {
     else
         echo "[skip] $desc ($reason)"
     fi
+}
+
+skip_flagged() {
+    local desc=$1
+    local reason=$2
+    echo "[skip] $desc ($reason)"
 }
 
 hard_need() {
@@ -234,26 +254,60 @@ else
     skip_step "cargo fetch (linux target)" "${CRATES_IO_REASON:-crates.io unreachable}"
 fi
 
-run_cmd "cargo fmt" cargo fmt --all --check
-run_cmd "cargo clippy" cargo clippy --locked --workspace --all-targets -- -D warnings
-run_cmd "cargo build --workspace --locked" cargo build --workspace --locked
-run_cmd "cargo test --workspace --locked" cargo test --workspace --locked -- --nocapture
-run_cmd "cargo build --workspace --all-features --locked" cargo build --workspace --all-features --locked
-run_cmd "cargo test --workspace --all-features --locked" cargo test --workspace --all-features --locked -- --nocapture
-schema_check
+if [ "$LOCAL_CHECK_SKIP_FMT" = "1" ]; then
+    skip_flagged "cargo fmt" "LOCAL_CHECK_SKIP_FMT=1"
+else
+    run_cmd "cargo fmt" cargo fmt --all --check
+fi
+if [ "$LOCAL_CHECK_SKIP_CLIPPY" = "1" ]; then
+    skip_flagged "cargo clippy" "LOCAL_CHECK_SKIP_CLIPPY=1"
+else
+    run_cmd "cargo clippy" cargo clippy --locked --workspace --all-targets -- -D warnings
+fi
+if [ "$LOCAL_CHECK_SKIP_BUILD" = "1" ]; then
+    skip_flagged "cargo build --workspace --locked" "LOCAL_CHECK_SKIP_BUILD=1"
+else
+    run_cmd "cargo build --workspace --locked" cargo build --workspace --locked
+fi
+if [ "$LOCAL_CHECK_SKIP_TEST" = "1" ]; then
+    skip_flagged "cargo test --workspace --locked" "LOCAL_CHECK_SKIP_TEST=1"
+else
+    run_cmd "cargo test --workspace --locked" cargo test --workspace --locked -- --nocapture
+fi
+if [ "$LOCAL_CHECK_SKIP_BUILD_ALL" = "1" ]; then
+    skip_flagged "cargo build --workspace --all-features --locked" "LOCAL_CHECK_SKIP_BUILD_ALL=1"
+else
+    run_cmd "cargo build --workspace --all-features --locked" cargo build --workspace --all-features --locked
+fi
+if [ "$LOCAL_CHECK_SKIP_TEST_ALL" = "1" ]; then
+    skip_flagged "cargo test --workspace --all-features --locked" "LOCAL_CHECK_SKIP_TEST_ALL=1"
+else
+    run_cmd "cargo test --workspace --all-features --locked" cargo test --workspace --all-features --locked -- --nocapture
+fi
+if [ "$LOCAL_CHECK_SKIP_SCHEMA" = "1" ]; then
+    skip_flagged "schema drift check" "LOCAL_CHECK_SKIP_SCHEMA=1"
+else
+    schema_check
+fi
 
-build_release_bin component-inspect "cli,prepare"
-build_release_bin component-doctor "cli,prepare"
-build_release_bin component-hash "cli"
-build_release_bin greentic-component "cli"
+bins_ready=0
+if [ "$LOCAL_CHECK_SKIP_BINS" = "1" ]; then
+    skip_flagged "release bins" "LOCAL_CHECK_SKIP_BINS=1"
+else
+    build_release_bin component-inspect "cli,prepare"
+    build_release_bin component-doctor "cli,prepare"
+    build_release_bin component-hash "cli"
+    build_release_bin greentic-component "cli"
 
-readonly BIN_COMPONENT_INSPECT=$TARGET_DIR/release/component-inspect
-readonly BIN_COMPONENT_DOCTOR=$TARGET_DIR/release/component-doctor
-readonly BIN_COMPONENT_HASH=$TARGET_DIR/release/component-hash
-readonly BIN_GREENTIC_COMPONENT=$TARGET_DIR/release/greentic-component
+    readonly BIN_COMPONENT_INSPECT=$TARGET_DIR/release/component-inspect
+    readonly BIN_COMPONENT_DOCTOR=$TARGET_DIR/release/component-doctor
+    readonly BIN_COMPONENT_HASH=$TARGET_DIR/release/component-hash
+    readonly BIN_GREENTIC_COMPONENT=$TARGET_DIR/release/greentic-component
+    bins_ready=1
 
-run_bin_cmd "component-inspect probe" "$BIN_COMPONENT_INSPECT" --json crates/greentic-component/tests/fixtures/manifests/valid.component.json
-run_bin_cmd "component-doctor probe" "$BIN_COMPONENT_DOCTOR" crates/greentic-component/tests/fixtures/manifests/valid.component.json
+    run_bin_cmd "component-inspect probe" "$BIN_COMPONENT_INSPECT" --json crates/greentic-component/tests/fixtures/manifests/valid.component.json
+    run_bin_cmd "component-doctor probe" "$BIN_COMPONENT_DOCTOR" crates/greentic-component/tests/fixtures/manifests/valid.component.json
+fi
 
 run_smoke_mode() {
     local mode=$1
@@ -372,6 +426,8 @@ run_smoke_mode() {
 
 if [ "${LOCAL_CHECK_SKIP_SMOKE:-0}" = "1" ]; then
     echo "[skip] smoke scaffold (LOCAL_CHECK_SKIP_SMOKE=1)"
+elif [ "$bins_ready" -ne 1 ]; then
+    echo "[skip] smoke scaffold (release bins skipped)"
 else
     for mode in local cratesio; do
         run_smoke_mode "$mode"
@@ -381,60 +437,68 @@ fi
 publish_crates=(
     greentic-component
 )
-for crate in "${publish_crates[@]}"; do
-    run_cmd "cargo package (locked) -p $crate" \
-        cargo package --allow-dirty -p "$crate" --locked
-done
-case "$LOCAL_CHECK_PUBLISH_MODE" in
-    dry-run)
-        if [ "$LOCAL_CHECK_ONLINE" = "1" ] && [ "$CRATES_IO_AVAILABLE" = "1" ]; then
-            for crate in "${publish_crates[@]}"; do
-                step "cargo publish --dry-run (locked) -p $crate"
-                echo ""
-                echo "▶ cargo publish --dry-run (locked) -p $crate"
-                if ! cargo publish --allow-dirty -p "$crate" --dry-run --locked; then
-                    if [ "$LOCAL_VERSION_UPGRADE" = "1" ]; then
-                        echo "[warn] cargo publish --dry-run (locked) -p $crate failed, ignoring due to LOCAL_VERSION_UPGRADE=1"
-                    else
-                        echo "[fail] cargo publish --dry-run (locked) -p $crate"
-                        record_failure "cargo publish --dry-run (locked) -p $crate"
+if [ "$LOCAL_CHECK_SKIP_PACKAGE" = "1" ]; then
+    skip_flagged "cargo package (locked)" "LOCAL_CHECK_SKIP_PACKAGE=1"
+else
+    for crate in "${publish_crates[@]}"; do
+        run_cmd "cargo package (locked) -p $crate" \
+            cargo package --allow-dirty -p "$crate" --locked
+    done
+fi
+if [ "$LOCAL_CHECK_SKIP_PUBLISH" = "1" ]; then
+    skip_flagged "cargo publish" "LOCAL_CHECK_SKIP_PUBLISH=1"
+else
+    case "$LOCAL_CHECK_PUBLISH_MODE" in
+        dry-run)
+            if [ "$LOCAL_CHECK_ONLINE" = "1" ] && [ "$CRATES_IO_AVAILABLE" = "1" ]; then
+                for crate in "${publish_crates[@]}"; do
+                    step "cargo publish --dry-run (locked) -p $crate"
+                    echo ""
+                    echo "▶ cargo publish --dry-run (locked) -p $crate"
+                    if ! cargo publish --allow-dirty -p "$crate" --dry-run --locked; then
+                        if [ "$LOCAL_VERSION_UPGRADE" = "1" ]; then
+                            echo "[warn] cargo publish --dry-run (locked) -p $crate failed, ignoring due to LOCAL_VERSION_UPGRADE=1"
+                        else
+                            echo "[fail] cargo publish --dry-run (locked) -p $crate"
+                            record_failure "cargo publish --dry-run (locked) -p $crate"
+                        fi
                     fi
-                fi
-            done
-        else
-            skip_step "cargo publish --dry-run (locked)" "${CRATES_IO_REASON:-network unavailable}"
-        fi
-        ;;
-    publish)
-        if [ "$LOCAL_CHECK_ONLINE" = "1" ] && [ "$CRATES_IO_AVAILABLE" = "1" ]; then
-            for crate in "${publish_crates[@]}"; do
-                step "cargo publish (locked) -p $crate"
-                echo ""
-                echo "▶ cargo publish (locked) -p $crate"
-                publish_output=$(mktemp)
-                publish_status=0
-                if ! cargo publish --allow-dirty -p "$crate" --locked 2> "$publish_output"; then
-                    publish_status=$?
-                fi
-                if [ $publish_status -ne 0 ]; then
-                    if grep -qi "already exists on crates.io index" "$publish_output"; then
-                        echo "[warn] cargo publish skipped (version already on crates.io)"
-                    else
-                        cat "$publish_output"
-                        echo "[fail] cargo publish (locked) -p $crate"
-                        record_failure "cargo publish (locked) -p $crate"
+                done
+            else
+                skip_step "cargo publish --dry-run (locked)" "${CRATES_IO_REASON:-network unavailable}"
+            fi
+            ;;
+        publish)
+            if [ "$LOCAL_CHECK_ONLINE" = "1" ] && [ "$CRATES_IO_AVAILABLE" = "1" ]; then
+                for crate in "${publish_crates[@]}"; do
+                    step "cargo publish (locked) -p $crate"
+                    echo ""
+                    echo "▶ cargo publish (locked) -p $crate"
+                    publish_output=$(mktemp)
+                    publish_status=0
+                    if ! cargo publish --allow-dirty -p "$crate" --locked 2> "$publish_output"; then
+                        publish_status=$?
                     fi
-                fi
-                rm -f "$publish_output"
-            done
-        else
-            skip_step "cargo publish (locked)" "${CRATES_IO_REASON:-network unavailable}"
-        fi
-        ;;
+                    if [ $publish_status -ne 0 ]; then
+                        if grep -qi "already exists on crates.io index" "$publish_output"; then
+                            echo "[warn] cargo publish skipped (version already on crates.io)"
+                        else
+                            cat "$publish_output"
+                            echo "[fail] cargo publish (locked) -p $crate"
+                            record_failure "cargo publish (locked) -p $crate"
+                        fi
+                    fi
+                    rm -f "$publish_output"
+                done
+            else
+                skip_step "cargo publish (locked)" "${CRATES_IO_REASON:-network unavailable}"
+            fi
+            ;;
     *)
         skip_step "cargo publish / dry-run" "LOCAL_CHECK_PUBLISH_MODE=$LOCAL_CHECK_PUBLISH_MODE not recognized"
         ;;
 esac
+fi
 
 if [ "$FAILED" -ne 0 ]; then
     echo ""

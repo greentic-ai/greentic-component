@@ -1,24 +1,25 @@
-name: Publish crates
-
-on:
-  push:
-    branches: [ master ]
-  workflow_dispatch:
-
+name: CI
 permissions:
   contents: read
 
-# Workflow-level concurrency ensures only one publish per ref; jobs must not reuse
-# the same group to avoid deadlocks.
-concurrency:
-  group: publish-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish crates and release artifacts"
+        required: false
+        type: boolean
+        default: false
 
 jobs:
-  local-check:
+  lint:
+    name: lint
     runs-on: ubuntu-latest
     concurrency:
-      group: publish-${{ github.workflow }}-${{ github.ref }}-local-check
+      group: ${{ github.workflow }}-${{ github.ref }}
       cancel-in-progress: true
     env:
       CARGO_TERM_COLOR: always
@@ -29,7 +30,7 @@ jobs:
       - name: Set cargo env
         run: |
           echo "CARGO_HOME=$RUNNER_TEMP/cargo-home" >> "$GITHUB_ENV"
-          echo "CARGO_TARGET_DIR=$RUNNER_TEMP/target" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_DIR=$RUNNER_TEMP/target-lint" >> "$GITHUB_ENV"
       - name: Install toolchain
         uses: dtolnay/rust-toolchain@v1
         with:
@@ -46,19 +47,134 @@ jobs:
             ${{ env.CARGO_HOME }}/registry
             ${{ env.CARGO_HOME }}/git
           key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock','ci/local_check.sh') }}
-      - name: Run strict local check
-        # Preflight run (dry-run publish) for greentic-component, the only public crate.
+      - name: Run lint checks
         run: |
           LOCAL_CHECK_ONLINE=1 \
           LOCAL_CHECK_STRICT=1 \
           LOCAL_CHECK_VERBOSE=1 \
+          LOCAL_CHECK_SKIP_BUILD=1 \
+          LOCAL_CHECK_SKIP_TEST=1 \
+          LOCAL_CHECK_SKIP_BUILD_ALL=1 \
+          LOCAL_CHECK_SKIP_TEST_ALL=1 \
+          LOCAL_CHECK_SKIP_BINS=1 \
+          LOCAL_CHECK_SKIP_SMOKE=1 \
+          LOCAL_CHECK_SKIP_SCHEMA=1 \
+          LOCAL_CHECK_SKIP_PACKAGE=1 \
+          LOCAL_CHECK_SKIP_PUBLISH=1 \
+          bash ci/local_check.sh
+      - name: Cleanup cargo artifacts
+        if: always()
+        run: |
+          rm -rf "$CARGO_TARGET_DIR" "$CARGO_HOME"
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: true
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_NET_RETRY: 5
+      CARGO_HTTP_TIMEOUT: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set cargo env
+        run: |
+          echo "CARGO_HOME=$RUNNER_TEMP/cargo-home" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_DIR=$RUNNER_TEMP/target-test" >> "$GITHUB_ENV"
+      - name: Install toolchain
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+          targets: wasm32-wasip2, x86_64-unknown-linux-gnu
+      - name: Prepare cargo dirs
+        run: |
+          mkdir -p "${CARGO_HOME}/registry" "${CARGO_HOME}/git" "${CARGO_TARGET_DIR}"
+      - name: Cache cargo directories
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.CARGO_HOME }}/registry
+            ${{ env.CARGO_HOME }}/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock','ci/local_check.sh') }}
+      - name: Run workspace tests
+        run: |
+          LOCAL_CHECK_ONLINE=1 \
+          LOCAL_CHECK_STRICT=1 \
+          LOCAL_CHECK_VERBOSE=1 \
+          LOCAL_CHECK_SKIP_FMT=1 \
+          LOCAL_CHECK_SKIP_CLIPPY=1 \
+          LOCAL_CHECK_SKIP_BINS=1 \
+          LOCAL_CHECK_SKIP_SMOKE=1 \
+          LOCAL_CHECK_SKIP_SCHEMA=1 \
+          LOCAL_CHECK_SKIP_PACKAGE=1 \
+          LOCAL_CHECK_SKIP_PUBLISH=1 \
+          bash ci/local_check.sh
+      - name: Cleanup cargo artifacts
+        if: always()
+        run: |
+          rm -rf "$CARGO_TARGET_DIR" "$CARGO_HOME"
+
+  release:
+    name: release smoke + package
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: true
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_NET_RETRY: 5
+      CARGO_HTTP_TIMEOUT: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set cargo env
+        run: |
+          echo "CARGO_HOME=$RUNNER_TEMP/cargo-home" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_DIR=$RUNNER_TEMP/target-release" >> "$GITHUB_ENV"
+      - name: Install toolchain
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+          targets: wasm32-wasip2, x86_64-unknown-linux-gnu
+      - name: Prepare cargo dirs
+        run: |
+          mkdir -p "${CARGO_HOME}/registry" "${CARGO_HOME}/git" "${CARGO_TARGET_DIR}"
+      - name: Cache cargo directories
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.CARGO_HOME }}/registry
+            ${{ env.CARGO_HOME }}/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock','ci/local_check.sh') }}
+      - name: Run release checks
+        run: |
+          LOCAL_CHECK_ONLINE=1 \
+          LOCAL_CHECK_STRICT=1 \
+          LOCAL_CHECK_VERBOSE=1 \
+          LOCAL_CHECK_SKIP_FMT=1 \
+          LOCAL_CHECK_SKIP_CLIPPY=1 \
+          LOCAL_CHECK_SKIP_BUILD=1 \
+          LOCAL_CHECK_SKIP_TEST=1 \
+          LOCAL_CHECK_SKIP_BUILD_ALL=1 \
+          LOCAL_CHECK_SKIP_TEST_ALL=1 \
           LOCAL_CHECK_PUBLISH_MODE=dry-run \
           bash ci/local_check.sh
+      - name: Cleanup cargo artifacts
+        if: always()
+        run: |
+          rm -rf "$CARGO_TARGET_DIR" "$CARGO_HOME"
 
   publish:
-    needs: local-check
+    name: publish
+    needs: [lint, test, release]
+    if: github.ref == 'refs/heads/master' || inputs.publish == true
     runs-on: ubuntu-latest
-    # No per-job concurrency; relies on workflow-level lock above.
+    concurrency:
+      group: publish-${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: true
     permissions:
       contents: read
       packages: write
@@ -72,7 +188,7 @@ jobs:
       - name: Set cargo env
         run: |
           echo "CARGO_HOME=$RUNNER_TEMP/cargo-home" >> "$GITHUB_ENV"
-          echo "CARGO_TARGET_DIR=$RUNNER_TEMP/target" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_DIR=$RUNNER_TEMP/target-publish" >> "$GITHUB_ENV"
       - name: Install toolchain
         uses: dtolnay/rust-toolchain@v1
         with:
@@ -91,12 +207,21 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock','ci/local_check.sh') }}
       - name: Verify clean worktree
         run: git diff --exit-code
-      - name: Run strict local check + publish
-        # In release mode the script performs real `cargo publish` for greentic-component only.
+      - name: Publish crates
         run: |
           LOCAL_CHECK_ONLINE=1 \
           LOCAL_CHECK_STRICT=1 \
           LOCAL_CHECK_VERBOSE=1 \
+          LOCAL_CHECK_SKIP_FMT=1 \
+          LOCAL_CHECK_SKIP_CLIPPY=1 \
+          LOCAL_CHECK_SKIP_BUILD=1 \
+          LOCAL_CHECK_SKIP_TEST=1 \
+          LOCAL_CHECK_SKIP_BUILD_ALL=1 \
+          LOCAL_CHECK_SKIP_TEST_ALL=1 \
+          LOCAL_CHECK_SKIP_BINS=1 \
+          LOCAL_CHECK_SKIP_SMOKE=1 \
+          LOCAL_CHECK_SKIP_SCHEMA=1 \
+          LOCAL_CHECK_SKIP_PACKAGE=1 \
           bash ci/local_check.sh
       - name: Snapshot package contents
         run: |
@@ -112,10 +237,15 @@ jobs:
         run: |
           echo "Give crates.io index time to update"
           sleep 20
+      - name: Cleanup cargo artifacts
+        if: always()
+        run: |
+          rm -rf "$CARGO_TARGET_DIR" "$CARGO_HOME"
 
   binstall-release:
-    # Build and upload release archives that cargo-binstall can consume.
+    name: binstall release
     needs: publish
+    if: github.ref == 'refs/heads/master' || inputs.publish == true
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
@@ -147,7 +277,7 @@ jobs:
         shell: bash
         run: |
           echo "CARGO_HOME=$RUNNER_TEMP/cargo-home" >> "$GITHUB_ENV"
-          echo "CARGO_TARGET_DIR=$RUNNER_TEMP/target" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_DIR=$RUNNER_TEMP/target-binstall" >> "$GITHUB_ENV"
           echo "$RUNNER_TEMP/cargo-home/bin" >> "$GITHUB_PATH"
       - name: Install toolchain
         uses: dtolnay/rust-toolchain@v1
@@ -196,3 +326,7 @@ jobs:
           set -euo pipefail
           gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --target "$GITHUB_SHA" --notes "" --title "$TAG"
           gh release upload "$TAG" "$ASSET" --clobber
+      - name: Cleanup cargo artifacts
+        if: always()
+        run: |
+          rm -rf "$CARGO_TARGET_DIR" "$CARGO_HOME"
