@@ -98,6 +98,17 @@ fn validate_manifest_round_trip() {
 }
 
 #[test]
+fn state_delete_requires_write() {
+    let mut value: Value = serde_json::from_str(&fixture("valid.component.json")).unwrap();
+    value["capabilities"]["host"]["state"]["delete"] = Value::Bool(true);
+    value["capabilities"]["host"]["state"]["write"] = Value::Bool(false);
+    let raw = serde_json::to_string(&value).unwrap();
+    let manifest = parse_manifest(&raw).expect("manifest parses");
+    let state = manifest.capabilities.host.state.expect("state caps");
+    assert!(state.write, "delete should imply write");
+}
+
+#[test]
 fn manifest_preserves_dev_flows() {
     let mut value: Value = serde_json::from_str(&fixture("valid.component.json")).unwrap();
     value["dev_flows"] = serde_json::json!({

@@ -181,6 +181,10 @@
                 "write": {
                   "type": "boolean",
                   "default": false
+                },
+                "delete": {
+                  "type": "boolean",
+                  "default": false
                 }
               }
             },

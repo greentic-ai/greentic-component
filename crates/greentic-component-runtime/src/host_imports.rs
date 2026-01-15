@@ -1,9 +1,13 @@
 use std::collections::HashMap;
 use std::convert::TryFrom;
+use std::sync::{Arc, Mutex};
 
 use greentic_interfaces::runner_host_v1::{self, RunnerHost};
 use greentic_interfaces_host::component::v0_4::{
     self, ControlHost, exports::greentic::component::node,
+};
+use greentic_interfaces_wasmtime::host_helpers::v1::state_store::{
+    OpAck, StateStoreError, StateStoreHost, TenantCtx as WitTenantCtx, add_state_store_to_linker,
 };
 use greentic_types::TenantCtx;
 use reqwest::blocking::Client as HttpClient;
@@ -23,6 +27,7 @@ pub struct HostState {
     _secrets: HashMap<String, Vec<u8>>,
     policy: HostPolicy,
     http_client: HttpClient,
+    state_store: Arc<Mutex<HashMap<String, Vec<u8>>>>,
 }
 
 impl HostState {
@@ -31,6 +36,7 @@ impl HostState {
             _tenant: None,
             _config: Value::Null,
             _secrets: HashMap::new(),
+            state_store: policy.state_store.clone(),
             policy,
             http_client: HttpClient::new(),
         }
@@ -46,6 +52,7 @@ impl HostState {
             _tenant: Some(tenant),
             _config: config,
             _secrets: secrets,
+            state_store: policy.state_store.clone(),
             policy,
             http_client: HttpClient::new(),
         }
@@ -56,6 +63,7 @@ pub fn build_linker(engine: &Engine, _policy: &HostPolicy) -> Result<Linker<Host
     let mut linker = Linker::<HostState>::new(engine);
     runner_host_v1::add_to_linker(&mut linker, |state: &mut HostState| state)?;
     v0_4::add_control_to_linker(&mut linker, |state: &mut HostState| state)?;
+    add_state_store_to_linker(&mut linker, |state: &mut HostState| state)?;
     Ok(linker)
 }
 
@@ -116,11 +124,86 @@ impl RunnerHost for HostState {
     }
 
     fn kv_get(&mut self, _ns: String, _key: String) -> WasmtimeResult<Option<String>> {
-        Ok(None)
+        // Legacy runner-host surface; routed to the state store for compatibility.
+        let key = format!("{_ns}:{_key}");
+        if !self.policy.allow_state_read {
+            return Ok(None);
+        }
+        let guard = self.state_store.lock().expect("state store mutex poisoned");
+        match guard.get(&key) {
+            Some(bytes) => Ok(Some(
+                String::from_utf8(bytes.clone())
+                    .map_err(|err| CompError::Runtime(err.to_string()))?,
+            )),
+            None => Ok(None),
+        }
     }
 
     fn kv_put(&mut self, _ns: String, _key: String, _val: String) -> WasmtimeResult<()> {
+        // Legacy runner-host surface; routed to the state store for compatibility.
+        if !self.policy.allow_state_write {
+            return Ok(());
+        }
+        let key = format!("{_ns}:{_key}");
+        let mut guard = self.state_store.lock().expect("state store mutex poisoned");
+        guard.insert(key, _val.into_bytes());
         Ok(())
+    }
+}
+
+impl StateStoreHost for HostState {
+    fn read(
+        &mut self,
+        key: String,
+        _ctx: Option<WitTenantCtx>,
+    ) -> Result<Vec<u8>, StateStoreError> {
+        if !self.policy.allow_state_read {
+            return Err(StateStoreError {
+                code: "state.read.denied".into(),
+                message: "state store reads are disabled by policy".into(),
+            });
+        }
+        let guard = self.state_store.lock().expect("state store mutex poisoned");
+        match guard.get(&key) {
+            Some(bytes) => Ok(bytes.clone()),
+            None => Err(StateStoreError {
+                code: "state.read.miss".into(),
+                message: format!("state key `{key}` not found"),
+            }),
+        }
+    }
+
+    fn write(
+        &mut self,
+        key: String,
+        bytes: Vec<u8>,
+        _ctx: Option<WitTenantCtx>,
+    ) -> Result<OpAck, StateStoreError> {
+        if !self.policy.allow_state_write {
+            return Err(StateStoreError {
+                code: "state.write.denied".into(),
+                message: "state store writes are disabled by policy".into(),
+            });
+        }
+        let mut guard = self.state_store.lock().expect("state store mutex poisoned");
+        guard.insert(key, bytes);
+        Ok(OpAck::Ok)
+    }
+
+    fn delete(
+        &mut self,
+        key: String,
+        _ctx: Option<WitTenantCtx>,
+    ) -> Result<OpAck, StateStoreError> {
+        if !self.policy.allow_state_delete {
+            return Err(StateStoreError {
+                code: "state.delete.denied".into(),
+                message: "state store deletes are disabled by policy".into(),
+            });
+        }
+        let mut guard = self.state_store.lock().expect("state store mutex poisoned");
+        guard.remove(&key);
+        Ok(OpAck::Ok)
     }
 }
 
@@ -180,7 +263,13 @@ mod tests {
         Ok(format!("http://{}:{}/test", addr.ip(), addr.port()))
     }
 
-    fn host_state(allow_http: bool) -> HostState {
+    fn host_state(
+        allow_http: bool,
+        allow_state_read: bool,
+        allow_state_write: bool,
+        allow_state_delete: bool,
+    ) -> HostState {
+        let state_store = Arc::new(Mutex::new(HashMap::new()));
         HostState {
             _tenant: None,
             _config: Value::Null,
@@ -188,14 +277,19 @@ mod tests {
             policy: HostPolicy {
                 allow_http_fetch: allow_http,
                 allow_telemetry: true,
+                allow_state_read,
+                allow_state_write,
+                allow_state_delete,
+                state_store: state_store.clone(),
             },
             http_client: HttpClient::new(),
+            state_store,
         }
     }
 
     #[test]
     fn http_fetch_denied_by_policy() {
-        let mut host = host_state(false);
+        let mut host = host_state(false, false, false, false);
         let result = RunnerHost::http_request(
             &mut host,
             "GET".into(),
@@ -216,10 +310,33 @@ mod tests {
             }
             Err(err) => panic!("bind http listener: {err}"),
         };
-        let mut host = host_state(true);
+        let mut host = host_state(true, false, false, false);
         let response = RunnerHost::http_request(&mut host, "GET".into(), url, vec![], None)
             .expect("http fetch");
         let body = response.expect("http ok");
         assert_eq!(body, b"hello");
+    }
+
+    #[test]
+    fn state_store_denies_write() {
+        let mut host = host_state(false, false, false, false);
+        let result = StateStoreHost::write(&mut host, "demo".into(), b"data".to_vec(), None);
+        assert!(matches!(result, Err(err) if err.code == "state.write.denied"));
+    }
+
+    #[test]
+    fn state_store_roundtrip() {
+        let mut host = host_state(false, true, true, true);
+        let write = StateStoreHost::write(&mut host, "demo".into(), b"data".to_vec(), None);
+        assert!(matches!(write, Ok(OpAck::Ok)));
+
+        let read = StateStoreHost::read(&mut host, "demo".into(), None).expect("state read");
+        assert_eq!(read, b"data");
+
+        let delete = StateStoreHost::delete(&mut host, "demo".into(), None);
+        assert!(matches!(delete, Ok(OpAck::Ok)));
+
+        let missing = StateStoreHost::read(&mut host, "demo".into(), None);
+        assert!(matches!(missing, Err(err) if err.code == "state.read.miss"));
     }
 }

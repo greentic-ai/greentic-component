@@ -196,7 +196,8 @@ pub fn schema() -> &'static str {
 }
 
 pub fn parse_manifest(raw: &str) -> Result<ComponentManifest, ManifestError> {
-    let value: Value = serde_json::from_str(raw)?;
+    let mut value: Value = serde_json::from_str(raw)?;
+    normalize_state_delete(&mut value);
     validate_value(&value)?;
     let raw_manifest: RawManifest = serde_json::from_value(value)?;
     raw_manifest.try_into()
@@ -216,6 +217,24 @@ fn validate_value(value: &Value) -> Result<(), ManifestError> {
         Ok(())
     } else {
         Err(ManifestError::Schema(errors.join(", ")))
+    }
+}
+
+fn normalize_state_delete(value: &mut Value) {
+    let state = value
+        .get_mut("capabilities")
+        .and_then(|caps| caps.get_mut("host"))
+        .and_then(|host| host.get_mut("state"));
+    if let Some(state) = state {
+        let delete_enabled = state
+            .get("delete")
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false);
+        if delete_enabled {
+            state
+                .as_object_mut()
+                .map(|obj| obj.insert("write".to_string(), Value::Bool(true)));
+        }
     }
 }
 
