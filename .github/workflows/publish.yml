@@ -19,7 +19,7 @@ jobs:
     name: lint
     runs-on: ubuntu-latest
     concurrency:
-      group: ${{ github.workflow }}-${{ github.ref }}
+      group: ${{ github.workflow }}-${{ github.ref }}-lint
       cancel-in-progress: true
     env:
       CARGO_TERM_COLOR: always
@@ -71,7 +71,7 @@ jobs:
     name: test
     runs-on: ubuntu-latest
     concurrency:
-      group: ${{ github.workflow }}-${{ github.ref }}
+      group: ${{ github.workflow }}-${{ github.ref }}-test
       cancel-in-progress: true
     env:
       CARGO_TERM_COLOR: always
@@ -121,7 +121,7 @@ jobs:
     name: release smoke + package
     runs-on: ubuntu-latest
     concurrency:
-      group: ${{ github.workflow }}-${{ github.ref }}
+      group: ${{ github.workflow }}-${{ github.ref }}-release
       cancel-in-progress: true
     env:
       CARGO_TERM_COLOR: always
