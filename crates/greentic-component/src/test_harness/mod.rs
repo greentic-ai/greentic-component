@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
@@ -30,6 +31,29 @@ pub struct HarnessConfig {
     pub allow_secrets: bool,
     pub allowed_secrets: HashSet<String>,
     pub secrets: HashMap<String, String>,
+    pub wasi_preopens: Vec<WasiPreopen>,
+}
+
+#[derive(Clone, Debug)]
+pub struct WasiPreopen {
+    pub host_path: PathBuf,
+    pub guest_path: String,
+    pub read_only: bool,
+}
+
+impl WasiPreopen {
+    pub fn new(host_path: impl Into<PathBuf>, guest_path: impl Into<String>) -> Self {
+        Self {
+            host_path: host_path.into(),
+            guest_path: guest_path.into(),
+            read_only: false,
+        }
+    }
+
+    pub fn read_only(mut self, value: bool) -> Self {
+        self.read_only = value;
+        self
+    }
 }
 
 pub struct TestHarness {
@@ -43,6 +67,7 @@ pub struct TestHarness {
     allow_state_write: bool,
     allow_state_delete: bool,
     exec_ctx: node::ExecCtx,
+    wasi_preopens: Vec<WasiPreopen>,
 }
 
 impl TestHarness {
@@ -86,6 +111,7 @@ impl TestHarness {
             allow_state_write: config.allow_state_write,
             allow_state_delete: config.allow_state_delete,
             exec_ctx,
+            wasi_preopens: config.wasi_preopens,
         })
     }
 
@@ -97,7 +123,9 @@ impl TestHarness {
             self.allow_state_read,
             self.allow_state_write,
             self.allow_state_delete,
-        );
+            &self.wasi_preopens,
+        )
+        .context("build WASI context")?;
         let mut store = Store::new(&self.engine, host_state);
         let instance = self
             .instance_pre

@@ -1,10 +1,12 @@
 use std::fs;
 use std::path::PathBuf;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, anyhow};
 use clap::{Args, Subcommand};
+use serde_json::Value;
 
-use crate::store::{CompatPolicy, ComponentStore};
+use crate::path_safety::normalize_under_root;
+use greentic_distributor_client::{DistClient, DistOptions};
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum StoreCommand {
@@ -14,20 +16,14 @@ pub enum StoreCommand {
 
 #[derive(Args, Debug, Clone)]
 pub struct StoreFetchArgs {
-    /// Filesystem path to a component directory containing component.manifest.json
-    #[arg(long, value_name = "PATH", conflicts_with = "oci")]
-    pub fs: Option<PathBuf>,
-    /// OCI reference to a published component (requires the `oci` feature)
-    #[arg(long, value_name = "REF", conflicts_with = "fs")]
-    pub oci: Option<String>,
-    /// Destination path to write the fetched component bytes
-    #[arg(long, value_name = "PATH")]
-    pub output: PathBuf,
+    /// Destination directory for the fetched component bytes
+    #[arg(long, value_name = "DIR")]
+    pub out: PathBuf,
     /// Optional cache directory for fetched components
     #[arg(long, value_name = "DIR")]
     pub cache_dir: Option<PathBuf>,
-    /// Source identifier to register inside the store
-    #[arg(long, value_name = "ID", default_value = "default")]
+    /// Source reference to resolve (file://, oci://, repo://, store://, etc.)
+    #[arg(value_name = "SOURCE")]
     pub source: String,
 }
 
@@ -38,26 +34,72 @@ pub fn run(command: StoreCommand) -> Result<()> {
 }
 
 fn fetch(args: StoreFetchArgs) -> Result<()> {
-    let mut store = ComponentStore::with_cache_dir(args.cache_dir.clone(), CompatPolicy::default());
-    match (&args.fs, &args.oci) {
-        (Some(path), None) => {
-            store.add_fs(&args.source, path);
-        }
-        (None, Some(reference)) => {
-            store.add_oci(&args.source, reference);
-        }
-        _ => bail!("specify exactly one of --fs or --oci"),
+    let mut opts = DistOptions::default();
+    if let Some(cache_dir) = &args.cache_dir {
+        opts.cache_dir = cache_dir.clone();
     }
+    let client = DistClient::new(opts);
     let rt = tokio::runtime::Runtime::new().context("failed to create async runtime")?;
-    let bytes = rt
-        .block_on(async { store.get(&args.source).await })
+    let resolved = rt
+        .block_on(async { client.ensure_cached(&args.source).await })
         .context("store fetch failed")?;
-    fs::write(&args.output, &bytes.bytes)?;
+    let cache_path = resolved
+        .cache_path
+        .ok_or_else(|| anyhow!("resolved source has no cached component path"))?;
+    fs::create_dir_all(&args.out)
+        .with_context(|| format!("failed to create output dir {}", args.out.display()))?;
+    let manifest_cache_path = cache_path
+        .parent()
+        .map(|dir| dir.join("component.manifest.json"));
+    let manifest_out_path = args.out.join("component.manifest.json");
+    let mut wasm_out_path = args.out.join("component.wasm");
+    if let Some(manifest_cache_path) = manifest_cache_path
+        && manifest_cache_path.exists()
+    {
+        let manifest_bytes = fs::read(&manifest_cache_path).with_context(|| {
+            format!(
+                "failed to read cached manifest {}",
+                manifest_cache_path.display()
+            )
+        })?;
+        fs::write(&manifest_out_path, &manifest_bytes)
+            .with_context(|| format!("failed to write manifest {}", manifest_out_path.display()))?;
+        let manifest: Value = serde_json::from_slice(&manifest_bytes).with_context(|| {
+            format!(
+                "failed to parse component.manifest.json from {}",
+                manifest_cache_path.display()
+            )
+        })?;
+        if let Some(component_wasm) = manifest
+            .get("artifacts")
+            .and_then(|artifacts| artifacts.get("component_wasm"))
+            .and_then(|value| value.as_str())
+        {
+            let candidate = PathBuf::from(component_wasm);
+            wasm_out_path = normalize_under_root(&args.out, &candidate).with_context(|| {
+                format!("invalid artifacts.component_wasm path `{}`", component_wasm)
+            })?;
+            if let Some(parent) = wasm_out_path.parent() {
+                fs::create_dir_all(parent)
+                    .with_context(|| format!("failed to create output dir {}", parent.display()))?;
+            }
+        }
+    }
+    fs::copy(&cache_path, &wasm_out_path).with_context(|| {
+        format!(
+            "failed to copy cached component {} to {}",
+            cache_path.display(),
+            wasm_out_path.display()
+        )
+    })?;
     println!(
-        "Wrote {} ({} bytes) for source {}",
-        args.output.display(),
-        bytes.bytes.len(),
-        args.source
+        "Wrote {} (digest {}) for source {}",
+        wasm_out_path.display(),
+        resolved.digest,
+        args.source,
     );
+    if manifest_out_path.exists() {
+        println!("Wrote {}", manifest_out_path.display());
+    }
     Ok(())
 }

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use greentic_interfaces::runner_host_v1::{self, RunnerHost};
 use greentic_interfaces_host::component::v0_5::{self, ControlHost};
 use greentic_interfaces_wasmtime::host_helpers::v1::secrets_store::{
@@ -11,8 +11,11 @@ use greentic_interfaces_wasmtime::host_helpers::v1::state_store::{
 };
 use wasmtime::Engine;
 use wasmtime::component::Linker;
-use wasmtime_wasi::{ResourceTable, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
+use wasmtime_wasi::{
+    DirPerms, FilePerms, ResourceTable, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView,
+};
 
+use crate::test_harness::WasiPreopen;
 use crate::test_harness::secrets::InMemorySecretsStore;
 use crate::test_harness::state::{InMemoryStateStore, StateScope};
 
@@ -33,8 +36,32 @@ impl HostState {
         allow_state_read: bool,
         allow_state_write: bool,
         allow_state_delete: bool,
-    ) -> Self {
-        Self {
+        wasi_preopens: &[WasiPreopen],
+    ) -> Result<Self> {
+        let mut wasi_builder = WasiCtxBuilder::new();
+        for preopen in wasi_preopens {
+            let (dir_perms, file_perms) = if preopen.read_only {
+                (DirPerms::READ, FilePerms::READ)
+            } else {
+                (DirPerms::all(), FilePerms::all())
+            };
+            wasi_builder
+                .preopened_dir(
+                    &preopen.host_path,
+                    &preopen.guest_path,
+                    dir_perms,
+                    file_perms,
+                )
+                .with_context(|| {
+                    format!(
+                        "failed to preopen {} as {}",
+                        preopen.host_path.display(),
+                        preopen.guest_path
+                    )
+                })?;
+        }
+
+        Ok(Self {
             control: ControlHostImpl,
             runner: RunnerHostImpl,
             state: StateStoreHostImpl::new(
@@ -45,9 +72,9 @@ impl HostState {
                 allow_state_delete,
             ),
             secrets: SecretsStoreHostImpl::new(secrets),
-            wasi_ctx: WasiCtxBuilder::new().build(),
+            wasi_ctx: wasi_builder.build(),
             wasi_table: ResourceTable::new(),
-        }
+        })
     }
 }
 

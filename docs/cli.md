@@ -42,9 +42,9 @@ Practical notes for the main `greentic-component` subcommands: what they do, key
 - Tips: run after editing schemas/operations; leave `--no-write-schema` off when you want inferred schemas persisted.
 
 ## store fetch
-- Purpose: fetch a component artifact from FS or OCI into a local file.
-- Usage: `greentic-component store fetch --fs <component-dir> --output out.wasm` or `--oci <ref> --output out.wasm [--cache-dir dir] [--source id]`.
-- Tips: pick either `--fs` or `--oci` (not both); use `--cache-dir` for repeated fetches; `--source` labels the entry in the local store.
+- Purpose: fetch a component artifact into a local directory using the distributor resolver.
+- Usage: `greentic-component store fetch --out <dir> <source> [--cache-dir dir]`.
+- Tips: `<source>` may be `file://`, `oci://`, `repo://`, `store://`, or a local path; if the source provides `component.manifest.json`, it is written alongside the wasm; use `--cache-dir` for repeated fetches.
 
 ## doctor
 - Purpose: validate a wasm + manifest pair and print a health report.

@@ -150,3 +150,28 @@ fn new_outputs_template_metadata_in_json() {
             .any(|event| event["stage"] == "git-init")
     );
 }
+
+#[test]
+fn store_fetch_accepts_source_and_out_dir() {
+    let temp = tempfile::TempDir::new().unwrap();
+    let source_path = temp.path().join("component.wasm");
+    fs::write(&source_path, b"fake-wasm").unwrap();
+
+    let out_dir = temp.path().join("out");
+    let cache_dir = temp.path().join("cache");
+    let source_ref = format!("file://{}", source_path.display());
+
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("greentic-component");
+    cmd.arg("store")
+        .arg("fetch")
+        .arg("--out")
+        .arg(&out_dir)
+        .arg("--cache-dir")
+        .arg(&cache_dir)
+        .arg(&source_ref)
+        .assert()
+        .success();
+
+    let fetched = fs::read(out_dir.join("component.wasm")).expect("fetched component");
+    assert_eq!(fetched, b"fake-wasm");
+}

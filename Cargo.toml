@@ -9,7 +9,7 @@ resolver = "2"
 
 [workspace.package]
 edition = "2024"
-version = "0.4.33"
+version = "0.4.34"
 license = "MIT"
 rust-version = "1.89"
 
@@ -32,6 +32,7 @@ greentic-interfaces-guest = "0.4"
 greentic-interfaces-host = "0.4"
 greentic-interfaces = "0.4"
 greentic-interfaces-wasmtime = "0.4"
+greentic-distributor-client = { version = "0.4", default-features = false, features = ["dist-client"] }
 greentic-types = "0.4"
 packc = "0.4"
 handlebars = "6"
@@ -70,5 +71,5 @@ wasm-metadata = "0"
 wasmparser = "0"
 wasmtime = { version = "40", default-features = false, features = ["component-model", "cranelift", "runtime"] }
 wasmtime-wasi = { version = "40" }
-wit-component = "0"
-wit-parser = "0"
+wit-component = "0.244.0"
+wit-parser = "0.244.0"

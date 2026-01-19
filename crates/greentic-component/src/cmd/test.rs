@@ -9,8 +9,10 @@ use clap::{ArgAction, Args};
 use serde_json::Value;
 use uuid::Uuid;
 
+use crate::capabilities::FilesystemMode;
+use crate::manifest::ComponentManifest;
 use crate::manifest::parse_manifest;
-use crate::test_harness::{HarnessConfig, TestHarness};
+use crate::test_harness::{HarnessConfig, TestHarness, WasiPreopen};
 use greentic_types::{EnvId, TeamId, TenantCtx, TenantId, UserId};
 
 #[derive(Args, Debug)]
@@ -119,6 +121,7 @@ pub fn run(args: TestArgs) -> Result<()> {
     }
 
     let state_seeds = parse_state_seeds(&args)?;
+    let wasi_preopens = resolve_wasi_preopens(&manifest)?;
     let prefix = state_prefix(args.flow.as_deref(), &session_id);
     let flow_id = args.flow.clone().unwrap_or_else(|| "test".to_string());
     let harness = TestHarness::new(HarnessConfig {
@@ -134,6 +137,7 @@ pub fn run(args: TestArgs) -> Result<()> {
         allow_secrets,
         allowed_secrets,
         secrets,
+        wasi_preopens,
     })?;
 
     if steps.len() > 1 && args.output.is_some() {
@@ -256,6 +260,28 @@ fn state_prefix(flow: Option<&str>, session: &str) -> String {
     } else {
         format!("test/{session}")
     }
+}
+
+fn resolve_wasi_preopens(manifest: &ComponentManifest) -> Result<Vec<WasiPreopen>> {
+    let Some(fs) = manifest.capabilities.wasi.filesystem.as_ref() else {
+        return Ok(Vec::new());
+    };
+    if fs.mode == FilesystemMode::None {
+        return Ok(Vec::new());
+    }
+    let host_root =
+        std::env::current_dir().context("resolve current working directory for mounts")?;
+    let meta = fs::metadata(&host_root)
+        .with_context(|| format!("failed to stat preopen {}", host_root.display()))?;
+    if !meta.is_dir() {
+        bail!("preopen {} must be a directory", host_root.display());
+    }
+    let read_only = matches!(fs.mode, FilesystemMode::ReadOnly);
+    let mut preopens = Vec::new();
+    for mount in &fs.mounts {
+        preopens.push(WasiPreopen::new(&host_root, mount.guest_path.clone()).read_only(read_only));
+    }
+    Ok(preopens)
 }
 
 fn state_permissions(
