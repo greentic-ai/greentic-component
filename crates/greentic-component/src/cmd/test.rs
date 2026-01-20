@@ -131,7 +131,7 @@ fn run_inner(args: &TestArgs, trace_out: Option<&Path>) -> Result<()> {
 
         let (tenant_ctx, session_id, generated_session) = build_tenant_ctx(args)?;
         if args.verbose && generated_session {
-            eprintln!("generated session id: {session_id}");
+            eprintln!("generated session id");
         }
 
         let (allow_state_read, allow_state_write, allow_state_delete) =
