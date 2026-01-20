@@ -141,9 +141,10 @@ fn resolve_source(source: &str) -> Result<String> {
             .and_then(|artifacts| artifacts.get("component_wasm"))
             .and_then(|value| value.as_str())
         {
-            let wasm_path = normalize_under_root(path, Path::new(component_wasm)).with_context(
-                || format!("invalid artifacts.component_wasm path `{}`", component_wasm),
-            )?;
+            let wasm_path =
+                normalize_under_root(path, Path::new(component_wasm)).with_context(|| {
+                    format!("invalid artifacts.component_wasm path `{}`", component_wasm)
+                })?;
             return Ok(format!("{prefix}{}", wasm_path.display()));
         }
     }
