@@ -1,19 +1,27 @@
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 use anyhow::{Context, Result, bail};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
-use clap::{ArgAction, Args};
-use serde_json::Value;
+use blake3::Hasher;
+use clap::{ArgAction, Args, ValueEnum};
+use serde::Serialize;
+use serde_json::{Map, Value};
 use uuid::Uuid;
 
 use crate::capabilities::FilesystemMode;
 use crate::manifest::ComponentManifest;
 use crate::manifest::parse_manifest;
-use crate::test_harness::{HarnessConfig, TestHarness, WasiPreopen};
+use crate::test_harness::{ComponentInvokeError, HarnessConfig, TestHarness, WasiPreopen};
 use greentic_types::{EnvId, TeamId, TenantCtx, TenantId, UserId};
+
+#[derive(Clone, Debug, ValueEnum)]
+pub enum StateMode {
+    Inmem,
+}
 
 #[derive(Args, Debug)]
 pub struct TestArgs {
@@ -35,9 +43,15 @@ pub struct TestArgs {
     /// Write output JSON to a file.
     #[arg(long, value_name = "PATH")]
     pub output: Option<PathBuf>,
+    /// Write trace JSON output (overrides GREENTIC_TRACE_OUT).
+    #[arg(long, value_name = "PATH")]
+    pub trace_out: Option<PathBuf>,
     /// Pretty-print JSON output.
     #[arg(long)]
     pub pretty: bool,
+    /// State backend (only inmem is supported).
+    #[arg(long, value_enum, default_value = "inmem")]
+    pub state: StateMode,
     /// Dump in-memory state after invocation.
     #[arg(long)]
     pub state_dump: bool,
@@ -83,6 +97,14 @@ pub struct TestArgs {
 }
 
 pub fn run(args: TestArgs) -> Result<()> {
+    let trace_out = resolve_trace_out(&args)?;
+    match run_inner(&args, trace_out.as_deref()) {
+        Ok(()) => Ok(()),
+        Err(err) => Err(TestCommandError::from_anyhow(err, args.pretty).into()),
+    }
+}
+
+fn run_inner(args: &TestArgs, trace_out: Option<&Path>) -> Result<()> {
     let manifest_path = resolve_manifest_path(&args.wasm, args.manifest.as_deref())?;
     let manifest_raw = fs::read_to_string(&manifest_path)
         .with_context(|| format!("read manifest {}", manifest_path.display()))?;
@@ -90,81 +112,113 @@ pub fn run(args: TestArgs) -> Result<()> {
         serde_json::from_str(&manifest_raw).context("manifest must be valid JSON")?;
     let manifest = parse_manifest(&manifest_raw).context("parse manifest")?;
 
-    let steps = collect_steps(&args)?;
-    for (op, _) in &steps {
-        if !manifest
-            .operations
-            .iter()
-            .any(|operation| operation.name == *op)
-        {
-            bail!("operation `{op}` not declared in manifest");
+    let steps = collect_steps(args)?;
+    let mut trace = TraceContext::new(trace_out, &manifest, &steps);
+    let start = Instant::now();
+
+    let result = (|| -> Result<Option<String>> {
+        for (op, _) in &steps {
+            if !manifest
+                .operations
+                .iter()
+                .any(|operation| operation.name == *op)
+            {
+                bail!("operation `{op}` not declared in manifest");
+            }
+        }
+        let wasm_bytes =
+            fs::read(&args.wasm).with_context(|| format!("read wasm {}", args.wasm.display()))?;
+
+        let (tenant_ctx, session_id, generated_session) = build_tenant_ctx(args)?;
+        if args.verbose && generated_session {
+            eprintln!("generated session id: {session_id}");
+        }
+
+        let (allow_state_read, allow_state_write, allow_state_delete) =
+            state_permissions(&manifest_value, &manifest);
+        if !args.state_set.is_empty() && !allow_state_write {
+            bail!("manifest does not declare host.state.write; add it to use --state-set");
+        }
+        let (allow_secrets, allowed_secrets) = secret_permissions(&manifest);
+
+        let secrets = load_secrets(args)?;
+        if !allow_secrets && !secrets.is_empty() {
+            bail!(
+                "manifest does not declare host.secrets; add host.secrets to enable secrets access"
+            );
+        }
+
+        let state_seeds = parse_state_seeds(args)?;
+        let wasi_preopens = resolve_wasi_preopens(&manifest)?;
+        let prefix = state_prefix(args.flow.as_deref(), &session_id);
+        let flow_id = args.flow.clone().unwrap_or_else(|| "test".to_string());
+        let harness = TestHarness::new(HarnessConfig {
+            wasm_bytes,
+            tenant_ctx: tenant_ctx.clone(),
+            flow_id,
+            node_id: args.node.clone(),
+            state_prefix: prefix,
+            state_seeds,
+            allow_state_read,
+            allow_state_write,
+            allow_state_delete,
+            allow_secrets,
+            allowed_secrets,
+            secrets,
+            wasi_preopens,
+        })?;
+
+        if steps.len() > 1 && args.output.is_some() {
+            bail!("--output is only supported for single-step runs");
+        }
+
+        let mut single_output = None;
+        for (idx, (op, input)) in steps.iter().enumerate() {
+            let output = harness.invoke(op, input)?;
+            if steps.len() == 1 {
+                single_output = Some(output.clone());
+            }
+            let output = format_output(&output, args.pretty)?;
+            if let Some(path) = &args.output {
+                fs::write(path, output.as_bytes())
+                    .with_context(|| format!("write output {}", path.display()))?;
+            }
+            if steps.len() > 1 {
+                println!("step {} output:\n{output}", idx + 1);
+            } else {
+                println!("{output}");
+            }
+        }
+
+        if args.state_dump {
+            let dump = harness.state_dump();
+            let dump_json = serde_json::to_string_pretty(&dump).unwrap_or_else(|_| "{}".into());
+            eprintln!("state dump:\n{dump_json}");
+        }
+
+        Ok(single_output)
+    })();
+
+    let duration_ms = duration_ms(start.elapsed());
+    match result {
+        Ok(output) => {
+            if let Some(output) = output.as_deref() {
+                trace.output_hash = Some(hash_bytes(output.as_bytes()));
+            }
+            trace.write(duration_ms, None)?;
+            Ok(())
+        }
+        Err(err) => {
+            let payload = error_payload_from_anyhow(&err);
+            if let Err(trace_err) = trace.write(duration_ms, Some(payload)) {
+                eprintln!("failed to write trace: {trace_err}");
+            }
+            if let Some(path) = trace.out_path.as_deref() {
+                eprintln!("#TRY_SAVE_TRACE {}", path.display());
+            }
+            Err(err)
         }
     }
-    let wasm_bytes =
-        fs::read(&args.wasm).with_context(|| format!("read wasm {}", args.wasm.display()))?;
-
-    let (tenant_ctx, session_id, generated_session) = build_tenant_ctx(&args)?;
-    if args.verbose && generated_session {
-        eprintln!("generated session id: {session_id}");
-    }
-
-    let (allow_state_read, allow_state_write, allow_state_delete) =
-        state_permissions(&manifest_value, &manifest);
-    if !args.state_set.is_empty() && !allow_state_write {
-        bail!("manifest does not declare host.state.write; add it to use --state-set");
-    }
-    let (allow_secrets, allowed_secrets) = secret_permissions(&manifest);
-
-    let secrets = load_secrets(&args)?;
-    if !allow_secrets && !secrets.is_empty() {
-        bail!("manifest does not declare host.secrets; add host.secrets to enable secrets access");
-    }
-
-    let state_seeds = parse_state_seeds(&args)?;
-    let wasi_preopens = resolve_wasi_preopens(&manifest)?;
-    let prefix = state_prefix(args.flow.as_deref(), &session_id);
-    let flow_id = args.flow.clone().unwrap_or_else(|| "test".to_string());
-    let harness = TestHarness::new(HarnessConfig {
-        wasm_bytes,
-        tenant_ctx: tenant_ctx.clone(),
-        flow_id,
-        node_id: args.node.clone(),
-        state_prefix: prefix,
-        state_seeds,
-        allow_state_read,
-        allow_state_write,
-        allow_state_delete,
-        allow_secrets,
-        allowed_secrets,
-        secrets,
-        wasi_preopens,
-    })?;
-
-    if steps.len() > 1 && args.output.is_some() {
-        bail!("--output is only supported for single-step runs");
-    }
-
-    for (idx, (op, input)) in steps.iter().enumerate() {
-        let output = harness.invoke(op, input)?;
-        let output = format_output(&output, args.pretty)?;
-        if let Some(path) = &args.output {
-            fs::write(path, output.as_bytes())
-                .with_context(|| format!("write output {}", path.display()))?;
-        }
-        if steps.len() > 1 {
-            println!("step {} output:\n{output}", idx + 1);
-        } else {
-            println!("{output}");
-        }
-    }
-
-    if args.state_dump {
-        let dump = harness.state_dump();
-        let dump_json = serde_json::to_string_pretty(&dump).unwrap_or_else(|_| "{}".into());
-        eprintln!("state dump:\n{dump_json}");
-    }
-
-    Ok(())
 }
 
 fn resolve_manifest_path(wasm: &Path, manifest: Option<&Path>) -> Result<PathBuf> {
@@ -252,6 +306,16 @@ fn build_tenant_ctx(args: &TestArgs) -> Result<(TenantCtx, String, bool)> {
     }
 
     Ok((ctx, session_id, generated))
+}
+
+fn resolve_trace_out(args: &TestArgs) -> Result<Option<PathBuf>> {
+    if let Some(path) = &args.trace_out {
+        return Ok(Some(path.clone()));
+    }
+    let value = std::env::var("GREENTIC_TRACE_OUT").ok();
+    Ok(value
+        .filter(|path| !path.trim().is_empty())
+        .map(PathBuf::from))
 }
 
 fn state_prefix(flow: Option<&str>, session: &str) -> String {
@@ -396,4 +460,152 @@ fn format_output(raw: &str, pretty: bool) -> Result<String> {
     }
     let value: Value = serde_json::from_str(raw).context("output is not valid JSON")?;
     Ok(serde_json::to_string_pretty(&value)?)
+}
+
+#[derive(Debug, Serialize)]
+struct TestErrorPayload {
+    code: String,
+    message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    details: Option<Value>,
+}
+
+#[derive(Debug)]
+pub struct TestCommandError {
+    payload: TestErrorPayload,
+    pretty: bool,
+}
+
+impl TestCommandError {
+    fn from_anyhow(err: anyhow::Error, pretty: bool) -> Self {
+        Self {
+            payload: error_payload_from_anyhow(&err),
+            pretty,
+        }
+    }
+
+    pub fn render_json(&self) -> String {
+        if self.pretty {
+            serde_json::to_string_pretty(&self.payload).unwrap_or_else(|_| "{}".to_string())
+        } else {
+            serde_json::to_string(&self.payload).unwrap_or_else(|_| "{}".to_string())
+        }
+    }
+}
+
+impl std::fmt::Display for TestCommandError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: {}", self.payload.code, self.payload.message)
+    }
+}
+
+impl std::error::Error for TestCommandError {}
+
+fn component_error_details(error: &ComponentInvokeError) -> Option<Value> {
+    let mut details = Map::new();
+    details.insert("retryable".into(), Value::Bool(error.retryable));
+    if let Some(backoff_ms) = error.backoff_ms {
+        details.insert("backoff_ms".into(), Value::Number(backoff_ms.into()));
+    }
+    if let Some(raw) = &error.details {
+        let parsed = serde_json::from_str(raw).unwrap_or_else(|_| Value::String(raw.clone()));
+        details.insert("details".into(), parsed);
+    }
+    if details.is_empty() {
+        None
+    } else {
+        Some(Value::Object(details))
+    }
+}
+
+fn error_payload_from_anyhow(err: &anyhow::Error) -> TestErrorPayload {
+    if let Some(component_err) = err
+        .chain()
+        .find_map(|source| source.downcast_ref::<ComponentInvokeError>())
+    {
+        return TestErrorPayload {
+            code: component_err.code.clone(),
+            message: component_err.message.clone(),
+            details: component_error_details(component_err),
+        };
+    }
+
+    TestErrorPayload {
+        code: "test.failure".to_string(),
+        message: err.to_string(),
+        details: None,
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct TraceRecord {
+    trace_version: u8,
+    component_id: String,
+    operation: String,
+    input_hash: Option<String>,
+    output_hash: Option<String>,
+    duration_ms: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<TestErrorPayload>,
+}
+
+struct TraceContext {
+    out_path: Option<PathBuf>,
+    component_id: String,
+    operation: String,
+    input_hash: Option<String>,
+    output_hash: Option<String>,
+}
+
+impl TraceContext {
+    fn new(
+        out_path: Option<&Path>,
+        manifest: &ComponentManifest,
+        steps: &[(String, Value)],
+    ) -> Self {
+        let (operation, input_hash) = match steps.first() {
+            Some((op, input)) => (op.clone(), Some(hash_json_value(input))),
+            None => ("unknown".to_string(), None),
+        };
+        Self {
+            out_path: out_path.map(|path| path.to_path_buf()),
+            component_id: manifest.id.as_str().to_string(),
+            operation,
+            input_hash,
+            output_hash: None,
+        }
+    }
+
+    fn write(&self, duration_ms: u64, error: Option<TestErrorPayload>) -> Result<()> {
+        let Some(path) = self.out_path.as_deref() else {
+            return Ok(());
+        };
+        let record = TraceRecord {
+            trace_version: 1,
+            component_id: self.component_id.clone(),
+            operation: self.operation.clone(),
+            input_hash: self.input_hash.clone(),
+            output_hash: self.output_hash.clone(),
+            duration_ms,
+            error,
+        };
+        let json = serde_json::to_string_pretty(&record).context("serialize trace JSON")?;
+        fs::write(path, json).with_context(|| format!("write trace {}", path.display()))?;
+        Ok(())
+    }
+}
+
+fn hash_json_value(value: &Value) -> String {
+    let raw = serde_json::to_string(value).unwrap_or_else(|_| "null".to_string());
+    hash_bytes(raw.as_bytes())
+}
+
+fn hash_bytes(bytes: &[u8]) -> String {
+    let mut hasher = Hasher::new();
+    hasher.update(bytes);
+    format!("blake3:{}", hasher.finalize().to_hex())
+}
+
+fn duration_ms(duration: std::time::Duration) -> u64 {
+    duration.as_millis().try_into().unwrap_or(u64::MAX)
 }

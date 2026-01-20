@@ -1,0 +1,23 @@
+suite: adaptive-card matrix
+component:
+  wasm: ./target/wasm32-wasip2/release/my_component.wasm
+  manifest: ./component.manifest.json
+
+cases:
+  - name: basic-render
+    op: render
+    input: ./tests/fixtures/render.json
+    expect:
+      output_contains:
+        rendered_card: true
+
+  - name: submit-updates-state
+    steps:
+      - op: render
+        input: ./tests/fixtures/render.json
+      - op: submit
+        input: ./tests/fixtures/submit.json
+        expect:
+          state_contains:
+            form_data:
+              name: "Ada"

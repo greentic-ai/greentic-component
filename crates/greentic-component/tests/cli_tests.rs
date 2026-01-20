@@ -8,6 +8,7 @@ use greentic_component::scaffold::engine::{DEFAULT_WIT_WORLD, ScaffoldEngine, Sc
 use predicates::prelude::*;
 use serde_json::Value;
 use std::fs;
+use std::path::Path;
 use support::TestComponent;
 
 const TEST_WIT: &str = r#"
@@ -174,4 +175,37 @@ fn store_fetch_accepts_source_and_out_dir() {
 
     let fetched = fs::read(out_dir.join("component.wasm")).expect("fetched component");
     assert_eq!(fetched, b"fake-wasm");
+}
+
+#[test]
+fn test_command_writes_trace_on_failure() {
+    let temp = tempfile::TempDir::new().unwrap();
+    let trace_path = temp.path().join("trace.json");
+    let input_path = temp.path().join("input.json");
+    fs::write(&input_path, "{}").unwrap();
+
+    let manifest_path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/manifests/valid.component.json");
+    let wasm_path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/manifests/bin/component.wasm");
+
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("greentic-component");
+    cmd.arg("test")
+        .arg("--wasm")
+        .arg(&wasm_path)
+        .arg("--manifest")
+        .arg(&manifest_path)
+        .arg("--op")
+        .arg("invalid_op")
+        .arg("--input")
+        .arg(&input_path)
+        .arg("--trace-out")
+        .arg(&trace_path)
+        .assert()
+        .failure();
+
+    let trace = fs::read_to_string(&trace_path).expect("trace should be written");
+    let value: Value = serde_json::from_str(&trace).expect("trace JSON");
+    assert_eq!(value["trace_version"].as_u64(), Some(1));
+    assert!(value["error"]["code"].as_str().is_some());
 }

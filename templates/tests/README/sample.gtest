@@ -1,0 +1,16 @@
+name: adaptive-card basic
+description: render and submit a simple card
+
+steps:
+  - op: render
+    input: ./tests/fixtures/render.json
+    expect:
+      output_contains:
+        rendered_card: true
+
+  - op: submit
+    input: ./tests/fixtures/submit.json
+    expect:
+      state_contains:
+        form_data:
+          name: "Ada"

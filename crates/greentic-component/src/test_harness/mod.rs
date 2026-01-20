@@ -18,6 +18,23 @@ mod linker;
 mod secrets;
 mod state;
 
+#[derive(Debug)]
+pub struct ComponentInvokeError {
+    pub code: String,
+    pub message: String,
+    pub retryable: bool,
+    pub backoff_ms: Option<u64>,
+    pub details: Option<String>,
+}
+
+impl std::fmt::Display for ComponentInvokeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "component error {}: {}", self.code, self.message)
+    }
+}
+
+impl std::error::Error for ComponentInvokeError {}
+
 pub struct HarnessConfig {
     pub wasm_bytes: Vec<u8>,
     pub tenant_ctx: TenantCtx,
@@ -145,11 +162,13 @@ impl TestHarness {
 
         match result {
             InvokeResult::Ok(output_json) => Ok(output_json),
-            InvokeResult::Err(err) => Err(anyhow::anyhow!(
-                "component error {}: {}",
-                err.code,
-                err.message
-            )),
+            InvokeResult::Err(err) => Err(anyhow::Error::new(ComponentInvokeError {
+                code: err.code,
+                message: err.message,
+                retryable: err.retryable,
+                backoff_ms: err.backoff_ms,
+                details: err.details,
+            })),
         }
     }
 
