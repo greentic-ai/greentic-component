@@ -43,7 +43,7 @@ Practical notes for the main `greentic-component` subcommands: what they do, key
 
 ## store fetch
 - Purpose: fetch a component artifact into a local directory using the distributor resolver.
-- Usage: `greentic-component store fetch --out <dir> <source> [--cache-dir dir]`.
+- Usage: `greentic-component store fetch --out <dir|file.wasm> <source> [--cache-dir dir]`.
 - Tips: `<source>` may be `file://`, `oci://`, `repo://`, `store://`, or a local path; if the source provides `component.manifest.json`, it is written alongside the wasm; use `--cache-dir` for repeated fetches.
 
 ## doctor

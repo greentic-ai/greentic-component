@@ -1365,7 +1365,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-component"
-version = "0.4.35"
+version = "0.4.36"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -1409,9 +1409,9 @@ dependencies = [
  "tracing",
  "uuid",
  "walkdir",
- "wasm-encoder 0.244.0",
+ "wasm-encoder 0.243.0",
  "wasm-metadata",
- "wasmparser 0.244.0",
+ "wasmparser 0.243.0",
  "wasmtime",
  "wasmtime-wasi",
  "wit-component",
@@ -1420,7 +1420,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-component-manifest"
-version = "0.4.35"
+version = "0.4.36"
 dependencies = [
  "anyhow",
  "greentic-types",
@@ -1437,7 +1437,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-component-runtime"
-version = "0.4.35"
+version = "0.4.36"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1464,7 +1464,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-component-store"
-version = "0.4.35"
+version = "0.4.36"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4177,7 +4177,6 @@ dependencies = [
  "hashbrown 0.15.5",
  "indexmap 2.13.0",
  "semver",
- "serde",
 ]
 
 [[package]]

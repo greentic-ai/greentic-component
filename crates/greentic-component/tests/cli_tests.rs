@@ -178,6 +178,31 @@ fn store_fetch_accepts_source_and_out_dir() {
 }
 
 #[test]
+fn store_fetch_accepts_wasm_output_path() {
+    let temp = tempfile::TempDir::new().unwrap();
+    let source_path = temp.path().join("component.wasm");
+    fs::write(&source_path, b"fake-wasm").unwrap();
+
+    let out_file = temp.path().join("offline_comp.wasm");
+    let cache_dir = temp.path().join("cache");
+    let source_ref = format!("file://{}", source_path.display());
+
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("greentic-component");
+    cmd.arg("store")
+        .arg("fetch")
+        .arg("--out")
+        .arg(&out_file)
+        .arg("--cache-dir")
+        .arg(&cache_dir)
+        .arg(&source_ref)
+        .assert()
+        .success();
+
+    let fetched = fs::read(&out_file).expect("fetched component");
+    assert_eq!(fetched, b"fake-wasm");
+}
+
+#[test]
 fn test_command_writes_trace_on_failure() {
     let temp = tempfile::TempDir::new().unwrap();
     let trace_path = temp.path().join("trace.json");

@@ -46,13 +46,14 @@ fn fetch(args: StoreFetchArgs) -> Result<()> {
     let cache_path = resolved
         .cache_path
         .ok_or_else(|| anyhow!("resolved source has no cached component path"))?;
-    fs::create_dir_all(&args.out)
-        .with_context(|| format!("failed to create output dir {}", args.out.display()))?;
+    let (out_dir, wasm_override) = resolve_output_paths(&args.out)?;
+    fs::create_dir_all(&out_dir)
+        .with_context(|| format!("failed to create output dir {}", out_dir.display()))?;
     let manifest_cache_path = cache_path
         .parent()
         .map(|dir| dir.join("component.manifest.json"));
-    let manifest_out_path = args.out.join("component.manifest.json");
-    let mut wasm_out_path = args.out.join("component.wasm");
+    let manifest_out_path = out_dir.join("component.manifest.json");
+    let mut wasm_out_path = wasm_override.unwrap_or_else(|| out_dir.join("component.wasm"));
     if let Some(manifest_cache_path) = manifest_cache_path
         && manifest_cache_path.exists()
     {
@@ -76,12 +77,15 @@ fn fetch(args: StoreFetchArgs) -> Result<()> {
             .and_then(|value| value.as_str())
         {
             let candidate = PathBuf::from(component_wasm);
-            wasm_out_path = normalize_under_root(&args.out, &candidate).with_context(|| {
-                format!("invalid artifacts.component_wasm path `{}`", component_wasm)
-            })?;
-            if let Some(parent) = wasm_out_path.parent() {
-                fs::create_dir_all(parent)
-                    .with_context(|| format!("failed to create output dir {}", parent.display()))?;
+            if wasm_override.is_none() {
+                wasm_out_path = normalize_under_root(&out_dir, &candidate).with_context(|| {
+                    format!("invalid artifacts.component_wasm path `{}`", component_wasm)
+                })?;
+                if let Some(parent) = wasm_out_path.parent() {
+                    fs::create_dir_all(parent).with_context(|| {
+                        format!("failed to create output dir {}", parent.display())
+                    })?;
+                }
             }
         }
     }
@@ -102,4 +106,23 @@ fn fetch(args: StoreFetchArgs) -> Result<()> {
         println!("Wrote {}", manifest_out_path.display());
     }
     Ok(())
+}
+
+fn resolve_output_paths(out: &PathBuf) -> Result<(PathBuf, Option<PathBuf>)> {
+    if out.exists() {
+        if out.is_dir() {
+            return Ok((out.clone(), None));
+        }
+        if let Some(parent) = out.parent() {
+            return Ok((parent.to_path_buf(), Some(out.clone())));
+        }
+        return Ok((PathBuf::from("."), Some(out.clone())));
+    }
+
+    if out.extension().is_some() {
+        let parent = out.parent().unwrap_or_else(|| std::path::Path::new("."));
+        return Ok((parent.to_path_buf(), Some(out.clone())));
+    }
+
+    Ok((out.clone(), None))
 }
