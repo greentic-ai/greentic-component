@@ -53,7 +53,9 @@ fn fetch(args: StoreFetchArgs) -> Result<()> {
         .parent()
         .map(|dir| dir.join("component.manifest.json"));
     let manifest_out_path = out_dir.join("component.manifest.json");
-    let mut wasm_out_path = wasm_override.unwrap_or_else(|| out_dir.join("component.wasm"));
+    let mut wasm_out_path = wasm_override
+        .clone()
+        .unwrap_or_else(|| out_dir.join("component.wasm"));
     if let Some(manifest_cache_path) = manifest_cache_path
         && manifest_cache_path.exists()
     {
@@ -108,21 +110,21 @@ fn fetch(args: StoreFetchArgs) -> Result<()> {
     Ok(())
 }
 
-fn resolve_output_paths(out: &PathBuf) -> Result<(PathBuf, Option<PathBuf>)> {
+fn resolve_output_paths(out: &std::path::Path) -> Result<(PathBuf, Option<PathBuf>)> {
     if out.exists() {
         if out.is_dir() {
-            return Ok((out.clone(), None));
+            return Ok((out.to_path_buf(), None));
         }
         if let Some(parent) = out.parent() {
-            return Ok((parent.to_path_buf(), Some(out.clone())));
+            return Ok((parent.to_path_buf(), Some(out.to_path_buf())));
         }
-        return Ok((PathBuf::from("."), Some(out.clone())));
+        return Ok((PathBuf::from("."), Some(out.to_path_buf())));
     }
 
     if out.extension().is_some() {
         let parent = out.parent().unwrap_or_else(|| std::path::Path::new("."));
-        return Ok((parent.to_path_buf(), Some(out.clone())));
+        return Ok((parent.to_path_buf(), Some(out.to_path_buf())));
     }
 
-    Ok((out.clone(), None))
+    Ok((out.to_path_buf(), None))
 }
