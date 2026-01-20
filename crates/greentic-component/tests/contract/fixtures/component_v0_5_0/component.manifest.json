@@ -1,0 +1,97 @@
+{
+  "artifacts": {
+    "component_wasm": "component.wasm"
+  },
+  "capabilities": {
+    "host": {
+      "messaging": {
+        "inbound": true,
+        "outbound": true
+      },
+      "telemetry": {
+        "scope": "tenant"
+      }
+    },
+    "wasi": {
+      "clocks": true,
+      "filesystem": {
+        "mode": "none",
+        "mounts": []
+      },
+      "random": true
+    }
+  },
+  "config_schema": {
+    "additionalProperties": false,
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "default_operation": "handle_message",
+  "describe_export": "describe",
+  "dev_flows": {
+    "default": {
+      "format": "flow-ir-json",
+      "graph": {
+        "edges": [
+          {
+            "from": "start",
+            "to": "end"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start"
+          },
+          {
+            "id": "end",
+            "type": "end"
+          }
+        ]
+      }
+    }
+  },
+  "hashes": {
+    "component_wasm": "blake3:43e8a5cf451609a4fcd77c5057190e0f68e6d91d113ee394560307799bafb7b4"
+  },
+  "id": "com.greentic.contract.fixture",
+  "limits": {
+    "files": 2,
+    "fuel": 10,
+    "memory_mb": 64,
+    "wall_time_ms": 1000
+  },
+  "name": "Contract Fixture",
+  "operations": [
+    {
+      "input_schema": {},
+      "name": "handle_message",
+      "output_schema": {}
+    }
+  ],
+  "profiles": {
+    "default": "stateless",
+    "supported": [
+      "stateless"
+    ]
+  },
+  "provenance": {
+    "builder": "greentic-component",
+    "built_at_utc": "2024-01-01T00:00:00Z",
+    "git_commit": "abcdef1",
+    "toolchain": "rustc"
+  },
+  "supports": [
+    "messaging"
+  ],
+  "telemetry": {
+    "attributes": {
+      "component": "fixture"
+    },
+    "emit_node_spans": true,
+    "span_prefix": "contract.fixture"
+  },
+  "version": "0.1.0",
+  "world": "greentic:component/component@0.5.0"
+}

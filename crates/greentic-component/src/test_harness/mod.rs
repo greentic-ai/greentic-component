@@ -1,6 +1,8 @@
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use greentic_interfaces_host::component::v0_5::exports::greentic::component::node;
@@ -10,7 +12,7 @@ use serde_json::Value;
 use wasmtime::component::{Component, InstancePre};
 use wasmtime::{Config, Engine, Store};
 
-use crate::test_harness::linker::{HostState, build_linker};
+use crate::test_harness::linker::{HostState, HostStateConfig, build_linker};
 use crate::test_harness::secrets::InMemorySecretsStore;
 use crate::test_harness::state::{InMemoryStateStore, StateDumpEntry, StateScope};
 
@@ -35,6 +37,30 @@ impl std::fmt::Display for ComponentInvokeError {
 
 impl std::error::Error for ComponentInvokeError {}
 
+#[derive(Debug)]
+pub enum HarnessError {
+    Timeout { timeout_ms: u64 },
+    MemoryLimit { max_memory_bytes: usize },
+}
+
+impl std::fmt::Display for HarnessError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            HarnessError::Timeout { timeout_ms } => {
+                write!(f, "execution exceeded timeout of {timeout_ms}ms")
+            }
+            HarnessError::MemoryLimit { max_memory_bytes } => {
+                write!(
+                    f,
+                    "execution exceeded memory limit of {max_memory_bytes} bytes"
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for HarnessError {}
+
 pub struct HarnessConfig {
     pub wasm_bytes: Vec<u8>,
     pub tenant_ctx: TenantCtx,
@@ -49,6 +75,10 @@ pub struct HarnessConfig {
     pub allowed_secrets: HashSet<String>,
     pub secrets: HashMap<String, String>,
     pub wasi_preopens: Vec<WasiPreopen>,
+    pub config: Option<Value>,
+    pub allow_http: bool,
+    pub timeout_ms: u64,
+    pub max_memory_bytes: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -85,6 +115,16 @@ pub struct TestHarness {
     allow_state_delete: bool,
     exec_ctx: node::ExecCtx,
     wasi_preopens: Vec<WasiPreopen>,
+    config_json: Option<String>,
+    allow_http: bool,
+    timeout_ms: u64,
+    max_memory_bytes: usize,
+}
+
+pub struct InvokeOutcome {
+    pub output_json: String,
+    pub instantiate_ms: u64,
+    pub run_ms: u64,
 }
 
 impl TestHarness {
@@ -92,6 +132,7 @@ impl TestHarness {
         let mut wasmtime_config = Config::new();
         wasmtime_config.wasm_component_model(true);
         wasmtime_config.wasm_backtrace_details(wasmtime::WasmBacktraceDetails::Enable);
+        wasmtime_config.epoch_interruption(true);
         let engine = Engine::new(&wasmtime_config).context("create wasmtime engine")?;
 
         let component =
@@ -117,6 +158,11 @@ impl TestHarness {
             node_id: config.node_id,
         };
 
+        let config_json = match config.config {
+            Some(value) => Some(serde_json::to_string(&value).context("serialize config json")?),
+            None => None,
+        };
+
         Ok(Self {
             engine,
             instance_pre,
@@ -129,39 +175,104 @@ impl TestHarness {
             allow_state_delete: config.allow_state_delete,
             exec_ctx,
             wasi_preopens: config.wasi_preopens,
+            config_json,
+            allow_http: config.allow_http,
+            timeout_ms: config.timeout_ms,
+            max_memory_bytes: config.max_memory_bytes,
         })
     }
 
-    pub fn invoke(&self, operation: &str, input_json: &Value) -> Result<String> {
-        let host_state = HostState::new(
-            self.state_scope.clone(),
-            self.state_store.clone(),
-            self.secrets_store.clone(),
-            self.allow_state_read,
-            self.allow_state_write,
-            self.allow_state_delete,
-            &self.wasi_preopens,
-        )
+    pub fn invoke(&self, operation: &str, input_json: &Value) -> Result<InvokeOutcome> {
+        let host_state = HostState::new(HostStateConfig {
+            base_scope: self.state_scope.clone(),
+            state_store: self.state_store.clone(),
+            secrets: self.secrets_store.clone(),
+            allow_state_read: self.allow_state_read,
+            allow_state_write: self.allow_state_write,
+            allow_state_delete: self.allow_state_delete,
+            wasi_preopens: self.wasi_preopens.clone(),
+            allow_http: self.allow_http,
+            config_json: self.config_json.clone(),
+            max_memory_bytes: self.max_memory_bytes,
+        })
         .context("build WASI context")?;
         let mut store = Store::new(&self.engine, host_state);
+        store.limiter(|state| state.limits_mut());
+        store.set_epoch_deadline(1);
+
+        let done = Arc::new(AtomicBool::new(false));
+        let _timeout_guard = TimeoutGuard::new(done.clone());
+        let engine = self.engine.clone();
+        let timeout_ms = self.timeout_ms;
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(timeout_ms));
+            if !done.load(Ordering::Relaxed) {
+                engine.increment_epoch();
+            }
+        });
+
+        let instantiate_start = Instant::now();
         let instance = self
             .instance_pre
             .instantiate(&mut store)
-            .context("instantiate component")?;
-        let exports = self
-            .guest_indices
-            .load(&mut store, &instance)
-            .context("load component exports")?;
+            .context("instantiate component")
+            .and_then(|instance| {
+                self.guest_indices
+                    .load(&mut store, &instance)
+                    .context("load component exports")
+                    .map(|exports| (instance, exports))
+            });
+
+        let (_instance, exports) = match instance {
+            Ok(value) => value,
+            Err(err) => {
+                if is_timeout_error(&err) {
+                    return Err(anyhow::Error::new(HarnessError::Timeout {
+                        timeout_ms: self.timeout_ms,
+                    }));
+                }
+                if store.data().memory_limit_hit() {
+                    return Err(anyhow::Error::new(HarnessError::MemoryLimit {
+                        max_memory_bytes: self.max_memory_bytes,
+                    }));
+                }
+                return Err(err);
+            }
+        };
+        let instantiate_ms = duration_ms(instantiate_start.elapsed());
 
         let input = serde_json::to_string(input_json).context("serialize input json")?;
+        let run_start = Instant::now();
         let result = exports
             .call_invoke(&mut store, &self.exec_ctx, operation, &input)
-            .context("invoke component")?;
+            .context("invoke component");
 
         use greentic_interfaces_host::component::v0_5::exports::greentic::component::node::InvokeResult;
 
+        let result = match result {
+            Ok(result) => result,
+            Err(err) => {
+                if is_timeout_error(&err) {
+                    return Err(anyhow::Error::new(HarnessError::Timeout {
+                        timeout_ms: self.timeout_ms,
+                    }));
+                }
+                if store.data().memory_limit_hit() {
+                    return Err(anyhow::Error::new(HarnessError::MemoryLimit {
+                        max_memory_bytes: self.max_memory_bytes,
+                    }));
+                }
+                return Err(err);
+            }
+        };
+        let run_ms = duration_ms(run_start.elapsed());
+
         match result {
-            InvokeResult::Ok(output_json) => Ok(output_json),
+            InvokeResult::Ok(output_json) => Ok(InvokeOutcome {
+                output_json,
+                instantiate_ms,
+                run_ms,
+            }),
             InvokeResult::Err(err) => Err(anyhow::Error::new(ComponentInvokeError {
                 code: err.code,
                 message: err.message,
@@ -195,4 +306,30 @@ fn make_component_tenant_ctx(tenant: &TenantCtx) -> node::TenantCtx {
         attempt: tenant.attempt,
         idempotency_key: tenant.idempotency_key.clone(),
     }
+}
+
+struct TimeoutGuard {
+    done: Arc<AtomicBool>,
+}
+
+impl TimeoutGuard {
+    fn new(done: Arc<AtomicBool>) -> Self {
+        Self { done }
+    }
+}
+
+impl Drop for TimeoutGuard {
+    fn drop(&mut self) {
+        self.done.store(true, Ordering::Relaxed);
+    }
+}
+
+fn is_timeout_error(err: &anyhow::Error) -> bool {
+    err.chain()
+        .find_map(|source| source.downcast_ref::<wasmtime::Trap>())
+        .is_some_and(|trap| matches!(trap, wasmtime::Trap::Interrupt))
+}
+
+fn duration_ms(duration: Duration) -> u64 {
+    duration.as_millis().try_into().unwrap_or(u64::MAX)
 }

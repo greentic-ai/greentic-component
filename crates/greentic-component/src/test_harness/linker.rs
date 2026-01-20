@@ -1,6 +1,8 @@
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use greentic_interfaces::runner_host_v1::{self, RunnerHost};
 use greentic_interfaces_host::component::v0_5::{self, ControlHost};
 use greentic_interfaces_wasmtime::host_helpers::v1::secrets_store::{
@@ -9,8 +11,12 @@ use greentic_interfaces_wasmtime::host_helpers::v1::secrets_store::{
 use greentic_interfaces_wasmtime::host_helpers::v1::state_store::{
     OpAck, StateStoreError, StateStoreHost, TenantCtx as WitTenantCtx, add_state_store_to_linker,
 };
-use wasmtime::Engine;
+use reqwest::blocking::Client as HttpClient;
+use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use wasmtime::component::Linker;
+use wasmtime::{Engine, ResourceLimiter};
+use wasmtime_wasi::clocks::{HostMonotonicClock, HostWallClock};
+use wasmtime_wasi::random::Deterministic;
 use wasmtime_wasi::{
     DirPerms, FilePerms, ResourceTable, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView,
 };
@@ -26,20 +32,32 @@ pub struct HostState {
     secrets: SecretsStoreHostImpl,
     wasi_ctx: WasiCtx,
     wasi_table: ResourceTable,
+    limits: HostLimits,
+    memory_limit_hit: Arc<AtomicBool>,
+}
+
+pub struct HostStateConfig {
+    pub base_scope: StateScope,
+    pub state_store: Arc<InMemoryStateStore>,
+    pub secrets: Arc<InMemorySecretsStore>,
+    pub allow_state_read: bool,
+    pub allow_state_write: bool,
+    pub allow_state_delete: bool,
+    pub wasi_preopens: Vec<WasiPreopen>,
+    pub allow_http: bool,
+    pub config_json: Option<String>,
+    pub max_memory_bytes: usize,
 }
 
 impl HostState {
-    pub fn new(
-        base_scope: StateScope,
-        state_store: Arc<InMemoryStateStore>,
-        secrets: Arc<InMemorySecretsStore>,
-        allow_state_read: bool,
-        allow_state_write: bool,
-        allow_state_delete: bool,
-        wasi_preopens: &[WasiPreopen],
-    ) -> Result<Self> {
+    pub fn new(config: HostStateConfig) -> Result<Self> {
         let mut wasi_builder = WasiCtxBuilder::new();
-        for preopen in wasi_preopens {
+        wasi_builder.secure_random(Deterministic::new(vec![0, 1, 2, 3]));
+        wasi_builder.insecure_random(Deterministic::new(vec![4, 5, 6, 7]));
+        wasi_builder.insecure_random_seed(0);
+        wasi_builder.wall_clock(FixedWallClock::new());
+        wasi_builder.monotonic_clock(FixedMonotonicClock::new());
+        for preopen in &config.wasi_preopens {
             let (dir_perms, file_perms) = if preopen.read_only {
                 (DirPerms::READ, FilePerms::READ)
             } else {
@@ -61,20 +79,33 @@ impl HostState {
                 })?;
         }
 
+        let memory_limit_hit = Arc::new(AtomicBool::new(false));
+        let limits = HostLimits::new(config.max_memory_bytes, memory_limit_hit.clone());
+
         Ok(Self {
             control: ControlHostImpl,
-            runner: RunnerHostImpl,
+            runner: RunnerHostImpl::new(config.allow_http, config.config_json),
             state: StateStoreHostImpl::new(
-                base_scope,
-                state_store,
-                allow_state_read,
-                allow_state_write,
-                allow_state_delete,
+                config.base_scope,
+                config.state_store,
+                config.allow_state_read,
+                config.allow_state_write,
+                config.allow_state_delete,
             ),
-            secrets: SecretsStoreHostImpl::new(secrets),
+            secrets: SecretsStoreHostImpl::new(config.secrets),
             wasi_ctx: wasi_builder.build(),
             wasi_table: ResourceTable::new(),
+            limits,
+            memory_limit_hit,
         })
+    }
+
+    pub fn memory_limit_hit(&self) -> bool {
+        self.memory_limit_hit.load(Ordering::Relaxed)
+    }
+
+    pub fn limits_mut(&mut self) -> &mut dyn ResourceLimiter {
+        &mut self.limits
     }
 }
 
@@ -98,22 +129,89 @@ impl ControlHost for ControlHostImpl {
     fn yield_now(&mut self) {}
 }
 
-pub struct RunnerHostImpl;
+pub struct RunnerHostImpl {
+    allow_http: bool,
+    config_json: Option<String>,
+    http_client: HttpClient,
+}
+
+impl RunnerHostImpl {
+    fn new(allow_http: bool, config_json: Option<String>) -> Self {
+        Self {
+            allow_http,
+            config_json,
+            http_client: HttpClient::new(),
+        }
+    }
+}
 
 impl RunnerHost for RunnerHostImpl {
     fn http_request(
         &mut self,
-        _method: String,
-        _url: String,
-        _headers: Vec<String>,
-        _body: Option<Vec<u8>>,
+        method: String,
+        url: String,
+        headers: Vec<String>,
+        body: Option<Vec<u8>>,
     ) -> wasmtime::Result<Result<Vec<u8>, String>> {
-        Ok(Err(
-            "http fetch denied in greentic-component test harness".to_string()
-        ))
+        if !self.allow_http {
+            return Ok(Err(
+                "http fetch denied in greentic-component test harness".to_string()
+            ));
+        }
+
+        let method = match reqwest::Method::from_bytes(method.as_bytes()) {
+            Ok(method) => method,
+            Err(err) => return Ok(Err(format!("invalid http method: {err}"))),
+        };
+        let url = match url.parse::<reqwest::Url>() {
+            Ok(url) => url,
+            Err(err) => return Ok(Err(format!("invalid http url: {err}"))),
+        };
+
+        let mut builder = self.http_client.request(method, url);
+
+        if !headers.is_empty() {
+            let mut header_map = HeaderMap::new();
+            for entry in headers {
+                if let Some((name, value)) = entry.split_once(':') {
+                    let header_name = match HeaderName::from_bytes(name.trim().as_bytes()) {
+                        Ok(header_name) => header_name,
+                        Err(err) => return Ok(Err(format!("invalid header name: {err}"))),
+                    };
+                    let header_value = match HeaderValue::from_str(value.trim()) {
+                        Ok(header_value) => header_value,
+                        Err(err) => return Ok(Err(format!("invalid header value: {err}"))),
+                    };
+                    header_map.append(header_name, header_value);
+                }
+            }
+            builder = builder.headers(header_map);
+        }
+
+        if let Some(body) = body {
+            builder = builder.body(body);
+        }
+
+        let response = match builder.send() {
+            Ok(response) => response,
+            Err(err) => return Ok(Err(format!("http request failed: {err}"))),
+        };
+        let status = response.status();
+        let bytes = match response.bytes() {
+            Ok(bytes) => bytes,
+            Err(err) => return Ok(Err(format!("http response body failed: {err}"))),
+        };
+        if status.is_success() {
+            Ok(Ok(bytes.to_vec()))
+        } else {
+            Ok(Err(format!("http request failed with status {status}")))
+        }
     }
 
     fn kv_get(&mut self, _ns: String, _key: String) -> wasmtime::Result<Option<String>> {
+        if _ns == "config" && _key == "json" {
+            return Ok(self.config_json.clone());
+        }
         Ok(None)
     }
 
@@ -247,5 +345,96 @@ impl WasiView for HostState {
             ctx: &mut self.wasi_ctx,
             table: &mut self.wasi_table,
         }
+    }
+}
+
+struct HostLimits {
+    max_memory_bytes: usize,
+    hit: Arc<AtomicBool>,
+}
+
+impl HostLimits {
+    fn new(max_memory_bytes: usize, hit: Arc<AtomicBool>) -> Self {
+        Self {
+            max_memory_bytes,
+            hit,
+        }
+    }
+}
+
+impl ResourceLimiter for HostLimits {
+    fn memory_growing(
+        &mut self,
+        _current: usize,
+        desired: usize,
+        _maximum: Option<usize>,
+    ) -> Result<bool> {
+        if desired > self.max_memory_bytes {
+            self.hit.store(true, Ordering::Relaxed);
+            return Err(anyhow!(
+                "memory limit exceeded (requested {desired} bytes, max {})",
+                self.max_memory_bytes
+            ));
+        }
+        Ok(true)
+    }
+
+    fn table_growing(
+        &mut self,
+        _current: usize,
+        _desired: usize,
+        _maximum: Option<usize>,
+    ) -> Result<bool> {
+        Ok(true)
+    }
+}
+
+#[derive(Clone)]
+struct FixedWallClock {
+    now: Duration,
+    resolution: Duration,
+}
+
+impl FixedWallClock {
+    fn new() -> Self {
+        Self {
+            now: Duration::from_secs(1_700_000_000),
+            resolution: Duration::from_secs(1),
+        }
+    }
+}
+
+impl HostWallClock for FixedWallClock {
+    fn resolution(&self) -> Duration {
+        self.resolution
+    }
+
+    fn now(&self) -> Duration {
+        self.now
+    }
+}
+
+#[derive(Clone)]
+struct FixedMonotonicClock {
+    now: u64,
+    resolution: u64,
+}
+
+impl FixedMonotonicClock {
+    fn new() -> Self {
+        Self {
+            now: 0,
+            resolution: 1,
+        }
+    }
+}
+
+impl HostMonotonicClock for FixedMonotonicClock {
+    fn resolution(&self) -> u64 {
+        self.resolution
+    }
+
+    fn now(&self) -> u64 {
+        self.now
     }
 }

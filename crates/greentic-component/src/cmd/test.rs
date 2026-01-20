@@ -15,8 +15,13 @@ use uuid::Uuid;
 use crate::capabilities::FilesystemMode;
 use crate::manifest::ComponentManifest;
 use crate::manifest::parse_manifest;
-use crate::test_harness::{ComponentInvokeError, HarnessConfig, TestHarness, WasiPreopen};
+use crate::test_harness::{
+    ComponentInvokeError, HarnessConfig, HarnessError, InvokeOutcome, TestHarness, WasiPreopen,
+};
 use greentic_types::{EnvId, TeamId, TenantCtx, TenantId, UserId};
+
+const DEFAULT_WORLD: &str = "greentic:component/component@0.5.0";
+const MAX_OUTPUT_BYTES: usize = 2 * 1024 * 1024;
 
 #[derive(Clone, Debug, ValueEnum)]
 pub enum StateMode {
@@ -28,6 +33,9 @@ pub struct TestArgs {
     /// Path to the component wasm binary.
     #[arg(long, value_name = "PATH")]
     pub wasm: PathBuf,
+    /// Component world to invoke.
+    #[arg(long, default_value = "greentic:component/component@0.5.0")]
+    pub world: String,
     /// Optional manifest path (defaults to component.manifest.json next to the wasm).
     #[arg(long, value_name = "PATH")]
     pub manifest: Option<PathBuf>,
@@ -43,12 +51,33 @@ pub struct TestArgs {
     /// Write output JSON to a file.
     #[arg(long, value_name = "PATH")]
     pub output: Option<PathBuf>,
+    /// Optional component configuration JSON (file path or inline JSON).
+    #[arg(long, value_name = "PATH|JSON")]
+    pub config: Option<String>,
     /// Write trace JSON output (overrides GREENTIC_TRACE_OUT).
     #[arg(long, value_name = "PATH")]
     pub trace_out: Option<PathBuf>,
     /// Pretty-print JSON output.
     #[arg(long)]
     pub pretty: bool,
+    /// Emit raw (legacy) output without the JSON envelope.
+    #[arg(long)]
+    pub raw_output: bool,
+    /// Run in dry-run mode (disables HTTP and filesystem writes).
+    #[arg(long, default_value_t = true, value_name = "BOOL", action = ArgAction::Set)]
+    pub dry_run: bool,
+    /// Allow HTTP requests (ignored in dry-run).
+    #[arg(long)]
+    pub allow_http: bool,
+    /// Allow filesystem writes (ignored in dry-run).
+    #[arg(long)]
+    pub allow_fs_write: bool,
+    /// Timeout in milliseconds.
+    #[arg(long, default_value_t = 2000, value_name = "MS")]
+    pub timeout_ms: u64,
+    /// Max memory in megabytes.
+    #[arg(long, default_value_t = 256, value_name = "MB")]
+    pub max_memory_mb: u64,
     /// State backend (only inmem is supported).
     #[arg(long, value_enum, default_value = "inmem")]
     pub state: StateMode,
@@ -100,11 +129,24 @@ pub fn run(args: TestArgs) -> Result<()> {
     let trace_out = resolve_trace_out(&args)?;
     match run_inner(&args, trace_out.as_deref()) {
         Ok(()) => Ok(()),
-        Err(err) => Err(TestCommandError::from_anyhow(err, args.pretty).into()),
+        Err(err) => Err(TestCommandError::from_anyhow(
+            err,
+            args.pretty,
+            args.raw_output,
+            &args.world,
+            &args.wasm,
+        )
+        .into()),
     }
 }
 
 fn run_inner(args: &TestArgs, trace_out: Option<&Path>) -> Result<()> {
+    if args.world != DEFAULT_WORLD {
+        return Err(anyhow::Error::new(UnsupportedWorldError {
+            world: args.world.clone(),
+        }));
+    }
+
     let manifest_path = resolve_manifest_path(&args.wasm, args.manifest.as_deref())?;
     let manifest_raw = fs::read_to_string(&manifest_path)
         .with_context(|| format!("read manifest {}", manifest_path.display()))?;
@@ -116,7 +158,10 @@ fn run_inner(args: &TestArgs, trace_out: Option<&Path>) -> Result<()> {
     let mut trace = TraceContext::new(trace_out, &manifest, &steps);
     let start = Instant::now();
 
-    let result = (|| -> Result<Option<String>> {
+    let mut timing = TimingMs::default();
+    let mut secret_values: Vec<String> = Vec::new();
+
+    let result = (|| -> Result<Vec<String>> {
         for (op, _) in &steps {
             if !manifest
                 .operations
@@ -147,9 +192,18 @@ fn run_inner(args: &TestArgs, trace_out: Option<&Path>) -> Result<()> {
                 "manifest does not declare host.secrets; add host.secrets to enable secrets access"
             );
         }
+        secret_values = secrets
+            .values()
+            .filter(|value| !value.is_empty())
+            .cloned()
+            .collect();
 
+        let config = load_config(args)?;
         let state_seeds = parse_state_seeds(args)?;
-        let wasi_preopens = resolve_wasi_preopens(&manifest)?;
+        let allow_http = args.allow_http && !args.dry_run;
+        let allow_fs_write = args.allow_fs_write && !args.dry_run;
+        let max_memory_bytes = parse_max_memory_bytes(args.max_memory_mb)?;
+        let wasi_preopens = resolve_wasi_preopens(&manifest, allow_fs_write, args.dry_run)?;
         let prefix = state_prefix(args.flow.as_deref(), &session_id);
         let flow_id = args.flow.clone().unwrap_or_else(|| "test".to_string());
         let harness = TestHarness::new(HarnessConfig {
@@ -166,28 +220,32 @@ fn run_inner(args: &TestArgs, trace_out: Option<&Path>) -> Result<()> {
             allowed_secrets,
             secrets,
             wasi_preopens,
+            config,
+            allow_http,
+            timeout_ms: args.timeout_ms,
+            max_memory_bytes,
         })?;
 
         if steps.len() > 1 && args.output.is_some() {
             bail!("--output is only supported for single-step runs");
         }
 
-        let mut single_output = None;
-        for (idx, (op, input)) in steps.iter().enumerate() {
-            let output = harness.invoke(op, input)?;
-            if steps.len() == 1 {
-                single_output = Some(output.clone());
+        let mut outputs = Vec::new();
+        for (op, input) in steps.iter() {
+            let InvokeOutcome {
+                output_json,
+                instantiate_ms,
+                run_ms,
+            } = harness.invoke(op, input)?;
+            if output_json.len() > MAX_OUTPUT_BYTES {
+                return Err(anyhow::Error::new(OutputLimitError {
+                    limit: MAX_OUTPUT_BYTES,
+                    actual: output_json.len(),
+                }));
             }
-            let output = format_output(&output, args.pretty)?;
-            if let Some(path) = &args.output {
-                fs::write(path, output.as_bytes())
-                    .with_context(|| format!("write output {}", path.display()))?;
-            }
-            if steps.len() > 1 {
-                println!("step {} output:\n{output}", idx + 1);
-            } else {
-                println!("{output}");
-            }
+            timing.instantiate = timing.instantiate.saturating_add(instantiate_ms);
+            timing.run = timing.run.saturating_add(run_ms);
+            outputs.push(output_json);
         }
 
         if args.state_dump {
@@ -196,27 +254,78 @@ fn run_inner(args: &TestArgs, trace_out: Option<&Path>) -> Result<()> {
             eprintln!("state dump:\n{dump_json}");
         }
 
-        Ok(single_output)
+        Ok(outputs)
     })();
 
-    let duration_ms = duration_ms(start.elapsed());
+    timing.total = duration_ms(start.elapsed());
     match result {
-        Ok(output) => {
-            if let Some(output) = output.as_deref() {
-                trace.output_hash = Some(hash_bytes(output.as_bytes()));
+        Ok(outputs) => {
+            if outputs.len() == 1 {
+                trace.output_hash = Some(hash_bytes(outputs[0].as_bytes()));
             }
-            trace.write(duration_ms, None)?;
+
+            let mut redacted_outputs = Vec::new();
+            for raw in &outputs {
+                let mut value: Value =
+                    serde_json::from_str(raw).context("output is not valid JSON")?;
+                redact_value(&mut value, &secret_values);
+                redacted_outputs.push(value);
+            }
+
+            if args.raw_output {
+                for (idx, value) in redacted_outputs.iter().enumerate() {
+                    let output = format_value_output(value, args.pretty)?;
+                    if let Some(path) = &args.output {
+                        fs::write(path, output.as_bytes())
+                            .with_context(|| format!("write output {}", path.display()))?;
+                    }
+                    if redacted_outputs.len() > 1 {
+                        println!("step {} output:\n{output}", idx + 1);
+                    } else {
+                        println!("{output}");
+                    }
+                }
+            } else {
+                let result_value = if redacted_outputs.len() == 1 {
+                    redacted_outputs[0].clone()
+                } else {
+                    Value::Array(redacted_outputs)
+                };
+                let envelope = TestOutputEnvelope {
+                    status: "ok".to_string(),
+                    world: args.world.clone(),
+                    wasm: args.wasm.display().to_string(),
+                    result: Some(result_value),
+                    diagnostics: Vec::new(),
+                    timing_ms: timing,
+                };
+                let output = format_envelope_output(&envelope, args.pretty)?;
+                if let Some(path) = &args.output {
+                    fs::write(path, output.as_bytes())
+                        .with_context(|| format!("write output {}", path.display()))?;
+                }
+                println!("{output}");
+            }
+
+            trace.write(timing.total, None)?;
             Ok(())
         }
         Err(err) => {
-            let payload = error_payload_from_anyhow(&err);
-            if let Err(trace_err) = trace.write(duration_ms, Some(payload)) {
+            let mut payload = error_payload_from_anyhow(&err);
+            redact_error_payload(&mut payload, &secret_values);
+            let failure = TestRunFailure {
+                payload: payload.clone(),
+                world: args.world.clone(),
+                wasm: args.wasm.clone(),
+                timing_ms: timing,
+            };
+            if let Err(trace_err) = trace.write(timing.total, Some(payload)) {
                 eprintln!("failed to write trace: {trace_err}");
             }
             if let Some(path) = trace.out_path.as_deref() {
                 eprintln!("#TRY_SAVE_TRACE {}", path.display());
             }
-            Err(err)
+            Err(anyhow::Error::new(failure))
         }
     }
 }
@@ -326,7 +435,11 @@ fn state_prefix(flow: Option<&str>, session: &str) -> String {
     }
 }
 
-fn resolve_wasi_preopens(manifest: &ComponentManifest) -> Result<Vec<WasiPreopen>> {
+fn resolve_wasi_preopens(
+    manifest: &ComponentManifest,
+    allow_fs_write: bool,
+    dry_run: bool,
+) -> Result<Vec<WasiPreopen>> {
     let Some(fs) = manifest.capabilities.wasi.filesystem.as_ref() else {
         return Ok(Vec::new());
     };
@@ -340,7 +453,10 @@ fn resolve_wasi_preopens(manifest: &ComponentManifest) -> Result<Vec<WasiPreopen
     if !meta.is_dir() {
         bail!("preopen {} must be a directory", host_root.display());
     }
-    let read_only = matches!(fs.mode, FilesystemMode::ReadOnly);
+    let mut read_only = matches!(fs.mode, FilesystemMode::ReadOnly);
+    if dry_run || !allow_fs_write {
+        read_only = true;
+    }
     let mut preopens = Vec::new();
     for mount in &fs.mounts {
         preopens.push(WasiPreopen::new(&host_root, mount.guest_path.clone()).read_only(read_only));
@@ -454,15 +570,44 @@ fn parse_json_secrets(path: &Path) -> Result<HashMap<String, String>> {
     Ok(secrets)
 }
 
-fn format_output(raw: &str, pretty: bool) -> Result<String> {
-    if !pretty {
-        return Ok(raw.to_string());
-    }
-    let value: Value = serde_json::from_str(raw).context("output is not valid JSON")?;
-    Ok(serde_json::to_string_pretty(&value)?)
+fn load_config(args: &TestArgs) -> Result<Option<Value>> {
+    let Some(raw) = &args.config else {
+        return Ok(None);
+    };
+    let path = Path::new(raw);
+    let contents = if path.exists() {
+        fs::read_to_string(path).with_context(|| format!("read config {}", path.display()))?
+    } else {
+        raw.clone()
+    };
+    let value: Value = serde_json::from_str(&contents).context("config must be valid JSON")?;
+    Ok(Some(value))
 }
 
-#[derive(Debug, Serialize)]
+fn parse_max_memory_bytes(max_memory_mb: u64) -> Result<usize> {
+    let bytes = max_memory_mb
+        .checked_mul(1024 * 1024)
+        .ok_or_else(|| anyhow::anyhow!("max memory MB is too large"))?;
+    usize::try_from(bytes).context("max memory MB is too large for this platform")
+}
+
+fn format_value_output(value: &Value, pretty: bool) -> Result<String> {
+    if pretty {
+        Ok(serde_json::to_string_pretty(value)?)
+    } else {
+        Ok(serde_json::to_string(value)?)
+    }
+}
+
+fn format_envelope_output(envelope: &TestOutputEnvelope, pretty: bool) -> Result<String> {
+    if pretty {
+        Ok(serde_json::to_string_pretty(envelope)?)
+    } else {
+        Ok(serde_json::to_string(envelope)?)
+    }
+}
+
+#[derive(Debug, Serialize, Clone)]
 struct TestErrorPayload {
     code: String,
     message: String,
@@ -470,36 +615,233 @@ struct TestErrorPayload {
     details: Option<Value>,
 }
 
+#[derive(Debug, Serialize, Clone)]
+struct Diagnostic {
+    severity: String,
+    code: String,
+    message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    details: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    hint: Option<String>,
+}
+
+#[derive(Debug, Serialize, Clone, Copy, Default)]
+struct TimingMs {
+    instantiate: u64,
+    run: u64,
+    total: u64,
+}
+
+#[derive(Debug, Serialize)]
+struct TestOutputEnvelope {
+    status: String,
+    world: String,
+    wasm: String,
+    result: Option<Value>,
+    diagnostics: Vec<Diagnostic>,
+    timing_ms: TimingMs,
+}
+
+#[derive(Debug)]
+struct TestRunFailure {
+    payload: TestErrorPayload,
+    world: String,
+    wasm: PathBuf,
+    timing_ms: TimingMs,
+}
+
+#[derive(Debug)]
+enum TestErrorOutput {
+    Raw(TestErrorPayload),
+    Envelope(TestOutputEnvelope),
+}
+
 #[derive(Debug)]
 pub struct TestCommandError {
-    payload: TestErrorPayload,
+    output: TestErrorOutput,
     pretty: bool,
 }
 
 impl TestCommandError {
-    fn from_anyhow(err: anyhow::Error, pretty: bool) -> Self {
+    fn from_anyhow(
+        err: anyhow::Error,
+        pretty: bool,
+        raw_output: bool,
+        world: &str,
+        wasm: &Path,
+    ) -> Self {
+        if let Some(failure) = err.downcast_ref::<TestRunFailure>() {
+            if raw_output {
+                return Self {
+                    output: TestErrorOutput::Raw(failure.payload.clone()),
+                    pretty,
+                };
+            }
+            let envelope = TestOutputEnvelope {
+                status: "error".to_string(),
+                world: failure.world.clone(),
+                wasm: failure.wasm.display().to_string(),
+                result: None,
+                diagnostics: vec![diagnostic_from_payload(&failure.payload)],
+                timing_ms: failure.timing_ms,
+            };
+            return Self {
+                output: TestErrorOutput::Envelope(envelope),
+                pretty,
+            };
+        }
+
+        let payload = error_payload_from_anyhow(&err);
+        if raw_output {
+            return Self {
+                output: TestErrorOutput::Raw(payload),
+                pretty,
+            };
+        }
+        let envelope = TestOutputEnvelope {
+            status: "error".to_string(),
+            world: world.to_string(),
+            wasm: wasm.display().to_string(),
+            result: None,
+            diagnostics: vec![diagnostic_from_payload(&payload)],
+            timing_ms: TimingMs::default(),
+        };
         Self {
-            payload: error_payload_from_anyhow(&err),
+            output: TestErrorOutput::Envelope(envelope),
             pretty,
         }
     }
 
     pub fn render_json(&self) -> String {
-        if self.pretty {
-            serde_json::to_string_pretty(&self.payload).unwrap_or_else(|_| "{}".to_string())
-        } else {
-            serde_json::to_string(&self.payload).unwrap_or_else(|_| "{}".to_string())
+        match &self.output {
+            TestErrorOutput::Raw(payload) => {
+                if self.pretty {
+                    serde_json::to_string_pretty(payload).unwrap_or_else(|_| "{}".to_string())
+                } else {
+                    serde_json::to_string(payload).unwrap_or_else(|_| "{}".to_string())
+                }
+            }
+            TestErrorOutput::Envelope(envelope) => {
+                if self.pretty {
+                    serde_json::to_string_pretty(envelope).unwrap_or_else(|_| "{}".to_string())
+                } else {
+                    serde_json::to_string(envelope).unwrap_or_else(|_| "{}".to_string())
+                }
+            }
         }
     }
 }
 
 impl std::fmt::Display for TestCommandError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}: {}", self.payload.code, self.payload.message)
+        match &self.output {
+            TestErrorOutput::Raw(payload) => write!(f, "{}: {}", payload.code, payload.message),
+            TestErrorOutput::Envelope(envelope) => {
+                if let Some(diag) = envelope.diagnostics.first() {
+                    write!(f, "{}: {}", diag.code, diag.message)
+                } else {
+                    write!(f, "test.failure: test failure")
+                }
+            }
+        }
     }
 }
 
 impl std::error::Error for TestCommandError {}
+
+impl std::fmt::Display for TestRunFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: {}", self.payload.code, self.payload.message)
+    }
+}
+
+impl std::error::Error for TestRunFailure {}
+
+#[derive(Debug)]
+struct UnsupportedWorldError {
+    world: String,
+}
+
+impl std::fmt::Display for UnsupportedWorldError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Unsupported world '{}'. Supported: {}",
+            self.world, DEFAULT_WORLD
+        )
+    }
+}
+
+impl std::error::Error for UnsupportedWorldError {}
+
+#[derive(Debug)]
+struct OutputLimitError {
+    limit: usize,
+    actual: usize,
+}
+
+impl std::fmt::Display for OutputLimitError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "output size {} bytes exceeds limit {} bytes",
+            self.actual, self.limit
+        )
+    }
+}
+
+impl std::error::Error for OutputLimitError {}
+
+fn diagnostic_from_payload(payload: &TestErrorPayload) -> Diagnostic {
+    Diagnostic {
+        severity: "error".to_string(),
+        code: payload.code.clone(),
+        message: payload.message.clone(),
+        details: payload.details.clone(),
+        path: None,
+        hint: None,
+    }
+}
+
+fn redact_error_payload(payload: &mut TestErrorPayload, secrets: &[String]) {
+    payload.message = redact_string(&payload.message, secrets);
+    if let Some(details) = payload.details.as_mut() {
+        redact_value(details, secrets);
+    }
+}
+
+fn redact_value(value: &mut Value, secrets: &[String]) {
+    match value {
+        Value::String(text) => {
+            *text = redact_string(text, secrets);
+        }
+        Value::Array(values) => {
+            for value in values {
+                redact_value(value, secrets);
+            }
+        }
+        Value::Object(map) => {
+            for value in map.values_mut() {
+                redact_value(value, secrets);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn redact_string(value: &str, secrets: &[String]) -> String {
+    let mut out = value.to_string();
+    for secret in secrets {
+        if secret.is_empty() {
+            continue;
+        }
+        out = out.replace(secret, "***REDACTED***");
+    }
+    out
+}
 
 fn component_error_details(error: &ComponentInvokeError) -> Option<Value> {
     let mut details = Map::new();
@@ -519,6 +861,46 @@ fn component_error_details(error: &ComponentInvokeError) -> Option<Value> {
 }
 
 fn error_payload_from_anyhow(err: &anyhow::Error) -> TestErrorPayload {
+    if let Some(harness_err) = err
+        .chain()
+        .find_map(|source| source.downcast_ref::<HarnessError>())
+    {
+        let (code, message) = match harness_err {
+            HarnessError::Timeout { .. } => ("test.timeout", harness_err.to_string()),
+            HarnessError::MemoryLimit { .. } => ("test.memory_limit", harness_err.to_string()),
+        };
+        return TestErrorPayload {
+            code: code.to_string(),
+            message,
+            details: None,
+        };
+    }
+
+    if let Some(world_err) = err
+        .chain()
+        .find_map(|source| source.downcast_ref::<UnsupportedWorldError>())
+    {
+        return TestErrorPayload {
+            code: "test.world.unsupported".to_string(),
+            message: world_err.to_string(),
+            details: None,
+        };
+    }
+
+    if let Some(limit_err) = err
+        .chain()
+        .find_map(|source| source.downcast_ref::<OutputLimitError>())
+    {
+        return TestErrorPayload {
+            code: "test.output.limit".to_string(),
+            message: limit_err.to_string(),
+            details: Some(serde_json::json!({
+                "limit": limit_err.limit,
+                "actual": limit_err.actual,
+            })),
+        };
+    }
+
     if let Some(component_err) = err
         .chain()
         .find_map(|source| source.downcast_ref::<ComponentInvokeError>())
@@ -608,4 +990,131 @@ fn hash_bytes(bytes: &[u8]) -> String {
 
 fn duration_ms(duration: std::time::Duration) -> u64 {
     duration.as_millis().try_into().unwrap_or(u64::MAX)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn raw_output_preserves_legacy_error_shape() {
+        let payload = TestErrorPayload {
+            code: "test.failure".to_string(),
+            message: "boom".to_string(),
+            details: None,
+        };
+        let failure = TestRunFailure {
+            payload: payload.clone(),
+            world: DEFAULT_WORLD.to_string(),
+            wasm: PathBuf::from("component.wasm"),
+            timing_ms: TimingMs::default(),
+        };
+        let rendered = TestCommandError::from_anyhow(
+            anyhow::Error::new(failure),
+            false,
+            true,
+            DEFAULT_WORLD,
+            Path::new("component.wasm"),
+        )
+        .render_json();
+        let value: Value = serde_json::from_str(&rendered).expect("raw output json");
+        assert_eq!(value["code"], payload.code);
+        assert!(value.get("status").is_none());
+    }
+
+    #[test]
+    fn envelope_includes_timeout_error_code() {
+        let payload =
+            error_payload_from_anyhow(&anyhow::Error::new(HarnessError::Timeout { timeout_ms: 1 }));
+        let failure = TestRunFailure {
+            payload,
+            world: DEFAULT_WORLD.to_string(),
+            wasm: PathBuf::from("component.wasm"),
+            timing_ms: TimingMs::default(),
+        };
+        let rendered = TestCommandError::from_anyhow(
+            anyhow::Error::new(failure),
+            false,
+            false,
+            DEFAULT_WORLD,
+            Path::new("component.wasm"),
+        )
+        .render_json();
+        let value: Value = serde_json::from_str(&rendered).expect("envelope json");
+        assert_eq!(value["status"], "error");
+        assert_eq!(value["diagnostics"][0]["code"], "test.timeout");
+    }
+
+    #[test]
+    fn envelope_includes_memory_error_code() {
+        let payload = error_payload_from_anyhow(&anyhow::Error::new(HarnessError::MemoryLimit {
+            max_memory_bytes: 1024,
+        }));
+        let failure = TestRunFailure {
+            payload,
+            world: DEFAULT_WORLD.to_string(),
+            wasm: PathBuf::from("component.wasm"),
+            timing_ms: TimingMs::default(),
+        };
+        let rendered = TestCommandError::from_anyhow(
+            anyhow::Error::new(failure),
+            false,
+            false,
+            DEFAULT_WORLD,
+            Path::new("component.wasm"),
+        )
+        .render_json();
+        let value: Value = serde_json::from_str(&rendered).expect("envelope json");
+        assert_eq!(value["diagnostics"][0]["code"], "test.memory_limit");
+    }
+
+    #[test]
+    fn fs_write_flags_toggle_preopens() {
+        let manifest_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/manifests/valid.component.json");
+        let manifest_raw = fs::read_to_string(&manifest_path).expect("manifest");
+        let mut manifest = parse_manifest(&manifest_raw).expect("manifest parse");
+        if let Some(fs_caps) = manifest.capabilities.wasi.filesystem.as_mut() {
+            fs_caps.mode = FilesystemMode::Sandbox;
+        }
+
+        let preopens = resolve_wasi_preopens(&manifest, false, false).expect("preopens");
+        assert!(
+            preopens.iter().all(|preopen| preopen.read_only),
+            "expected read-only preopens by default"
+        );
+
+        let preopens = resolve_wasi_preopens(&manifest, true, false).expect("preopens");
+        assert!(
+            preopens.iter().all(|preopen| !preopen.read_only),
+            "expected writable preopens when allowed"
+        );
+
+        let preopens = resolve_wasi_preopens(&manifest, true, true).expect("preopens");
+        assert!(
+            preopens.iter().all(|preopen| preopen.read_only),
+            "expected dry-run to force read-only preopens"
+        );
+    }
+
+    #[test]
+    fn redacts_secrets_in_output_and_diagnostics() {
+        let secret = "super-secret".to_string();
+        let mut value = serde_json::json!({
+            "token": secret,
+            "nested": { "value": "super-secret" }
+        });
+        redact_value(&mut value, &["super-secret".to_string()]);
+        assert_eq!(value["token"], "***REDACTED***");
+        assert_eq!(value["nested"]["value"], "***REDACTED***");
+
+        let mut payload = TestErrorPayload {
+            code: "test.failure".to_string(),
+            message: "super-secret failed".to_string(),
+            details: Some(serde_json::json!({ "hint": "super-secret" })),
+        };
+        redact_error_payload(&mut payload, &["super-secret".to_string()]);
+        assert!(!payload.message.contains("super-secret"));
+        assert_eq!(payload.details.unwrap()["hint"], "***REDACTED***");
+    }
 }

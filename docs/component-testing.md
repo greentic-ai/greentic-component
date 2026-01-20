@@ -24,6 +24,31 @@ greentic-component test \
   --input-json '{"card":{"type":"AdaptiveCard","body":[],"version":"1.5"}}'
 ```
 
+## Output format
+
+By default the command emits a stable JSON envelope with status, diagnostics, and timing. Use
+`--raw-output` to emit legacy output only (component result JSON on success or a
+`{code,message,details}` object on failure).
+
+## Config + sandbox flags
+
+Provide component config as a file or inline JSON:
+
+```bash
+greentic-component test \
+  --wasm ./target/wasm32-wasip2/release/my_component.wasm \
+  --op render \
+  --input ./tests/fixtures/render.json \
+  --config ./tests/fixtures/config.json
+```
+
+Execution is sandboxed by default:
+
+- `--dry-run` is true by default
+- HTTP is denied unless `--allow-http` and `--dry-run=false`
+- Filesystem writes are denied unless `--allow-fs-write` and `--dry-run=false`
+- Use `--timeout-ms` and `--max-memory-mb` to cap runtime resources
+
 ## In-memory state store
 
 The test harness uses an in-memory state store scoped by tenant + flow/session prefix. Use

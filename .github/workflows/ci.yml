@@ -1,0 +1,18 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test --all-features
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-artifacts
+          path: target/contract-artifacts
