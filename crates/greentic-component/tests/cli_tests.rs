@@ -203,6 +203,37 @@ fn store_fetch_accepts_wasm_output_path() {
 }
 
 #[test]
+fn store_fetch_accepts_directory_source() {
+    let temp = tempfile::TempDir::new().unwrap();
+    let source_dir = temp.path().join("source");
+    fs::create_dir_all(&source_dir).unwrap();
+    fs::write(source_dir.join("component.wasm"), b"fake-wasm").unwrap();
+    fs::write(
+        source_dir.join("component.manifest.json"),
+        r#"{"artifacts":{"component_wasm":"component.wasm"}}"#,
+    )
+    .unwrap();
+
+    let out_dir = temp.path().join("out");
+    let cache_dir = temp.path().join("cache");
+    let source_ref = source_dir.to_string_lossy().to_string();
+
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("greentic-component");
+    cmd.arg("store")
+        .arg("fetch")
+        .arg("--out")
+        .arg(&out_dir)
+        .arg("--cache-dir")
+        .arg(&cache_dir)
+        .arg(&source_ref)
+        .assert()
+        .success();
+
+    let fetched = fs::read(out_dir.join("component.wasm")).expect("fetched component");
+    assert_eq!(fetched, b"fake-wasm");
+}
+
+#[test]
 fn test_command_writes_trace_on_failure() {
     let temp = tempfile::TempDir::new().unwrap();
     let trace_path = temp.path().join("trace.json");

@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow};
 use clap::{Args, Subcommand};
@@ -34,6 +34,7 @@ pub fn run(command: StoreCommand) -> Result<()> {
 }
 
 fn fetch(args: StoreFetchArgs) -> Result<()> {
+    let source = resolve_source(&args.source)?;
     let mut opts = DistOptions::default();
     if let Some(cache_dir) = &args.cache_dir {
         opts.cache_dir = cache_dir.clone();
@@ -41,7 +42,7 @@ fn fetch(args: StoreFetchArgs) -> Result<()> {
     let client = DistClient::new(opts);
     let rt = tokio::runtime::Runtime::new().context("failed to create async runtime")?;
     let resolved = rt
-        .block_on(async { client.ensure_cached(&args.source).await })
+        .block_on(async { client.ensure_cached(&source).await })
         .context("store fetch failed")?;
     let cache_path = resolved
         .cache_path
@@ -102,12 +103,60 @@ fn fetch(args: StoreFetchArgs) -> Result<()> {
         "Wrote {} (digest {}) for source {}",
         wasm_out_path.display(),
         resolved.digest,
-        args.source,
+        source,
     );
     if manifest_out_path.exists() {
         println!("Wrote {}", manifest_out_path.display());
     }
     Ok(())
+}
+
+fn resolve_source(source: &str) -> Result<String> {
+    let (prefix, path_str) = if let Some(rest) = source.strip_prefix("file://") {
+        ("file://", rest)
+    } else {
+        ("", source)
+    };
+    let path = Path::new(path_str);
+    if !path.is_dir() {
+        return Ok(source.to_string());
+    }
+
+    let manifest_path = path.join("component.manifest.json");
+    if manifest_path.exists() {
+        let manifest_bytes = fs::read(&manifest_path).with_context(|| {
+            format!(
+                "failed to read component.manifest.json at {}",
+                manifest_path.display()
+            )
+        })?;
+        let manifest: Value = serde_json::from_slice(&manifest_bytes).with_context(|| {
+            format!(
+                "failed to parse component.manifest.json at {}",
+                manifest_path.display()
+            )
+        })?;
+        if let Some(component_wasm) = manifest
+            .get("artifacts")
+            .and_then(|artifacts| artifacts.get("component_wasm"))
+            .and_then(|value| value.as_str())
+        {
+            let wasm_path = normalize_under_root(path, Path::new(component_wasm)).with_context(
+                || format!("invalid artifacts.component_wasm path `{}`", component_wasm),
+            )?;
+            return Ok(format!("{prefix}{}", wasm_path.display()));
+        }
+    }
+
+    let wasm_path = path.join("component.wasm");
+    if wasm_path.exists() {
+        return Ok(format!("{prefix}{}", wasm_path.display()));
+    }
+
+    Err(anyhow!(
+        "source directory {} does not contain component.manifest.json or component.wasm",
+        path.display()
+    ))
 }
 
 fn resolve_output_paths(out: &std::path::Path) -> Result<(PathBuf, Option<PathBuf>)> {
