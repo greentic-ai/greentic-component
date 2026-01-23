@@ -1,5 +1,6 @@
 #![cfg(feature = "cli")]
 
+use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -61,7 +62,7 @@ struct BuildSummary {
 
 pub fn run(args: BuildArgs) -> Result<()> {
     let manifest_path = resolve_manifest_path(&args.manifest);
-    let cwd = std::env::current_dir().context("failed to read current directory")?;
+    let cwd = env::current_dir().context("failed to read current directory")?;
     let manifest_path = if manifest_path.is_absolute() {
         manifest_path
     } else {
@@ -73,7 +74,7 @@ pub fn run(args: BuildArgs) -> Result<()> {
     let cargo_bin = args
         .cargo_bin
         .clone()
-        .or_else(|| std::env::var_os("CARGO").map(PathBuf::from))
+        .or_else(|| env::var_os("CARGO").map(PathBuf::from))
         .unwrap_or_else(|| PathBuf::from("cargo"));
     let inference_opts = ConfigInferenceOptions {
         allow_infer: !args.no_infer_config,
@@ -154,7 +155,11 @@ fn build_wasm(manifest_dir: &Path, cargo_bin: &Path) -> Result<()> {
         cargo_bin.display(),
         manifest_dir.display()
     );
-    let status = Command::new(cargo_bin)
+    let mut cmd = Command::new(cargo_bin);
+    if let Some(flags) = resolved_wasm_rustflags() {
+        cmd.env("RUSTFLAGS", sanitize_wasm_rustflags(&flags));
+    }
+    let status = cmd
         .arg("build")
         .arg("--target")
         .arg("wasm32-wasip2")
@@ -172,8 +177,26 @@ fn build_wasm(manifest_dir: &Path, cargo_bin: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Reads the wasm-specific rustflags that CI exports for wasm builds.
+fn resolved_wasm_rustflags() -> Option<String> {
+    env::var("WASM_RUSTFLAGS")
+        .ok()
+        .or_else(|| env::var("RUSTFLAGS").ok())
+}
+
+/// Drops linker arguments that `wasm-component-ld` rejects and normalizes whitespace.
+fn sanitize_wasm_rustflags(flags: &str) -> String {
+    flags
+        .replace("-Wl,", "")
+        .replace("-C link-arg=--no-keep-memory", "")
+        .replace("-C link-arg=--threads=1", "")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 fn check_canonical_world_export(manifest_dir: &Path, manifest: &JsonValue) -> Result<()> {
-    if std::env::var_os("GREENTIC_SKIP_NODE_EXPORT_CHECK").is_some() {
+    if env::var_os("GREENTIC_SKIP_NODE_EXPORT_CHECK").is_some() {
         println!("World export check skipped (GREENTIC_SKIP_NODE_EXPORT_CHECK=1)");
         return Ok(());
     }
