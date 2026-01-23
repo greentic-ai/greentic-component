@@ -8,7 +8,8 @@ use anyhow::{Context, Result, anyhow, bail};
 use clap::Args;
 use serde_json::Value as JsonValue;
 
-use crate::abi;
+use crate::abi::{self, AbiError};
+use crate::cmd::component_world::{canonical_component_world, is_fallback_world};
 use crate::cmd::flow::{
     FlowUpdateResult, manifest_component_id, resolve_operation, update_with_manifest,
 };
@@ -102,7 +103,7 @@ pub fn run(args: BuildArgs) -> Result<()> {
 
     let manifest_dir = manifest_path.parent().unwrap_or_else(|| Path::new("."));
     build_wasm(manifest_dir, &cargo_bin)?;
-    check_node_world_export(manifest_dir, &manifest_to_write)?;
+    check_canonical_world_export(manifest_dir, &manifest_to_write)?;
 
     if !config.persist_schema {
         manifest_to_write
@@ -171,15 +172,25 @@ fn build_wasm(manifest_dir: &Path, cargo_bin: &Path) -> Result<()> {
     Ok(())
 }
 
-fn check_node_world_export(manifest_dir: &Path, manifest: &JsonValue) -> Result<()> {
+fn check_canonical_world_export(manifest_dir: &Path, manifest: &JsonValue) -> Result<()> {
     if std::env::var_os("GREENTIC_SKIP_NODE_EXPORT_CHECK").is_some() {
         println!("World export check skipped (GREENTIC_SKIP_NODE_EXPORT_CHECK=1)");
         return Ok(());
     }
     let wasm_path = resolve_wasm_path(manifest_dir, manifest)?;
-    let exported = abi::check_world_base(&wasm_path, "greentic:component/node")
-        .with_context(|| "component must export world greentic:component/node")?;
-    println!("Exported world: {exported}");
+    let canonical_world = canonical_component_world();
+    match abi::check_world_base(&wasm_path, canonical_world) {
+        Ok(exported) => println!("Exported world: {exported}"),
+        Err(err) => match err {
+            AbiError::WorldMismatch { expected, found } if is_fallback_world(&found) => {
+                println!("Exported world: fallback {found} (expected {expected})");
+            }
+            err => {
+                return Err(err)
+                    .with_context(|| format!("component must export world {canonical_world}"));
+            }
+        },
+    }
     Ok(())
 }
 

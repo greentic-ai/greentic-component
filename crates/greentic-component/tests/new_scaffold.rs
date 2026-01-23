@@ -1,6 +1,7 @@
 #![cfg(feature = "cli")]
 
 use assert_cmd::prelude::*;
+use greentic_component::cmd::component_world::canonical_component_world;
 use greentic_types::component::ComponentManifest as TypesManifest;
 use insta::assert_snapshot;
 use serde_json::Value as JsonValue;
@@ -152,4 +153,110 @@ printf '\0' > "$wasm_path"
         component_dir.join(".git").exists(),
         "post-render hook should initialize git"
     );
+}
+
+#[test]
+fn doctor_validates_canonical_worlds_for_scaffold() {
+    let temp = TempDir::new().expect("temp dir");
+    let component_dir = temp.path().join("canonical-component");
+    let reg = assert_cmd::cargo::cargo_bin!("greentic-component");
+    let mut cmd = Command::new(reg);
+    cmd.arg("new")
+        .arg("--name")
+        .arg("canonical-component")
+        .arg("--org")
+        .arg("ai.greentic")
+        .arg("--path")
+        .arg(&component_dir)
+        .arg("--no-check")
+        .env("HOME", temp.path())
+        .env("CARGO_NET_OFFLINE", "true")
+        .env("GREENTIC_TEMPLATE_YEAR", "2030")
+        .env("GREENTIC_TEMPLATE_ROOT", temp.path().join("templates"))
+        .env("GIT_AUTHOR_NAME", "Greentic Labs")
+        .env("GIT_AUTHOR_EMAIL", "greentic-labs@example.com")
+        .env("GIT_COMMITTER_NAME", "Greentic Labs")
+        .env("GIT_COMMITTER_EMAIL", "greentic-labs@example.com")
+        .env_remove("USER")
+        .env_remove("USERNAME");
+    cmd.assert().success();
+
+    let manifest_path = component_dir.join("component.manifest.json");
+    let manifest = fs::read_to_string(&manifest_path).expect("read scaffold manifest after build");
+    let manifest_json: JsonValue =
+        serde_json::from_str(&manifest).expect("manifest parses as JSON after build");
+    let manifest_world = manifest_json["world"]
+        .as_str()
+        .expect("manifest world should be a string");
+    let canonical_world = canonical_component_world();
+    assert_eq!(
+        canonical_world, manifest_world,
+        "scaffold uses the canonical component world"
+    );
+
+    let mut doctor = Command::new(assert_cmd::cargo::cargo_bin!("greentic-component"));
+    doctor.current_dir(&component_dir).arg("doctor").arg(".");
+    doctor.assert().success();
+}
+
+#[test]
+fn doctor_accepts_built_scaffold_artifact() {
+    let temp = TempDir::new().expect("temp dir");
+    let component_dir = temp.path().join("artifact-component");
+    let mut new_cmd = Command::new(assert_cmd::cargo::cargo_bin!("greentic-component"));
+    new_cmd
+        .arg("new")
+        .arg("--name")
+        .arg("artifact-component")
+        .arg("--org")
+        .arg("ai.greentic")
+        .arg("--path")
+        .arg(&component_dir)
+        .arg("--no-check")
+        .env("HOME", temp.path())
+        .env("GREENTIC_TEMPLATE_YEAR", "2030")
+        .env("GREENTIC_TEMPLATE_ROOT", temp.path().join("templates"))
+        .env("GIT_AUTHOR_NAME", "Greentic Labs")
+        .env("GIT_AUTHOR_EMAIL", "greentic-labs@example.com")
+        .env("GIT_COMMITTER_NAME", "Greentic Labs")
+        .env("GIT_COMMITTER_EMAIL", "greentic-labs@example.com")
+        .env("CARGO_NET_OFFLINE", "true")
+        .env_remove("USER")
+        .env_remove("USERNAME");
+    new_cmd.assert().success();
+
+    let mut build_cmd = Command::new(assert_cmd::cargo::cargo_bin!("greentic-component"));
+    build_cmd
+        .current_dir(&component_dir)
+        .env("CARGO_NET_OFFLINE", "true")
+        .arg("build");
+    build_cmd.assert().success();
+
+    let manifest_path = component_dir.join("component.manifest.json");
+    let manifest = fs::read_to_string(&manifest_path).expect("read built manifest");
+    let manifest_json: JsonValue =
+        serde_json::from_str(&manifest).expect("manifest parses as JSON after build");
+    assert_eq!(
+        manifest_json["world"]
+            .as_str()
+            .expect("manifest world should be a string"),
+        canonical_component_world()
+    );
+
+    let wasm_path = component_dir.join(
+        manifest_json["artifacts"]["component_wasm"]
+            .as_str()
+            .expect("artifact path"),
+    );
+    let wasm_uri = format!("file://{}", wasm_path.display());
+    let manifest_uri = format!("file://{}", manifest_path.display());
+
+    let mut doctor = Command::new(assert_cmd::cargo::cargo_bin!("component-doctor"));
+    doctor
+        .current_dir(&component_dir)
+        .arg(wasm_uri)
+        .arg("--manifest")
+        .arg(manifest_uri)
+        .env("CARGO_NET_OFFLINE", "true");
+    doctor.assert().success();
 }

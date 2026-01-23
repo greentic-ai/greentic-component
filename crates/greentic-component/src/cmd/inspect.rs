@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use clap::{Args, Parser};
 use serde_json::Value;
 
+use super::path::strip_file_scheme;
 use crate::{ComponentError, PreparedComponent, prepare_component_with_manifest};
 
 #[derive(Args, Debug, Clone)]
@@ -37,7 +38,8 @@ pub struct InspectResult {
 }
 
 pub fn run(args: &InspectArgs) -> Result<InspectResult, ComponentError> {
-    let prepared = prepare_component_with_manifest(&args.target, args.manifest.as_deref())?;
+    let manifest_override = args.manifest.as_deref().map(strip_file_scheme);
+    let prepared = prepare_component_with_manifest(&args.target, manifest_override.as_deref())?;
     if args.json {
         let json = serde_json::to_string_pretty(&build_report(&prepared))
             .expect("serializing inspect report");

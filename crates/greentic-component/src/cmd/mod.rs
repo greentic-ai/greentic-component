@@ -1,9 +1,11 @@
 pub mod build;
+pub mod component_world;
 pub mod doctor;
 pub mod flow;
 pub mod hash;
 pub mod inspect;
 pub mod new;
+pub mod path;
 pub mod post;
 #[cfg(feature = "cli")]
 pub mod store;

@@ -3,7 +3,14 @@ use std::path::{Path, PathBuf};
 
 use clap::{Args, Parser};
 
-use crate::{ComponentError, abi, manifest::validate_manifest, prepare_component_with_manifest};
+use super::component_world::{canonical_component_world, is_fallback_world};
+use super::path::strip_file_scheme;
+use crate::{
+    ComponentError,
+    abi::{self, AbiError},
+    manifest::validate_manifest,
+    prepare_component_with_manifest,
+};
 
 #[derive(Args, Debug, Clone)]
 #[command(about = "Run health checks against a Greentic component artifact")]
@@ -32,24 +39,29 @@ pub fn run(args: DoctorArgs) -> Result<(), ComponentError> {
         report.print();
         return Ok(());
     }
-    let prepared = prepare_component_with_manifest(&args.target, args.manifest.as_deref())?;
+    let manifest_override = args.manifest.as_deref().map(strip_file_scheme);
+    let prepared = prepare_component_with_manifest(&args.target, manifest_override.as_deref())?;
 
     let manifest_json = fs::read_to_string(&prepared.manifest_path)?;
     validate_manifest(&manifest_json)?;
     println!("manifest schema: ok");
 
     println!("hash verification: ok ({})", prepared.wasm_hash);
-    let exported_world = if std::env::var_os("GREENTIC_SKIP_NODE_EXPORT_CHECK").is_some() {
+    let canonical_world = canonical_component_world();
+    if std::env::var_os("GREENTIC_SKIP_NODE_EXPORT_CHECK").is_some() {
         println!("world export: skipped (GREENTIC_SKIP_NODE_EXPORT_CHECK=1)");
-        None
     } else {
-        Some(abi::check_world_base(
-            &prepared.wasm_path,
-            "greentic:component/node",
-        )?)
-    };
-    if let Some(found) = exported_world {
-        println!("world export: greentic:component/node (found {found})");
+        match abi::check_world_base(&prepared.wasm_path, canonical_world) {
+            Ok(found) => {
+                println!("world export: {canonical_world} (found {found})");
+            }
+            Err(err) => match err {
+                AbiError::WorldMismatch { expected, found } if is_fallback_world(&found) => {
+                    println!("world export: fallback {found} (expected {expected})");
+                }
+                err => return Err(err.into()),
+            },
+        }
     }
     println!(
         "manifest world: {} (compares with exported world)",

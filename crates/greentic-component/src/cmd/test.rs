@@ -12,6 +12,7 @@ use serde::Serialize;
 use serde_json::{Map, Value};
 use uuid::Uuid;
 
+use super::component_world::canonical_component_world;
 use crate::capabilities::FilesystemMode;
 use crate::manifest::ComponentManifest;
 use crate::manifest::parse_manifest;
@@ -20,7 +21,6 @@ use crate::test_harness::{
 };
 use greentic_types::{EnvId, TeamId, TenantCtx, TenantId, UserId};
 
-const DEFAULT_WORLD: &str = "greentic:component/component@0.5.0";
 const MAX_OUTPUT_BYTES: usize = 2 * 1024 * 1024;
 
 #[derive(Clone, Debug, ValueEnum)]
@@ -141,7 +141,7 @@ pub fn run(args: TestArgs) -> Result<()> {
 }
 
 fn run_inner(args: &TestArgs, trace_out: Option<&Path>) -> Result<()> {
-    if args.world != DEFAULT_WORLD {
+    if args.world != canonical_component_world() {
         return Err(anyhow::Error::new(UnsupportedWorldError {
             world: args.world.clone(),
         }));
@@ -770,7 +770,8 @@ impl std::fmt::Display for UnsupportedWorldError {
         write!(
             f,
             "Unsupported world '{}'. Supported: {}",
-            self.world, DEFAULT_WORLD
+            self.world,
+            canonical_component_world()
         )
     }
 }
@@ -1005,7 +1006,7 @@ mod tests {
         };
         let failure = TestRunFailure {
             payload: payload.clone(),
-            world: DEFAULT_WORLD.to_string(),
+            world: canonical_component_world().to_string(),
             wasm: PathBuf::from("component.wasm"),
             timing_ms: TimingMs::default(),
         };
@@ -1013,7 +1014,7 @@ mod tests {
             anyhow::Error::new(failure),
             false,
             true,
-            DEFAULT_WORLD,
+            canonical_component_world(),
             Path::new("component.wasm"),
         )
         .render_json();
@@ -1028,7 +1029,7 @@ mod tests {
             error_payload_from_anyhow(&anyhow::Error::new(HarnessError::Timeout { timeout_ms: 1 }));
         let failure = TestRunFailure {
             payload,
-            world: DEFAULT_WORLD.to_string(),
+            world: canonical_component_world().to_string(),
             wasm: PathBuf::from("component.wasm"),
             timing_ms: TimingMs::default(),
         };
@@ -1036,7 +1037,7 @@ mod tests {
             anyhow::Error::new(failure),
             false,
             false,
-            DEFAULT_WORLD,
+            canonical_component_world(),
             Path::new("component.wasm"),
         )
         .render_json();
@@ -1052,7 +1053,7 @@ mod tests {
         }));
         let failure = TestRunFailure {
             payload,
-            world: DEFAULT_WORLD.to_string(),
+            world: canonical_component_world().to_string(),
             wasm: PathBuf::from("component.wasm"),
             timing_ms: TimingMs::default(),
         };
@@ -1060,7 +1061,7 @@ mod tests {
             anyhow::Error::new(failure),
             false,
             false,
-            DEFAULT_WORLD,
+            canonical_component_world(),
             Path::new("component.wasm"),
         )
         .render_json();

@@ -28,3 +28,13 @@ fn fails_when_hash_mismatches() {
     let err = discover(component.manifest_path.to_str().unwrap()).unwrap_err();
     matches!(err, LoadError::Signing(_)).then_some(()).unwrap();
 }
+
+#[test]
+fn discovers_from_file_scheme_manifest_path() {
+    let component = TestComponent::new(TEST_WIT, &["describe"]);
+    let manifest_display = component.manifest_path.display();
+    let source = format!("file://{manifest_display}");
+    let handle = discover(&source).unwrap();
+    assert_eq!(handle.manifest.id.as_str(), "com.greentic.test.component");
+    assert_eq!(handle.wasm_path, component.wasm_path);
+}

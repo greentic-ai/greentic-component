@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -53,10 +54,12 @@ pub fn discover_with_manifest(
     if let Some(manifest_path) = manifest_override {
         return load_from_manifest(manifest_path);
     }
-    if let Some(handle) = try_explicit(path_or_id)? {
+    let normalized = normalize_path_or_id(path_or_id);
+    let normalized_str = normalized.as_ref();
+    if let Some(handle) = try_explicit(normalized_str)? {
         return Ok(handle);
     }
-    if let Some(handle) = try_workspace(path_or_id)? {
+    if let Some(handle) = try_workspace(normalized_str)? {
         return Ok(handle);
     }
     if let Some(handle) = try_registry(path_or_id)? {
@@ -176,4 +179,12 @@ fn load_from_manifest(path: &Path) -> Result<ComponentHandle, LoadError> {
         root,
         manifest_path: path.to_path_buf(),
     })
+}
+
+fn normalize_path_or_id(input: &str) -> Cow<'_, str> {
+    if let Some(rest) = input.strip_prefix("file://") {
+        Cow::Owned(rest.to_string())
+    } else {
+        Cow::Borrowed(input)
+    }
 }
