@@ -21,13 +21,12 @@ jobs:
     env:
       RUSTFLAGS: "-C link-arg=-Wl,--no-keep-memory -C link-arg=-Wl,--threads=1"
       CARGO_BUILD_JOBS: "1"
-    concurrency:
-      group: ${{ github.workflow }}-${{ github.ref }}-lint
-      cancel-in-progress: true
-    env:
       CARGO_TERM_COLOR: always
       CARGO_NET_RETRY: 5
       CARGO_HTTP_TIMEOUT: 120
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-lint
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
       - name: Set cargo env
@@ -76,13 +75,12 @@ jobs:
     env:
       RUSTFLAGS: "-C link-arg=-Wl,--no-keep-memory -C link-arg=-Wl,--threads=1"
       CARGO_BUILD_JOBS: "1"
-    concurrency:
-      group: ${{ github.workflow }}-${{ github.ref }}-test
-      cancel-in-progress: true
-    env:
       CARGO_TERM_COLOR: always
       CARGO_NET_RETRY: 5
       CARGO_HTTP_TIMEOUT: 120
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-test
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
       - name: Set cargo env
@@ -129,13 +127,12 @@ jobs:
     env:
       RUSTFLAGS: "-C link-arg=-Wl,--no-keep-memory -C link-arg=-Wl,--threads=1"
       CARGO_BUILD_JOBS: "1"
-    concurrency:
-      group: ${{ github.workflow }}-${{ github.ref }}-release
-      cancel-in-progress: true
-    env:
       CARGO_TERM_COLOR: always
       CARGO_NET_RETRY: 5
       CARGO_HTTP_TIMEOUT: 120
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-release
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
       - name: Set cargo env
