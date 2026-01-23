@@ -2,6 +2,10 @@ name: CI
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
 on:
   push:
     branches: [master]
@@ -18,6 +22,9 @@ jobs:
   lint:
     name: lint
     runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-lint
+      cancel-in-progress: true
     env:
       WASM_RUSTFLAGS: "-C link-arg=-Wl,--no-keep-memory -C link-arg=-Wl,--threads=1 -C debuginfo=0"
       CARGO_BUILD_JOBS: "1"
@@ -27,31 +34,17 @@ jobs:
       CARGO_TERM_COLOR: always
       CARGO_NET_RETRY: 5
       CARGO_HTTP_TIMEOUT: 120
-    concurrency:
-      group: ${{ github.workflow }}-${{ github.ref }}-lint
-      cancel-in-progress: true
+      TARGET_DIR: target/linux
     steps:
       - uses: actions/checkout@v4
-      - name: Set cargo env
-        run: |
-          echo "CARGO_HOME=$RUNNER_TEMP/cargo-home" >> "$GITHUB_ENV"
-          echo "CARGO_TARGET_DIR=$RUNNER_TEMP/target-lint" >> "$GITHUB_ENV"
-      - name: Install toolchain
-        uses: dtolnay/rust-toolchain@v1
+      - name: Setup Rust environment
+        uses: ./.github/actions/rust-setup
         with:
-          toolchain: 1.90.0
-          components: rustfmt, clippy
-          targets: wasm32-wasip2, x86_64-unknown-linux-gnu
-      - name: Prepare cargo dirs
-        run: |
-          mkdir -p "${CARGO_HOME}/registry" "${CARGO_HOME}/git" "${CARGO_TARGET_DIR}"
-      - name: Cache cargo directories
-        uses: actions/cache@v4
-        with:
-          path: |
-            ${{ env.CARGO_HOME }}/registry
-            ${{ env.CARGO_HOME }}/git
-          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock','ci/local_check.sh') }}
+          cache-key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock','ci/local_check.sh') }}
+          target-dir: ${{ env.TARGET_DIR }}
+          targets: |
+            wasm32-wasip2
+            x86_64-unknown-linux-gnu
       - name: Run lint checks
         run: |
           LOCAL_CHECK_ONLINE=1 \
@@ -70,11 +63,14 @@ jobs:
       - name: Cleanup cargo artifacts
         if: always()
         run: |
-          rm -rf "$CARGO_TARGET_DIR" "$CARGO_HOME"
+          rm -rf "$GITHUB_WORKSPACE/.cargo" "$GITHUB_WORKSPACE/${TARGET_DIR}"
 
   test:
     name: test
     runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-test
+      cancel-in-progress: true
     env:
       WASM_RUSTFLAGS: "-C link-arg=-Wl,--no-keep-memory -C link-arg=-Wl,--threads=1 -C debuginfo=0"
       CARGO_BUILD_JOBS: "1"
@@ -84,31 +80,17 @@ jobs:
       CARGO_TERM_COLOR: always
       CARGO_NET_RETRY: 5
       CARGO_HTTP_TIMEOUT: 120
-    concurrency:
-      group: ${{ github.workflow }}-${{ github.ref }}-test
-      cancel-in-progress: true
+      TARGET_DIR: target/linux
     steps:
       - uses: actions/checkout@v4
-      - name: Set cargo env
-        run: |
-          echo "CARGO_HOME=$RUNNER_TEMP/cargo-home" >> "$GITHUB_ENV"
-          echo "CARGO_TARGET_DIR=$RUNNER_TEMP/target-test" >> "$GITHUB_ENV"
-      - name: Install toolchain
-        uses: dtolnay/rust-toolchain@v1
+      - name: Setup Rust environment
+        uses: ./.github/actions/rust-setup
         with:
-          toolchain: 1.90.0
-          components: rustfmt, clippy
-          targets: wasm32-wasip2, x86_64-unknown-linux-gnu
-      - name: Prepare cargo dirs
-        run: |
-          mkdir -p "${CARGO_HOME}/registry" "${CARGO_HOME}/git" "${CARGO_TARGET_DIR}"
-      - name: Cache cargo directories
-        uses: actions/cache@v4
-        with:
-          path: |
-            ${{ env.CARGO_HOME }}/registry
-            ${{ env.CARGO_HOME }}/git
-          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock','ci/local_check.sh') }}
+          cache-key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock','ci/local_check.sh') }}
+          target-dir: ${{ env.TARGET_DIR }}
+          targets: |
+            wasm32-wasip2
+            x86_64-unknown-linux-gnu
       - name: Run workspace tests
         run: |
           LOCAL_CHECK_ONLINE=1 \
@@ -125,12 +107,15 @@ jobs:
       - name: Cleanup cargo artifacts
         if: always()
         run: |
-          rm -rf "$CARGO_TARGET_DIR" "$CARGO_HOME"
+          rm -rf "$GITHUB_WORKSPACE/.cargo" "$GITHUB_WORKSPACE/${TARGET_DIR}"
 
   release:
     name: release smoke + package
     needs: [lint, test]
     runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-release
+      cancel-in-progress: true
     env:
       WASM_RUSTFLAGS: "-C link-arg=-Wl,--no-keep-memory -C link-arg=-Wl,--threads=1 -C debuginfo=0"
       CARGO_BUILD_JOBS: "1"
@@ -140,31 +125,17 @@ jobs:
       CARGO_TERM_COLOR: always
       CARGO_NET_RETRY: 5
       CARGO_HTTP_TIMEOUT: 120
-    concurrency:
-      group: ${{ github.workflow }}-${{ github.ref }}-release
-      cancel-in-progress: true
+      TARGET_DIR: target/linux
     steps:
       - uses: actions/checkout@v4
-      - name: Set cargo env
-        run: |
-          echo "CARGO_HOME=$RUNNER_TEMP/cargo-home" >> "$GITHUB_ENV"
-          echo "CARGO_TARGET_DIR=$RUNNER_TEMP/target-release" >> "$GITHUB_ENV"
-      - name: Install toolchain
-        uses: dtolnay/rust-toolchain@v1
+      - name: Setup Rust environment
+        uses: ./.github/actions/rust-setup
         with:
-          toolchain: 1.90.0
-          components: rustfmt, clippy
-          targets: wasm32-wasip2, x86_64-unknown-linux-gnu
-      - name: Prepare cargo dirs
-        run: |
-          mkdir -p "${CARGO_HOME}/registry" "${CARGO_HOME}/git" "${CARGO_TARGET_DIR}"
-      - name: Cache cargo directories
-        uses: actions/cache@v4
-        with:
-          path: |
-            ${{ env.CARGO_HOME }}/registry
-            ${{ env.CARGO_HOME }}/git
-          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock','ci/local_check.sh') }}
+          cache-key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock','ci/local_check.sh') }}
+          target-dir: ${{ env.TARGET_DIR }}
+          targets: |
+            wasm32-wasip2
+            x86_64-unknown-linux-gnu
       - name: Run release checks
         run: |
           LOCAL_CHECK_ONLINE=1 \
@@ -181,7 +152,7 @@ jobs:
       - name: Cleanup cargo artifacts
         if: always()
         run: |
-          rm -rf "$CARGO_TARGET_DIR" "$CARGO_HOME"
+          rm -rf "$GITHUB_WORKSPACE/.cargo" "$GITHUB_WORKSPACE/${TARGET_DIR}"
 
   publish:
     name: publish
@@ -195,37 +166,26 @@ jobs:
       contents: read
       packages: write
     env:
-      CARGO_TERM_COLOR: always
-      CARGO_NET_RETRY: 5
-      CARGO_HTTP_TIMEOUT: 120
-      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
       WASM_RUSTFLAGS: "-C link-arg=-Wl,--no-keep-memory -C link-arg=-Wl,--threads=1 -C debuginfo=0"
       CARGO_BUILD_JOBS: "1"
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_DEV_DEBUG: "0"
       CARGO_PROFILE_TEST_DEBUG: "0"
+      CARGO_TERM_COLOR: always
+      CARGO_NET_RETRY: 5
+      CARGO_HTTP_TIMEOUT: 120
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      TARGET_DIR: target/linux
     steps:
       - uses: actions/checkout@v4
-      - name: Set cargo env
-        run: |
-          echo "CARGO_HOME=$RUNNER_TEMP/cargo-home" >> "$GITHUB_ENV"
-          echo "CARGO_TARGET_DIR=$RUNNER_TEMP/target-publish" >> "$GITHUB_ENV"
-      - name: Install toolchain
-        uses: dtolnay/rust-toolchain@v1
+      - name: Setup Rust environment
+        uses: ./.github/actions/rust-setup
         with:
-          toolchain: 1.90.0
-          components: rustfmt, clippy
-          targets: wasm32-wasip2, x86_64-unknown-linux-gnu
-      - name: Prepare cargo dirs
-        run: |
-          mkdir -p "${CARGO_HOME}/registry" "${CARGO_HOME}/git" "${CARGO_TARGET_DIR}"
-      - name: Cache cargo directories
-        uses: actions/cache@v4
-        with:
-          path: |
-            ${{ env.CARGO_HOME }}/registry
-            ${{ env.CARGO_HOME }}/git
-          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock','ci/local_check.sh') }}
+          cache-key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock','ci/local_check.sh') }}
+          target-dir: ${{ env.TARGET_DIR }}
+          targets: |
+            wasm32-wasip2
+            x86_64-unknown-linux-gnu
       - name: Verify clean worktree
         run: git diff --exit-code
       - name: Publish crates
@@ -246,7 +206,7 @@ jobs:
           bash ci/local_check.sh
       - name: Snapshot package contents
         run: |
-          PKG_PATH=$(ls "$CARGO_TARGET_DIR"/package/greentic-component-*.crate | head -n1)
+          PKG_PATH=$(ls "$GITHUB_WORKSPACE/${TARGET_DIR}/package/greentic-component-*.crate" | head -n1)
           tar -tzf "$PKG_PATH" | sort > /tmp/greentic-component-files.txt
           sed -n '1,200p' /tmp/greentic-component-files.txt
       - name: Upload package manifest
@@ -261,7 +221,7 @@ jobs:
       - name: Cleanup cargo artifacts
         if: always()
         run: |
-          rm -rf "$CARGO_TARGET_DIR" "$CARGO_HOME"
+          rm -rf "$GITHUB_WORKSPACE/.cargo" "$GITHUB_WORKSPACE/${TARGET_DIR}"
 
   binstall-release:
     name: binstall release
@@ -273,14 +233,6 @@ jobs:
     defaults:
       run:
         shell: bash
-    env:
-      CARGO_TERM_COLOR: always
-      CARGO_NET_RETRY: 5
-      CARGO_HTTP_TIMEOUT: 120
-      CARGO_BUILD_JOBS: "1"
-      CARGO_INCREMENTAL: "0"
-      CARGO_PROFILE_DEV_DEBUG: "0"
-      CARGO_PROFILE_TEST_DEBUG: "0"
     strategy:
       matrix:
         include:
@@ -296,18 +248,22 @@ jobs:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             bin_suffix: ".exe"
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_NET_RETRY: 5
+      CARGO_HTTP_TIMEOUT: 120
+      CARGO_BUILD_JOBS: "1"
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+      TARGET_DIR: ${{ matrix.target == 'x86_64-unknown-linux-gnu' && 'target/linux' || 'target/' + matrix.target }}
     steps:
       - uses: actions/checkout@v4
-      - name: Set cargo env
-        shell: bash
-        run: |
-          echo "CARGO_HOME=$RUNNER_TEMP/cargo-home" >> "$GITHUB_ENV"
-          echo "CARGO_TARGET_DIR=$RUNNER_TEMP/target-binstall" >> "$GITHUB_ENV"
-          echo "$RUNNER_TEMP/cargo-home/bin" >> "$GITHUB_PATH"
-      - name: Install toolchain
-        uses: dtolnay/rust-toolchain@v1
+      - name: Setup Rust environment
+        uses: ./.github/actions/rust-setup
         with:
-          toolchain: 1.90.0
+          cache-key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock','ci/local_check.sh') }}
+          target-dir: ${{ env.TARGET_DIR }}
           targets: ${{ matrix.target }}
       - name: Ensure target installed
         run: rustup target add ${{ matrix.target }}
@@ -317,7 +273,6 @@ jobs:
             -p greentic-component --features cli --bins
       - name: Package release archive
         id: package
-        shell: bash
         run: |
           set -euo pipefail
           VERSION=$(cargo metadata --no-deps --format-version 1 \
@@ -354,4 +309,4 @@ jobs:
       - name: Cleanup cargo artifacts
         if: always()
         run: |
-          rm -rf "$CARGO_TARGET_DIR" "$CARGO_HOME"
+          rm -rf "$GITHUB_WORKSPACE/.cargo" "$GITHUB_WORKSPACE/${TARGET_DIR}"

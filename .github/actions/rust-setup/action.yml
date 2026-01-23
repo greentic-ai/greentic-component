@@ -1,0 +1,61 @@
+name: Rust Setup
+description: >-
+  Prepare the rust toolchain, mold linker (Linux), and caches for the workflow.
+
+inputs:
+  cache-key:
+    description: Cache key for Swatinem/rust-cache.
+    required: true
+  target-dir:
+    description: Target directory relative to the workspace.
+    required: false
+    default: target/linux
+  toolchain:
+    description: Rust toolchain to install.
+    required: false
+    default: 1.90.0
+  components:
+    description: Toolchain components to install (comma separated).
+    required: false
+    default: rustfmt, clippy
+  targets:
+    description: Newline-separated list of targets to install.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Set cargo directories
+      shell: bash
+      run: |
+        echo "CARGO_HOME=$GITHUB_WORKSPACE/.cargo" >> "$GITHUB_ENV"
+        echo "CARGO_TARGET_DIR=$GITHUB_WORKSPACE/${{ inputs.target-dir }}" >> "$GITHUB_ENV"
+        mkdir -p "$GITHUB_WORKSPACE/.cargo" "$GITHUB_WORKSPACE/${{ inputs.target-dir }}"
+
+    - name: Install toolchain and targets
+      uses: dtolnay/rust-toolchain@v1
+      with:
+        toolchain: ${{ inputs.toolchain }}
+        components: ${{ inputs.components }}
+        targets: |
+          ${{ inputs.targets }}
+
+    - name: Install mold (Linux only)
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get update -y
+        sudo apt-get install -y mold
+        if [ -z "${RUSTFLAGS:-}" ]; then
+          echo "RUSTFLAGS=-C link-arg=-fuse-ld=mold" >> "$GITHUB_ENV"
+        else
+          echo "RUSTFLAGS=${RUSTFLAGS} -C link-arg=-fuse-ld=mold" >> "$GITHUB_ENV"
+        fi
+
+    - name: Restore rust cache
+      uses: Swatinem/rust-cache@v2
+      with:
+        cache-key: ${{ inputs.cache-key }}
+        path: |
+          ${{ env.CARGO_HOME }}
+          ${{ env.CARGO_TARGET_DIR }}
