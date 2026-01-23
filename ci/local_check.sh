@@ -361,7 +361,12 @@ run_smoke_mode() {
                 fi
             fi
             if [ $wasm_ready -eq 1 ]; then
+                local wasm_rustflags="${RUSTFLAGS:-}"
+                if [ -n "$wasm_rustflags" ]; then
+                    wasm_rustflags="${wasm_rustflags//-Wl,/}"
+                fi
                 run_cmd "Smoke ($mode): cargo check" \
+                    env RUSTFLAGS="$wasm_rustflags" \
                     bash -lc "cd '$smoke_path' && cargo check --target wasm32-wasip2 --locked"
                 if [ "$LAST_RUN_FAILED" -eq 1 ]; then
                     wasm_ready=0
@@ -370,6 +375,7 @@ run_smoke_mode() {
             fi
             if [ $wasm_ready -eq 1 ]; then
                 run_cmd "Smoke ($mode): cargo build --release" \
+                    env RUSTFLAGS="$wasm_rustflags" \
                     bash -lc "cd '$smoke_path' && cargo build --target wasm32-wasip2 --release --locked"
                 if [ "$LAST_RUN_FAILED" -eq 1 ]; then
                     wasm_ready=0
