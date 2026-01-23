@@ -258,6 +258,35 @@ fn resolve_wasm_path(manifest_dir: &Path, manifest: &JsonValue) -> Result<PathBu
             let sanitized = raw_name.replace(['-', '.'], "_");
             manifest_dir.join(format!("target/wasm32-wasip2/release/{sanitized}.wasm"))
         });
+    if candidate.exists() {
+        let normalized = normalize_under_root(&manifest_root, &candidate).or_else(|_| {
+            if candidate.is_absolute() {
+                candidate
+                    .canonicalize()
+                    .with_context(|| format!("failed to canonicalize {}", candidate.display()))
+            } else {
+                normalize_under_root(&manifest_root, &candidate)
+            }
+        })?;
+        return Ok(normalized);
+    }
+
+    if let Some(cargo_target_dir) = env::var_os("CARGO_TARGET_DIR") {
+        let relative = candidate
+            .strip_prefix(manifest_dir)
+            .unwrap_or(&candidate)
+            .to_path_buf();
+        if relative.starts_with("target") {
+            let alt =
+                PathBuf::from(cargo_target_dir).join(relative.strip_prefix("target").unwrap());
+            if alt.exists() {
+                return alt
+                    .canonicalize()
+                    .with_context(|| format!("failed to canonicalize {}", alt.display()));
+            }
+        }
+    }
+
     let normalized = normalize_under_root(&manifest_root, &candidate).or_else(|_| {
         if candidate.is_absolute() {
             candidate
