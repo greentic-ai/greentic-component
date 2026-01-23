@@ -361,9 +361,12 @@ run_smoke_mode() {
                 fi
             fi
             if [ $wasm_ready -eq 1 ]; then
+                # wasm-component-ld rejects some wasm-ld flags; strip incompatible link-args.
                 local wasm_rustflags="${RUSTFLAGS:-}"
                 if [ -n "$wasm_rustflags" ]; then
                     wasm_rustflags="${wasm_rustflags//-Wl,/}"
+                    wasm_rustflags="${wasm_rustflags//-C link-arg=--no-keep-memory/}"
+                    wasm_rustflags="${wasm_rustflags//-C link-arg=--threads=1/}"
                 fi
                 run_cmd "Smoke ($mode): cargo check" \
                     env RUSTFLAGS="$wasm_rustflags" \
