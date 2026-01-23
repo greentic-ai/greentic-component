@@ -10,6 +10,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: 1.90.0
       - run: cargo test --all-features
       - if: failure()
         uses: actions/upload-artifact@v4
