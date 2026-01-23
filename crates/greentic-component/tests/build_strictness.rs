@@ -7,12 +7,19 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use tempfile::TempDir;
+use wasm_encoder::{CustomSection, Encode, Section};
+use wit_component::encode as encode_wit;
+use wit_parser::Resolve;
 
-fn write_fake_cargo(dir: &Path, wasm_name: &str) -> std::path::PathBuf {
-    let script = format!(
-        "#!/bin/sh\nset -e\nprintf '\\x00' > \"{wasm}\"\n",
-        wasm = wasm_name
-    );
+const TEST_WIT: &str = r#"
+package greentic:component@0.5.0;
+world node {
+    export describe: func();
+}
+"#;
+
+fn write_fake_cargo(dir: &Path) -> std::path::PathBuf {
+    let script = "#!/bin/sh\nset -e\nexit 0\n".to_string();
     let path = dir.join("fake_cargo.sh");
     fs::write(&path, script).expect("write fake cargo");
     let mut perms = fs::metadata(&path).expect("metadata").permissions();
@@ -21,12 +28,27 @@ fn write_fake_cargo(dir: &Path, wasm_name: &str) -> std::path::PathBuf {
     path
 }
 
+fn write_component_wasm(dir: &Path, wasm_name: &str) {
+    let mut resolve = Resolve::default();
+    let pkg = resolve
+        .push_str("component.wit", TEST_WIT)
+        .expect("push wit");
+    let mut wasm = encode_wit(&resolve, pkg).expect("encode component");
+    let section = CustomSection {
+        name: "producers".into(),
+        data: "wasm32-wasip2".as_bytes().into(),
+    };
+    wasm.push(section.id());
+    section.encode(&mut wasm);
+    fs::write(dir.join(wasm_name), wasm).expect("write wasm");
+}
+
 fn minimal_manifest() -> JsonValue {
     serde_json::json!({
         "id": "ai.greentic.example",
         "name": "example",
         "version": "0.1.0",
-        "world": "greentic:component/component@0.5.0",
+        "world": "greentic:component/node@0.5.0",
         "describe_export": "get-manifest",
         "operations": [
             {
@@ -93,11 +115,13 @@ fn build_emits_pack_valid_config_flow() {
     )
     .expect("write input schema");
 
-    let fake_cargo = write_fake_cargo(temp.path(), "component.wasm");
+    write_component_wasm(temp.path(), "component.wasm");
+    let fake_cargo = write_fake_cargo(temp.path());
 
     let mut cmd = cargo_bin_cmd!("greentic-component");
     cmd.current_dir(temp.path())
         .env("CARGO", &fake_cargo)
+        .env("GREENTIC_SKIP_NODE_EXPORT_CHECK", "1")
         .arg("build");
     cmd.assert().success();
 
@@ -151,11 +175,12 @@ fn build_fails_without_operations() {
         serde_json::to_string_pretty(&manifest).unwrap(),
     )
     .expect("write manifest");
-    let fake_cargo = write_fake_cargo(temp.path(), "component.wasm");
+    let fake_cargo = write_fake_cargo(temp.path());
 
     let mut cmd = cargo_bin_cmd!("greentic-component");
     cmd.current_dir(temp.path())
         .env("CARGO", &fake_cargo)
+        .env("GREENTIC_SKIP_NODE_EXPORT_CHECK", "1")
         .arg("build");
     cmd.assert()
         .failure()

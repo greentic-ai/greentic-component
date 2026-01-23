@@ -132,6 +132,7 @@ printf '\0' > "$wasm_path"
         .current_dir(&component_dir)
         .env("CARGO", &cargo_wrapper)
         .env("CARGO_NET_OFFLINE", "true")
+        .env("GREENTIC_SKIP_NODE_EXPORT_CHECK", "1")
         .arg("build");
     build.assert().success();
     let mut doctor = Command::new(assert_cmd::cargo::cargo_bin!("greentic-component"));

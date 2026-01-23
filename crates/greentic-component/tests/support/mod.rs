@@ -12,8 +12,7 @@ use wasm_encoder::{
     CodeSection, CustomSection, ExportKind, ExportSection, Function, FunctionSection, Instruction,
     Module, TypeSection,
 };
-use wit_component::StringEncoding;
-use wit_component::metadata;
+use wit_component::{StringEncoding, embed_component_metadata};
 use wit_parser::{Resolve, WorldId};
 
 const WASI_MARKER: &str = "wasm32-wasip2";
@@ -147,13 +146,15 @@ impl TestComponent {
 fn build_module(world_src: &str, funcs: &[&str]) -> (Vec<u8>, String) {
     let mut resolve = Resolve::default();
     let pkg = resolve.push_str("test.wit", world_src).expect("push wit");
+    if resolve.packages[pkg].name.namespace == "root" && resolve.packages[pkg].name.name == "root" {
+        resolve.packages[pkg].name.namespace = "greentic".to_string();
+        resolve.packages[pkg].name.name = "component".to_string();
+        resolve.packages[pkg].name.version = None;
+    }
     let world = resolve
         .select_world(&[pkg], Some("node"))
         .expect("world lookup");
     let label = world_label(&resolve, world);
-    let metadata =
-        metadata::encode(&resolve, world, StringEncoding::UTF8, None).expect("metadata encode");
-
     let mut module = Module::new();
     let mut types = TypeSection::new();
     types.ty().function([], []);
@@ -180,16 +181,13 @@ fn build_module(world_src: &str, funcs: &[&str]) -> (Vec<u8>, String) {
     module.section(&code);
 
     module.section(&CustomSection {
-        name: "component-type".into(),
-        data: Cow::Borrowed(&metadata),
-    });
-
-    module.section(&CustomSection {
         name: "producers".into(),
         data: Cow::Borrowed(WASI_MARKER.as_bytes()),
     });
 
-    let wasm = module.finish();
+    let mut wasm = module.finish();
+    embed_component_metadata(&mut wasm, &resolve, world, StringEncoding::UTF8)
+        .expect("metadata embed");
     let observed = detect_world(&wasm).unwrap_or(label);
     (wasm, observed)
 }

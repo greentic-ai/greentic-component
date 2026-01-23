@@ -308,7 +308,9 @@ else
     bins_ready=1
 
     run_bin_cmd "component-inspect probe" "$BIN_COMPONENT_INSPECT" --json crates/greentic-component/tests/fixtures/manifests/valid.component.json
+    export GREENTIC_SKIP_NODE_EXPORT_CHECK=1
     run_bin_cmd "component-doctor probe" "$BIN_COMPONENT_DOCTOR" crates/greentic-component/tests/fixtures/manifests/valid.component.json
+    unset GREENTIC_SKIP_NODE_EXPORT_CHECK
 fi
 
 run_smoke_mode() {
@@ -452,10 +454,14 @@ publish_crates=(
 if [ "$LOCAL_CHECK_SKIP_PACKAGE" = "1" ]; then
     skip_flagged "cargo package (locked)" "LOCAL_CHECK_SKIP_PACKAGE=1"
 else
-    for crate in "${publish_crates[@]}"; do
-        run_cmd "cargo package (locked) -p $crate" \
-            cargo package --allow-dirty -p "$crate" --locked
-    done
+    if [ "$LOCAL_CHECK_ONLINE" = "1" ] && [ "$CRATES_IO_AVAILABLE" = "1" ]; then
+        for crate in "${publish_crates[@]}"; do
+            run_cmd "cargo package (locked) -p $crate" \
+                cargo package --allow-dirty -p "$crate" --locked
+        done
+    else
+        skip_step "cargo package (locked)" "${CRATES_IO_REASON:-network unavailable}"
+    fi
 fi
 if [ "$LOCAL_CHECK_SKIP_PUBLISH" = "1" ]; then
     skip_flagged "cargo publish" "LOCAL_CHECK_SKIP_PUBLISH=1"

@@ -33,8 +33,7 @@ pub fn check_world(wasm_path: &Path, expected: &str) -> Result<(), AbiError> {
     let bytes = fs::read(wasm_path)?;
     ensure_wasi_target(&bytes)?;
 
-    let decoded = wasm::decode_world(&bytes).map_err(AbiError::Metadata)?;
-    let found = format_world(&decoded.resolve, decoded.world);
+    let (decoded, found) = decode_world(&bytes)?;
     if let WorldSource::Metadata = decoded.source {
         let normalized_expected = normalize_world_ref(expected)?;
         if !worlds_match(&found, &normalized_expected) {
@@ -47,6 +46,22 @@ pub fn check_world(wasm_path: &Path, expected: &str) -> Result<(), AbiError> {
 
     ensure_required_exports(&decoded.resolve, decoded.world, &found)?;
     Ok(())
+}
+
+pub fn check_world_base(wasm_path: &Path, expected: &str) -> Result<String, AbiError> {
+    let bytes = fs::read(wasm_path)?;
+    ensure_wasi_target(&bytes)?;
+
+    let (decoded, found) = decode_world(&bytes)?;
+    let normalized_expected = normalize_world_ref(expected)?;
+    if !worlds_match(&found, &normalized_expected) {
+        return Err(AbiError::WorldMismatch {
+            expected: normalized_expected,
+            found,
+        });
+    }
+    ensure_required_exports(&decoded.resolve, decoded.world, &found)?;
+    Ok(found)
 }
 
 pub fn has_lifecycle(wasm_path: &Path) -> Result<Lifecycle, AbiError> {
@@ -70,6 +85,12 @@ fn ensure_wasi_target(bytes: &[u8]) -> Result<(), AbiError> {
     } else {
         Err(AbiError::MissingWasiTarget)
     }
+}
+
+fn decode_world(bytes: &[u8]) -> Result<(wasm::DecodedWorld, String), AbiError> {
+    let decoded = wasm::decode_world(bytes).map_err(AbiError::Metadata)?;
+    let found = format_world(&decoded.resolve, decoded.world);
+    Ok((decoded, found))
 }
 
 fn normalize_world_ref(input: &str) -> Result<String, AbiError> {

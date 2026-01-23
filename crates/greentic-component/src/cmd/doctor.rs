@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use clap::{Args, Parser};
 
-use crate::{ComponentError, manifest::validate_manifest, prepare_component_with_manifest};
+use crate::{ComponentError, abi, manifest::validate_manifest, prepare_component_with_manifest};
 
 #[derive(Args, Debug, Clone)]
 #[command(about = "Run health checks against a Greentic component artifact")]
@@ -39,7 +39,22 @@ pub fn run(args: DoctorArgs) -> Result<(), ComponentError> {
     println!("manifest schema: ok");
 
     println!("hash verification: ok ({})", prepared.wasm_hash);
-    println!("world check: ok ({})", prepared.manifest.world.as_str());
+    let exported_world = if std::env::var_os("GREENTIC_SKIP_NODE_EXPORT_CHECK").is_some() {
+        println!("world export: skipped (GREENTIC_SKIP_NODE_EXPORT_CHECK=1)");
+        None
+    } else {
+        Some(abi::check_world_base(
+            &prepared.wasm_path,
+            "greentic:component/node",
+        )?)
+    };
+    if let Some(found) = exported_world {
+        println!("world export: greentic:component/node (found {found})");
+    }
+    println!(
+        "manifest world: {} (compares with exported world)",
+        prepared.manifest.world.as_str()
+    );
     println!(
         "lifecycle exports: init={} health={} shutdown={}",
         prepared.lifecycle.init, prepared.lifecycle.health, prepared.lifecycle.shutdown

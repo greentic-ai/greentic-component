@@ -36,6 +36,7 @@ fn doctor_reports_success() {
     let manifest_path = component.manifest_path.to_str().unwrap();
     let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("component-doctor");
     cmd.arg(manifest_path)
+        .env("GREENTIC_SKIP_NODE_EXPORT_CHECK", "1")
         .assert()
         .success()
         .stdout(predicate::str::contains("manifest schema: ok"));

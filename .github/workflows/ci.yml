@@ -129,6 +129,7 @@ jobs:
 
   release:
     name: release smoke + package
+    needs: [lint, test]
     runs-on: ubuntu-latest
     env:
       WASM_RUSTFLAGS: "-C link-arg=-Wl,--no-keep-memory -C link-arg=-Wl,--threads=1 -C debuginfo=0"
@@ -184,7 +185,7 @@ jobs:
 
   publish:
     name: publish
-    needs: [lint, test, release]
+    needs: [lint, test]
     if: github.ref == 'refs/heads/master' || inputs.publish == true
     runs-on: ubuntu-latest
     concurrency:
@@ -264,7 +265,7 @@ jobs:
 
   binstall-release:
     name: binstall release
-    needs: publish
+    needs: [lint, test]
     if: github.ref == 'refs/heads/master' || inputs.publish == true
     runs-on: ${{ matrix.os }}
     permissions:

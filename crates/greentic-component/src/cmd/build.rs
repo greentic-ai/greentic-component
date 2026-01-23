@@ -8,6 +8,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use clap::Args;
 use serde_json::Value as JsonValue;
 
+use crate::abi;
 use crate::cmd::flow::{
     FlowUpdateResult, manifest_component_id, resolve_operation, update_with_manifest,
 };
@@ -94,13 +95,15 @@ pub fn run(args: BuildArgs) -> Result<()> {
         Some(update_with_manifest(&config)?)
     };
 
-    let manifest_dir = manifest_path.parent().unwrap_or_else(|| Path::new("."));
-    build_wasm(manifest_dir, &cargo_bin)?;
-
     let mut manifest_to_write = flow_outcome
         .as_ref()
         .map(|outcome| outcome.manifest.clone())
         .unwrap_or_else(|| config.manifest.clone());
+
+    let manifest_dir = manifest_path.parent().unwrap_or_else(|| Path::new("."));
+    build_wasm(manifest_dir, &cargo_bin)?;
+    check_node_world_export(manifest_dir, &manifest_to_write)?;
+
     if !config.persist_schema {
         manifest_to_write
             .as_object_mut()
@@ -165,6 +168,18 @@ fn build_wasm(manifest_dir: &Path, cargo_bin: &Path) -> Result<()> {
             status
         );
     }
+    Ok(())
+}
+
+fn check_node_world_export(manifest_dir: &Path, manifest: &JsonValue) -> Result<()> {
+    if std::env::var_os("GREENTIC_SKIP_NODE_EXPORT_CHECK").is_some() {
+        println!("World export check skipped (GREENTIC_SKIP_NODE_EXPORT_CHECK=1)");
+        return Ok(());
+    }
+    let wasm_path = resolve_wasm_path(manifest_dir, manifest)?;
+    let exported = abi::check_world_base(&wasm_path, "greentic:component/node")
+        .with_context(|| "component must export world greentic:component/node")?;
+    println!("Exported world: {exported}");
     Ok(())
 }
 
