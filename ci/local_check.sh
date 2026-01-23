@@ -8,7 +8,9 @@ if [ -z "${BASH_VERSION:-}" ]; then
 fi
 
 set -euo pipefail
-export RUSTFLAGS=""
+if [ -z "${RUSTFLAGS+x}" ]; then
+    export RUSTFLAGS=""
+fi
 
 ROOT_DIR=$(cd -- "$(dirname "$0")/.." && pwd)
 cd "$ROOT_DIR"
