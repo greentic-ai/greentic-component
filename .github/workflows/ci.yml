@@ -40,7 +40,7 @@ jobs:
       - name: Setup Rust environment
         uses: ./.github/actions/rust-setup
         with:
-          cache-key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock','ci/local_check.sh') }}
+          cache-key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}
           target-dir: ${{ env.TARGET_DIR }}
           targets: |
             wasm32-wasip2
@@ -60,10 +60,6 @@ jobs:
           LOCAL_CHECK_SKIP_PACKAGE=1 \
           LOCAL_CHECK_SKIP_PUBLISH=1 \
           bash ci/local_check.sh
-      - name: Cleanup cargo artifacts
-        if: always()
-        run: |
-          rm -rf "$GITHUB_WORKSPACE/.cargo" "$GITHUB_WORKSPACE/${TARGET_DIR}"
 
   test:
     name: test
@@ -86,7 +82,7 @@ jobs:
       - name: Setup Rust environment
         uses: ./.github/actions/rust-setup
         with:
-          cache-key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock','ci/local_check.sh') }}
+          cache-key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}
           target-dir: ${{ env.TARGET_DIR }}
           targets: |
             wasm32-wasip2
@@ -104,10 +100,6 @@ jobs:
           LOCAL_CHECK_SKIP_PACKAGE=1 \
           LOCAL_CHECK_SKIP_PUBLISH=1 \
           bash ci/local_check.sh
-      - name: Cleanup cargo artifacts
-        if: always()
-        run: |
-          rm -rf "$GITHUB_WORKSPACE/.cargo" "$GITHUB_WORKSPACE/${TARGET_DIR}"
 
   release:
     name: release smoke + package
@@ -131,7 +123,7 @@ jobs:
       - name: Setup Rust environment
         uses: ./.github/actions/rust-setup
         with:
-          cache-key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock','ci/local_check.sh') }}
+          cache-key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}
           target-dir: ${{ env.TARGET_DIR }}
           targets: |
             wasm32-wasip2
@@ -149,10 +141,6 @@ jobs:
           LOCAL_CHECK_SKIP_TEST_ALL=1 \
           LOCAL_CHECK_PUBLISH_MODE=dry-run \
           bash ci/local_check.sh
-      - name: Cleanup cargo artifacts
-        if: always()
-        run: |
-          rm -rf "$GITHUB_WORKSPACE/.cargo" "$GITHUB_WORKSPACE/${TARGET_DIR}"
 
   publish:
     name: publish
@@ -181,7 +169,7 @@ jobs:
       - name: Setup Rust environment
         uses: ./.github/actions/rust-setup
         with:
-          cache-key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock','ci/local_check.sh') }}
+          cache-key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}
           target-dir: ${{ env.TARGET_DIR }}
           targets: |
             wasm32-wasip2
@@ -218,10 +206,6 @@ jobs:
         run: |
           echo "Give crates.io index time to update"
           sleep 20
-      - name: Cleanup cargo artifacts
-        if: always()
-        run: |
-          rm -rf "$GITHUB_WORKSPACE/.cargo" "$GITHUB_WORKSPACE/${TARGET_DIR}"
 
   binstall-release:
     name: binstall release
@@ -262,7 +246,7 @@ jobs:
       - name: Setup Rust environment
         uses: ./.github/actions/rust-setup
         with:
-          cache-key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock','ci/local_check.sh') }}
+          cache-key: ${{ runner.os }}-cargo-${{ matrix.target }}-${{ hashFiles('Cargo.lock') }}
           target-dir: ${{ env.TARGET_DIR }}
           targets: ${{ matrix.target }}
       - name: Ensure target installed
@@ -306,7 +290,3 @@ jobs:
           set -euo pipefail
           gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --target "$GITHUB_SHA" --notes "" --title "$TAG"
           gh release upload "$TAG" "$ASSET" --clobber
-      - name: Cleanup cargo artifacts
-        if: always()
-        run: |
-          rm -rf "$GITHUB_WORKSPACE/.cargo" "$GITHUB_WORKSPACE/${TARGET_DIR}"

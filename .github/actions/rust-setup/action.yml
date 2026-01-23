@@ -55,7 +55,4 @@ runs:
     - name: Restore rust cache
       uses: Swatinem/rust-cache@v2
       with:
-        cache-key: ${{ inputs.cache-key }}
-        path: |
-          ${{ env.CARGO_HOME }}
-          ${{ env.CARGO_TARGET_DIR }}
+        shared-key: ${{ inputs.cache-key }}
