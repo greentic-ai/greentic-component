@@ -361,8 +361,9 @@ run_smoke_mode() {
                 fi
             fi
             if [ $wasm_ready -eq 1 ]; then
-                # wasm-component-ld rejects some wasm-ld flags; strip incompatible link-args.
-                local wasm_rustflags="${RUSTFLAGS:-}"
+                # wasm-component-ld rejects some wasm-ld flags; use WASM_RUSTFLAGS (or RUSTFLAGS fallback)
+                # and strip incompatible link-args.
+                local wasm_rustflags="${WASM_RUSTFLAGS:-${RUSTFLAGS:-}}"
                 if [ -n "$wasm_rustflags" ]; then
                     wasm_rustflags="${wasm_rustflags//-Wl,/}"
                     wasm_rustflags="${wasm_rustflags//-C link-arg=--no-keep-memory/}"
