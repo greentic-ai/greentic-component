@@ -3,20 +3,24 @@
 #[path = "support/mod.rs"]
 mod support;
 
+use greentic_component::cmd::build::BuildArgs;
+use greentic_component::cmd::doctor::DoctorArgs;
+use greentic_component::cmd::{build, doctor};
+use greentic_component::error::ComponentError;
 use greentic_component::scaffold::deps::DependencyMode;
 use greentic_component::scaffold::engine::{DEFAULT_WIT_WORLD, ScaffoldEngine, ScaffoldRequest};
 use predicates::prelude::*;
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::fs;
 use std::path::Path;
 use support::TestComponent;
 
 const TEST_WIT: &str = r#"
-package greentic:component@0.1.0;
-world node {
+package greentic:component@0.5.0;
+world component {
     export describe: func();
 }
-"#;
+ "#;
 
 #[test]
 fn inspect_outputs_json() {
@@ -265,4 +269,92 @@ fn test_command_writes_trace_on_failure() {
     let value: Value = serde_json::from_str(&trace).expect("trace JSON");
     assert_eq!(value["trace_version"].as_u64(), Some(1));
     assert!(value["error"]["code"].as_str().is_some());
+}
+
+#[test]
+fn doctor_rejects_empty_operation_schemas() {
+    let component = TestComponent::new(TEST_WIT, &["describe"]);
+    rewrite_operation_schemas_to_empty(&component.manifest_path);
+    let args = DoctorArgs {
+        target: component.wasm_path.to_string_lossy().into_owned(),
+        manifest: Some(component.manifest_path.clone()),
+        permissive: false,
+    };
+    let err = doctor::run(args).expect_err("doctor should fail on empty schemas");
+    assert_eq!(err.code(), "E_OP_SCHEMA_EMPTY");
+}
+
+#[test]
+fn doctor_permissive_warns_about_empty_schemas() {
+    let component = TestComponent::new(TEST_WIT, &["describe"]);
+    rewrite_operation_schemas_to_empty(&component.manifest_path);
+    let args = DoctorArgs {
+        target: component.wasm_path.to_string_lossy().into_owned(),
+        manifest: Some(component.manifest_path.clone()),
+        permissive: true,
+    };
+    doctor::run(args).expect("permissive doctor should succeed");
+}
+
+#[test]
+fn build_fails_on_empty_operation_schemas() {
+    let component = TestComponent::new(TEST_WIT, &["describe"]);
+    rewrite_operation_schemas_to_empty(&component.manifest_path);
+
+    let args = BuildArgs {
+        manifest: component.manifest_path.clone(),
+        cargo_bin: Some(std::path::PathBuf::from("/bin/true")),
+        no_flow: true,
+        no_infer_config: true,
+        no_write_schema: true,
+        force_write_schema: false,
+        no_validate: true,
+        json: false,
+        permissive: false,
+    };
+
+    let err = build::run(args).expect_err("build should fail when schemas are empty");
+    let component_err = err
+        .downcast_ref::<ComponentError>()
+        .expect("expected a ComponentError");
+    assert_eq!(component_err.code(), "E_OP_SCHEMA_EMPTY");
+}
+
+#[test]
+fn build_permissive_allows_empty_operation_schemas() {
+    let component = TestComponent::new(TEST_WIT, &["describe"]);
+    rewrite_operation_schemas_to_empty(&component.manifest_path);
+
+    let args = BuildArgs {
+        manifest: component.manifest_path.clone(),
+        cargo_bin: Some(std::path::PathBuf::from("/bin/true")),
+        no_flow: true,
+        no_infer_config: true,
+        no_write_schema: true,
+        force_write_schema: false,
+        no_validate: true,
+        json: false,
+        permissive: true,
+    };
+
+    build::run(args).expect("permissive build should succeed");
+}
+
+fn rewrite_operation_schemas_to_empty(manifest_path: &Path) {
+    let mut manifest: Value =
+        serde_json::from_str(&fs::read_to_string(manifest_path).expect("read manifest")).unwrap();
+    if let Some(operations) = manifest
+        .get_mut("operations")
+        .and_then(|value| value.as_array_mut())
+    {
+        for operation in operations {
+            operation["input_schema"] = json!({});
+            operation["output_schema"] = json!({});
+        }
+    }
+    fs::write(
+        manifest_path,
+        serde_json::to_string_pretty(&manifest).unwrap(),
+    )
+    .unwrap();
 }

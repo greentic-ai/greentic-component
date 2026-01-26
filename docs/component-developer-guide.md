@@ -55,6 +55,8 @@ What the key fields mean:
 - `capabilities`: what host services your component may use (state, secrets, etc.).
 - `artifacts` and `hashes`: where the Wasm lives and its hash for integrity.
 
+Operation schemas must describe concrete JSON shapes (not just `{}`). Doctor/build enforce this by default and emit `E_OP_SCHEMA_EMPTY` unless you pass `--permissive` (which only logs `W_OP_SCHEMA_EMPTY`). Keep `schemas/io/input.schema.json` and `schemas/io/output.schema.json` populated with the shapes you expect, reference them from `manifest.schemas`, and rerun `greentic-component flow update` whenever you tweak those schemas.
+
 ## 3) Payload model (canonical)
 
 The **payload** is simply the JSON input passed to an operation. The payload is built by the runner (or by you in local tests).

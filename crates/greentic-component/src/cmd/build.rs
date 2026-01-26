@@ -17,7 +17,9 @@ use crate::cmd::flow::{
 use crate::config::{
     ConfigInferenceOptions, ConfigSchemaSource, load_manifest_with_schema, resolve_manifest_path,
 };
+use crate::parse_manifest;
 use crate::path_safety::normalize_under_root;
+use crate::schema_quality::{SchemaQualityMode, validate_operation_schemas};
 
 const DEFAULT_MANIFEST: &str = "component.manifest.json";
 
@@ -47,6 +49,9 @@ pub struct BuildArgs {
     /// Emit machine-readable JSON summary
     #[arg(long = "json")]
     pub json: bool,
+    /// Allow empty operation schemas (warnings only)
+    #[arg(long)]
+    pub permissive: bool,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -89,6 +94,20 @@ pub fn run(args: BuildArgs) -> Result<()> {
     );
 
     let config = load_manifest_with_schema(&manifest_path, &inference_opts)?;
+    let mode = if args.permissive {
+        SchemaQualityMode::Permissive
+    } else {
+        SchemaQualityMode::Strict
+    };
+    let manifest_component = parse_manifest(
+        &serde_json::to_string(&config.manifest)
+            .context("failed to serialize manifest for schema validation")?,
+    )
+    .context("failed to parse manifest for schema validation")?;
+    let schema_warnings = validate_operation_schemas(&manifest_component, mode)?;
+    for warning in schema_warnings {
+        eprintln!("warning[W_OP_SCHEMA_EMPTY]: {}", warning.message);
+    }
     let component_id = manifest_component_id(&config.manifest)?;
     let _operation = resolve_operation(&config.manifest, component_id)?;
     let flow_outcome = if args.no_flow {

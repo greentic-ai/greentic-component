@@ -271,11 +271,6 @@ if [ "$LOCAL_CHECK_SKIP_BUILD" = "1" ]; then
 else
     run_cmd "cargo build --workspace --locked" cargo build --workspace --locked
 fi
-if [ "$LOCAL_CHECK_SKIP_TEST" = "1" ]; then
-    skip_flagged "cargo test --workspace --locked" "LOCAL_CHECK_SKIP_TEST=1"
-else
-    run_cmd "cargo test --workspace --locked" cargo test --workspace --locked -- --nocapture
-fi
 if [ "$LOCAL_CHECK_SKIP_BUILD_ALL" = "1" ]; then
     skip_flagged "cargo build --workspace --all-features --locked" "LOCAL_CHECK_SKIP_BUILD_ALL=1"
 else

@@ -10,6 +10,7 @@ use crate::{
     abi::{self, AbiError},
     manifest::validate_manifest,
     prepare_component_with_manifest,
+    schema_quality::{SchemaQualityMode, validate_operation_schemas},
 };
 
 #[derive(Args, Debug, Clone)]
@@ -20,6 +21,9 @@ pub struct DoctorArgs {
     /// Explicit path to component.manifest.json when it is not adjacent to the wasm
     #[arg(long)]
     pub manifest: Option<PathBuf>,
+    /// Do not fail on empty operation schemas; emit warnings instead
+    #[arg(long)]
+    pub permissive: bool,
 }
 
 #[derive(Parser, Debug)]
@@ -44,7 +48,16 @@ pub fn run(args: DoctorArgs) -> Result<(), ComponentError> {
 
     let manifest_json = fs::read_to_string(&prepared.manifest_path)?;
     validate_manifest(&manifest_json)?;
+    let mode = if args.permissive {
+        SchemaQualityMode::Permissive
+    } else {
+        SchemaQualityMode::Strict
+    };
+    let schema_warnings = validate_operation_schemas(&prepared.manifest, mode)?;
     println!("manifest schema: ok");
+    for warning in schema_warnings {
+        eprintln!("warning[W_OP_SCHEMA_EMPTY]: {}", warning.message);
+    }
 
     println!("hash verification: ok ({})", prepared.wasm_hash);
     let canonical_world = canonical_component_world();

@@ -18,6 +18,7 @@ pub mod path_safety;
 pub mod prepare;
 pub mod provenance;
 pub mod schema;
+pub mod schema_quality;
 pub mod security;
 pub mod signing;
 pub mod telemetry;
@@ -66,6 +67,7 @@ pub use provenance::{Provenance, ProvenanceError};
 pub use schema::{
     JsonPath, collect_capability_hints, collect_default_annotations, collect_redactions,
 };
+pub use schema_quality::{SchemaQualityMode, SchemaQualityWarning, validate_operation_schemas};
 pub type RedactionPath = JsonPath;
 pub use security::{Profile, enforce_capabilities};
 pub use signing::{

@@ -7,8 +7,32 @@
   "operations": [
     {
       "name": "handle_message",
-      "input_schema": {},
-      "output_schema": {}
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "Echo Component handle input",
+        "type": "object",
+        "required": ["message"],
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "Payload forwarded to handle_message",
+            "default": "Ping from echo"
+          }
+        }
+      },
+      "output_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "Echo Component handle output",
+        "type": "object",
+        "required": ["reply"],
+        "properties": {
+          "reply": {
+            "type": "string",
+            "description": "Response emitted by handle_message",
+            "default": "Echoed"
+          }
+        }
+      }
     }
   ],
   "default_operation": "handle_message",

@@ -13,8 +13,32 @@ expression: manifest.trim()
   "operations": [
     {
       "name": "handle_message",
-      "input_schema": {},
-      "output_schema": {}
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "demo-component handle input",
+        "type": "object",
+        "required": ["input"],
+        "properties": {
+          "input": {
+            "type": "string",
+            "description": "Opaque payload forwarded to handle",
+            "default": "Hello from demo-component!"
+          }
+        }
+      },
+      "output_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "demo-component handle output",
+        "type": "object",
+        "required": ["message"],
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "Response returned by the handle entry point",
+            "default": "Handled by demo-component"
+          }
+        }
+      }
     }
   ],
   "default_operation": "handle_message",

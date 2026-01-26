@@ -28,6 +28,7 @@ Practical notes for the main `greentic-component` subcommands: what they do, key
 - Usage: `greentic-component build [--manifest path] [--cargo path] [--no-flow] [--no-infer-config] [--no-write-schema] [--force-write-schema] [--no-validate] [--json]`.
 - Behavior: unless `--no-flow`, calls the same regeneration as `flow update` (fails if required defaults are missing). Builds with cargo (override via `--cargo` or `CARGO`). Removes `config_schema` from the written manifest if it was only inferred and `--no-write-schema` is set.
 - Tips: keep `--no-flow` off to avoid stale dev_flows; use `--json` for CI summaries; set `CARGO` to a wrapper if you need a custom toolchain.
+- Schema gate: the command refuses to build when any `operations[].input_schema`/`output_schema` is effectively empty (literal `{}`, unconstrained `{"type":"object"}`, or boolean `true`). Pass `--permissive` to keep building while emitting `W_OP_SCHEMA_EMPTY` warnings.
 
 ## test
 - Purpose: invoke a component locally with an in-memory state-store and secrets harness.
@@ -60,7 +61,7 @@ Practical notes for the main `greentic-component` subcommands: what they do, key
   - `supports` — flow kinds declared; adjust `supports` in the manifest.
   - `capabilities declared` — wasi/host surfaces requested; keep minimal for least privilege.
   - `limits configured` — whether resource limits are present; set `limits` for guardrails.
-- Tips: run after `build` to catch hash/world drift; point `--manifest` if wasm and manifest differ; errors on validation/hash/world/lifecycle issues.
+- Tips: run after `build` to catch hash/world drift; point `--manifest` if wasm and manifest differ; errors on validation/hash/world/lifecycle issues; pass `--permissive` to treat empty operation schemas as warnings (`W_OP_SCHEMA_EMPTY`).
 
 ### Lifecycle exports (how-to)
 The doctor report surfaces lifecycle booleans based on your wasm. To expose them, implement the generated guest trait for your world (or use a macro) to provide `on_start`/`on_stop`/health handlers. If your host expects these hooks, add implementations; otherwise they can remain false.
@@ -77,3 +78,4 @@ Doctor output reference
 - `supports: [...]` — Flow kinds declared; set in manifest.
 - `capabilities declared: ...` — Requested wasi/host surfaces; keep minimal for least privilege.
 - `limits configured: true/false` — Resource limits present; set `limits` to give hosts guardrails.
+- `operation schemas` — Empty `operations[].input_schema`/`output_schema` cause doctor to fail unless `--permissive` is used, which emits `W_OP_SCHEMA_EMPTY` warnings instead.

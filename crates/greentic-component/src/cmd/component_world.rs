@@ -10,11 +10,11 @@ static CANONICAL_COMPONENT_WORLD: Lazy<String> = Lazy::new(|| {
     format!("{base}/component@{version}")
 });
 
-const FALLBACK_WORLD: &str = "root:component/root";
+const FALLBACK_WORLDS: &[&str] = &["root:component/root", "root:root/root"];
 
-/// Returns true when the world string is the default `root:component/root` fallback.
+/// Returns true when the world string matches a fallback identifier we know about.
 pub fn is_fallback_world(world: &str) -> bool {
-    world == FALLBACK_WORLD
+    FALLBACK_WORLDS.contains(&world)
 }
 
 /// Returns the canonical component world reference emitted by the scaffolded runtime.

@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use blake3::Hasher;
 use greentic_component::manifest::{ComponentManifest, parse_manifest};
-use serde_json::{self, json};
+use serde_json::{self, Value, json};
 use tempfile::TempDir;
 use wasm_encoder::{
     CodeSection, CustomSection, ExportKind, ExportSection, Function, FunctionSection, Instruction,
@@ -16,6 +16,28 @@ use wit_component::{StringEncoding, embed_component_metadata};
 use wit_parser::{Resolve, WorldId};
 
 const WASI_MARKER: &str = "wasm32-wasip2";
+
+fn default_input_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "payload": { "type": "string" }
+        },
+        "required": ["payload"],
+        "additionalProperties": false
+    })
+}
+
+fn default_output_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "message": { "type": "string" }
+        },
+        "required": ["message"],
+        "additionalProperties": false
+    })
+}
 
 #[allow(dead_code)]
 pub struct TestComponent {
@@ -41,8 +63,8 @@ impl TestComponent {
             .map(|name| {
                 json!({
                     "name": name,
-                    "input_schema": {},
-                    "output_schema": {}
+                    "input_schema": default_input_schema(),
+                    "output_schema": default_output_schema()
                 })
             })
             .collect::<Vec<_>>();
@@ -151,8 +173,14 @@ fn build_module(world_src: &str, funcs: &[&str]) -> (Vec<u8>, String) {
         resolve.packages[pkg].name.name = "component".to_string();
         resolve.packages[pkg].name.version = None;
     }
+    let world_name = resolve.packages[pkg]
+        .worlds
+        .keys()
+        .next()
+        .map(String::as_str)
+        .expect("world lookup");
     let world = resolve
-        .select_world(&[pkg], Some("node"))
+        .select_world(&[pkg], Some(world_name))
         .expect("world lookup");
     let label = world_label(&resolve, world);
     let mut module = Module::new();

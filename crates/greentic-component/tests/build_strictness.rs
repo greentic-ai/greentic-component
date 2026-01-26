@@ -53,8 +53,20 @@ fn minimal_manifest() -> JsonValue {
         "operations": [
             {
                 "name": "handle_message",
-                "input_schema": {},
-                "output_schema": {}
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "payload": { "type": "string", "default": "ping" }
+                    },
+                    "required": ["payload"]
+                },
+                "output_schema": {
+                    "type": "object",
+                    "properties": {
+                        "result": { "type": "string", "default": "ok" }
+                    },
+                    "required": ["result"]
+                }
             }
         ],
         "default_operation": "handle_message",
@@ -182,9 +194,7 @@ fn build_fails_without_operations() {
         .env("CARGO", &fake_cargo)
         .env("GREENTIC_SKIP_NODE_EXPORT_CHECK", "1")
         .arg("build");
-    cmd.assert()
-        .failure()
-        .stderr(predicate::str::contains(
-            "Component ai.greentic.example has no operations; add at least one operation (e.g. handle_message)",
-        ));
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "manifest schema validation failed: [] has less than 1 item",
+    ));
 }
