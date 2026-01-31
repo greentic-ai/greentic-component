@@ -444,9 +444,10 @@ else
 fi
 
 publish_crates=(
-    greentic-component
-    greentic-component-runtime
+    greentic-component-manifest
     greentic-component-store
+    greentic-component-runtime
+    greentic-component
 )
 if [ -n "${PUBLISH_CRATES:-}" ]; then
     read -r -a publish_crates <<< "$PUBLISH_CRATES"
