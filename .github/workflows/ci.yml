@@ -118,6 +118,7 @@ jobs:
       CARGO_NET_RETRY: 5
       CARGO_HTTP_TIMEOUT: 120
       TARGET_DIR: target/linux
+      PUBLISH_CRATES: "greentic-component greentic-component-runtime greentic-component-store"
     steps:
       - uses: actions/checkout@v4
       - name: Setup Rust environment
@@ -164,6 +165,7 @@ jobs:
       CARGO_HTTP_TIMEOUT: 120
       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
       TARGET_DIR: target/linux
+      PUBLISH_CRATES: "greentic-component greentic-component-runtime greentic-component-store"
     steps:
       - uses: actions/checkout@v4
       - name: Setup Rust environment
@@ -194,14 +196,32 @@ jobs:
           bash ci/local_check.sh
       - name: Snapshot package contents
         run: |
-          PKG_PATH=$(ls "$GITHUB_WORKSPACE/${TARGET_DIR}/package/greentic-component-*.crate" | head -n1)
-          tar -tzf "$PKG_PATH" | sort > /tmp/greentic-component-files.txt
-          sed -n '1,200p' /tmp/greentic-component-files.txt
-      - name: Upload package manifest
+          set -euo pipefail
+          crates=()
+          if [ -n "${PUBLISH_CRATES:-}" ]; then
+            read -r -a crates <<< "$PUBLISH_CRATES"
+          fi
+          if [ "${#crates[@]}" -eq 0 ]; then
+            crates=(greentic-component)
+          fi
+          shopt -s nullglob
+          for crate in "${crates[@]}"; do
+            package_files=("$GITHUB_WORKSPACE/${TARGET_DIR}/package/${crate}-"*.crate)
+            if [ "${#package_files[@]}" -eq 0 ]; then
+              echo "No package file found for $crate"
+              continue
+            fi
+            pkg_path="${package_files[0]}"
+            list_file="/tmp/${crate}-package-files.txt"
+            tar -tzf "$pkg_path" | sort > "$list_file"
+            echo "=== $crate package contents ==="
+            sed -n '1,200p' "$list_file"
+          done
+      - name: Upload package manifests
         uses: actions/upload-artifact@v4
         with:
-          name: greentic-component-package-files
-          path: /tmp/greentic-component-files.txt
+          name: package-files
+          path: /tmp/*-package-files.txt
       - name: Wait for crates.io index
         run: |
           echo "Give crates.io index time to update"

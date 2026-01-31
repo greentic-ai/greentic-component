@@ -445,7 +445,12 @@ fi
 
 publish_crates=(
     greentic-component
+    greentic-component-runtime
+    greentic-component-store
 )
+if [ -n "${PUBLISH_CRATES:-}" ]; then
+    read -r -a publish_crates <<< "$PUBLISH_CRATES"
+fi
 if [ "$LOCAL_CHECK_SKIP_PACKAGE" = "1" ]; then
     skip_flagged "cargo package (locked)" "LOCAL_CHECK_SKIP_PACKAGE=1"
 else
