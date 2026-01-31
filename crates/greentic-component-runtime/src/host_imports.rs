@@ -13,32 +13,41 @@ use greentic_types::TenantCtx;
 use reqwest::blocking::Client as HttpClient;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde_json::Value;
-use wasmtime::component::Linker;
+use wasmtime::component::{Linker, ResourceTable};
 use wasmtime::{Engine, Result as WasmtimeResult};
+use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView, p2};
 
 use crate::error::CompError;
 use crate::loader::ComponentRef;
 use crate::policy::HostPolicy;
 
-#[derive(Debug, Clone)]
 pub struct HostState {
     _tenant: Option<TenantCtx>,
     _config: Value,
     _secrets: HashMap<String, Vec<u8>>,
+    wasi_ctx: WasiCtx,
+    wasi_table: ResourceTable,
     policy: HostPolicy,
-    http_client: HttpClient,
     state_store: Arc<Mutex<HashMap<String, Vec<u8>>>>,
+    runner: RunnerHostImpl,
+    control: ControlHostImpl,
 }
 
 impl HostState {
     pub fn empty(policy: HostPolicy) -> Self {
+        let (wasi_ctx, wasi_table) = build_wasi_state();
+        let runner_policy = policy.clone();
+        let state_store = policy.state_store.clone();
         Self {
             _tenant: None,
             _config: Value::Null,
             _secrets: HashMap::new(),
-            state_store: policy.state_store.clone(),
+            wasi_ctx,
+            wasi_table,
+            state_store,
             policy,
-            http_client: HttpClient::new(),
+            runner: RunnerHostImpl::new(runner_policy),
+            control: ControlHostImpl,
         }
     }
 
@@ -48,34 +57,43 @@ impl HostState {
         secrets: HashMap<String, Vec<u8>>,
         policy: HostPolicy,
     ) -> Self {
+        let (wasi_ctx, wasi_table) = build_wasi_state();
+        let runner_policy = policy.clone();
+        let state_store = policy.state_store.clone();
         Self {
             _tenant: Some(tenant),
             _config: config,
             _secrets: secrets,
-            state_store: policy.state_store.clone(),
+            wasi_ctx,
+            wasi_table,
+            state_store,
+            policy,
+            runner: RunnerHostImpl::new(runner_policy),
+            control: ControlHostImpl,
+        }
+    }
+}
+
+fn build_wasi_state() -> (WasiCtx, ResourceTable) {
+    let mut wasi_builder = WasiCtxBuilder::new();
+    (wasi_builder.build(), ResourceTable::new())
+}
+
+struct RunnerHostImpl {
+    policy: HostPolicy,
+    http_client: HttpClient,
+}
+
+impl RunnerHostImpl {
+    fn new(policy: HostPolicy) -> Self {
+        Self {
             policy,
             http_client: HttpClient::new(),
         }
     }
 }
 
-pub fn build_linker(engine: &Engine, _policy: &HostPolicy) -> Result<Linker<HostState>, CompError> {
-    let mut linker = Linker::<HostState>::new(engine);
-    runner_host_v1::add_to_linker(&mut linker, |state: &mut HostState| state)?;
-    v0_4::add_control_to_linker(&mut linker, |state: &mut HostState| state)?;
-    add_state_store_to_linker(&mut linker, |state: &mut HostState| state)?;
-    Ok(linker)
-}
-
-impl ControlHost for HostState {
-    fn should_cancel(&mut self) -> bool {
-        false
-    }
-
-    fn yield_now(&mut self) {}
-}
-
-impl RunnerHost for HostState {
+impl RunnerHost for RunnerHostImpl {
     fn http_request(
         &mut self,
         method: String,
@@ -129,7 +147,11 @@ impl RunnerHost for HostState {
         if !self.policy.allow_state_read {
             return Ok(None);
         }
-        let guard = self.state_store.lock().expect("state store mutex poisoned");
+        let guard = self
+            .policy
+            .state_store
+            .lock()
+            .expect("state store mutex poisoned");
         match guard.get(&key) {
             Some(bytes) => Ok(Some(
                 String::from_utf8(bytes.clone())
@@ -145,9 +167,41 @@ impl RunnerHost for HostState {
             return Ok(());
         }
         let key = format!("{_ns}:{_key}");
-        let mut guard = self.state_store.lock().expect("state store mutex poisoned");
+        let mut guard = self
+            .policy
+            .state_store
+            .lock()
+            .expect("state store mutex poisoned");
         guard.insert(key, _val.into_bytes());
         Ok(())
+    }
+}
+
+struct ControlHostImpl;
+
+impl ControlHost for ControlHostImpl {
+    fn should_cancel(&mut self) -> bool {
+        false
+    }
+
+    fn yield_now(&mut self) {}
+}
+
+pub fn build_linker(engine: &Engine, _policy: &HostPolicy) -> Result<Linker<HostState>, CompError> {
+    let mut linker = Linker::<HostState>::new(engine);
+    runner_host_v1::add_to_linker(&mut linker, |state: &mut HostState| &mut state.runner)?;
+    v0_4::add_control_to_linker(&mut linker, |state: &mut HostState| &mut state.control)?;
+    add_state_store_to_linker(&mut linker, |state: &mut HostState| state)?;
+    p2::add_to_linker_sync(&mut linker)?;
+    Ok(linker)
+}
+
+impl WasiView for HostState {
+    fn ctx(&mut self) -> WasiCtxView<'_> {
+        WasiCtxView {
+            ctx: &mut self.wasi_ctx,
+            table: &mut self.wasi_table,
+        }
     }
 }
 
@@ -270,28 +324,21 @@ mod tests {
         allow_state_delete: bool,
     ) -> HostState {
         let state_store = Arc::new(Mutex::new(HashMap::new()));
-        HostState {
-            _tenant: None,
-            _config: Value::Null,
-            _secrets: HashMap::new(),
-            policy: HostPolicy {
-                allow_http_fetch: allow_http,
-                allow_telemetry: true,
-                allow_state_read,
-                allow_state_write,
-                allow_state_delete,
-                state_store: state_store.clone(),
-            },
-            http_client: HttpClient::new(),
-            state_store,
-        }
+        let policy = HostPolicy {
+            allow_http_fetch: allow_http,
+            allow_telemetry: true,
+            allow_state_read,
+            allow_state_write,
+            allow_state_delete,
+            state_store: state_store.clone(),
+        };
+        HostState::empty(policy)
     }
-
     #[test]
     fn http_fetch_denied_by_policy() {
         let mut host = host_state(false, false, false, false);
         let result = RunnerHost::http_request(
-            &mut host,
+            &mut host.runner,
             "GET".into(),
             "http://localhost".into(),
             vec![],
@@ -311,7 +358,7 @@ mod tests {
             Err(err) => panic!("bind http listener: {err}"),
         };
         let mut host = host_state(true, false, false, false);
-        let response = RunnerHost::http_request(&mut host, "GET".into(), url, vec![], None)
+        let response = RunnerHost::http_request(&mut host.runner, "GET".into(), url, vec![], None)
             .expect("http fetch");
         let body = response.expect("http ok");
         assert_eq!(body, b"hello");
