@@ -9,7 +9,7 @@ resolver = "2"
 
 [workspace.package]
 edition = "2024"
-version = "0.4.47"
+version = "0.4.48"
 license = "MIT"
 rust-version = "1.90"
 
@@ -72,5 +72,5 @@ wasm-metadata = "0"
 wasmparser = "0"
 wasmtime = { version = "41", default-features = false, features = ["component-model", "cranelift", "runtime"] }
 wasmtime-wasi = { version = "41" }
-wit-component = "0.244.0"
-wit-parser = "0.244.0"
+wit-component = "0.244"
+wit-parser = "0.244"

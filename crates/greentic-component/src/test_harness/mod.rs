@@ -154,6 +154,7 @@ impl TestHarness {
 
         let exec_ctx = node::ExecCtx {
             tenant: make_component_tenant_ctx(&config.tenant_ctx),
+            i18n_id: config.tenant_ctx.i18n_id.clone(),
             flow_id: config.flow_id,
             node_id: config.node_id,
         };
@@ -294,6 +295,7 @@ fn make_component_tenant_ctx(tenant: &TenantCtx) -> node::TenantCtx {
         team: tenant.team.as_ref().map(|t| t.as_str().to_string()),
         user: tenant.user.as_ref().map(|u| u.as_str().to_string()),
         trace_id: tenant.trace_id.clone(),
+        i18n_id: tenant.i18n_id.clone(),
         correlation_id: tenant.correlation_id.clone(),
         deadline_unix_ms: tenant.deadline.and_then(|deadline| {
             let millis = deadline.unix_millis();

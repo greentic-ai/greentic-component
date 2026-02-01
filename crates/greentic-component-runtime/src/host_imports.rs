@@ -264,6 +264,7 @@ impl StateStoreHost for HostState {
 pub fn make_exec_ctx(cref: &ComponentRef, tenant: &TenantCtx) -> node::ExecCtx {
     node::ExecCtx {
         tenant: make_component_tenant_ctx(tenant),
+        i18n_id: tenant.i18n_id.clone(),
         flow_id: cref.name.clone(),
         node_id: None,
     }
@@ -275,6 +276,7 @@ pub fn make_component_tenant_ctx(tenant: &TenantCtx) -> node::TenantCtx {
         team: tenant.team.as_ref().map(|t| t.as_str().to_string()),
         user: tenant.user.as_ref().map(|u| u.as_str().to_string()),
         trace_id: tenant.trace_id.clone(),
+        i18n_id: tenant.i18n_id.clone(),
         correlation_id: tenant.correlation_id.clone(),
         deadline_unix_ms: tenant.deadline.and_then(|deadline| {
             let millis = deadline.unix_millis();
