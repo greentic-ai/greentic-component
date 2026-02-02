@@ -1365,7 +1365,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-component"
-version = "0.4.48"
+version = "0.4.49"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -1398,7 +1398,7 @@ dependencies = [
  "proptest",
  "regex",
  "reqwest 0.12.28",
- "schemars 1.2.0",
+ "schemars 1.2.1",
  "semver",
  "serde",
  "serde_json",
@@ -1422,13 +1422,13 @@ dependencies = [
 
 [[package]]
 name = "greentic-component-manifest"
-version = "0.4.48"
+version = "0.4.49"
 dependencies = [
  "anyhow",
  "greentic-types",
  "jsonschema",
  "regex",
- "schemars 1.2.0",
+ "schemars 1.2.1",
  "semver",
  "serde",
  "serde_json",
@@ -1439,7 +1439,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-component-runtime"
-version = "0.4.48"
+version = "0.4.49"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1454,7 +1454,7 @@ dependencies = [
  "jsonschema",
  "once_cell",
  "reqwest 0.12.28",
- "schemars 1.2.0",
+ "schemars 1.2.1",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -1467,7 +1467,7 @@ dependencies = [
 
 [[package]]
 name = "greentic-component-store"
-version = "0.4.48"
+version = "0.4.49"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1502,9 +1502,9 @@ dependencies = [
 
 [[package]]
 name = "greentic-distributor-client"
-version = "0.4.26"
+version = "0.4.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "86e9e7bcb2689b0bf29d4d5d347343fccbf9dcbca7bef5f6cc77f75000b79b6e"
+checksum = "dd02eb7999559bd1155f4000ace6a9f5b63ed3612dc7f51243e26daf8e0cb0e3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1524,9 +1524,9 @@ dependencies = [
 
 [[package]]
 name = "greentic-interfaces"
-version = "0.4.84"
+version = "0.4.86"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c4d28ecb902408967e9ccc424e6a2b5234663e5ba85659d398e8b2e1c71b16bb"
+checksum = "bd3b74de78c8b0ba0c54f6ac05ea03c16e04d673b9bc4d967db0a1c501e34161"
 dependencies = [
  "anyhow",
  "greentic-types",
@@ -1541,9 +1541,9 @@ dependencies = [
 
 [[package]]
 name = "greentic-interfaces-guest"
-version = "0.4.84"
+version = "0.4.86"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f555e27fd667edcb4e568dd9077570ca5dce53303ba270f4871d6e106e4d72f2"
+checksum = "312da712d7c858c6e63bc7bfbafce83bf581c41b3bb52b8704ba84254eb8205c"
 dependencies = [
  "greentic-interfaces",
  "greentic-types",
@@ -1554,9 +1554,9 @@ dependencies = [
 
 [[package]]
 name = "greentic-interfaces-host"
-version = "0.4.84"
+version = "0.4.86"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "287af7b8a7f1763c76cd459750f87d597f1c7afe20e438d30ee96a38950ffeaa"
+checksum = "f611ec75a111c04a294c64346b480252eb8c35906299c57c01213dbc81edb8ec"
 dependencies = [
  "greentic-interfaces",
  "greentic-types",
@@ -1566,9 +1566,9 @@ dependencies = [
 
 [[package]]
 name = "greentic-interfaces-wasmtime"
-version = "0.4.84"
+version = "0.4.86"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "86f0b60702ad7dc7aca7ac47ebbac0654acd10b42495417512e8d7d0cc3ac780"
+checksum = "e8628b8858b6c80db41530d97fb02ade6a5d39a8600375e44f4b8cdf959d10c7"
 dependencies = [
  "anyhow",
  "camino",
@@ -1592,7 +1592,7 @@ dependencies = [
  "ciborium",
  "fnv",
  "indexmap 2.13.0",
- "schemars 1.2.0",
+ "schemars 1.2.1",
  "semver",
  "serde",
  "serde_bytes",
@@ -3329,9 +3329,9 @@ dependencies = [
 
 [[package]]
 name = "schemars"
-version = "1.2.0"
+version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "54e910108742c57a770f492731f99be216a52fadd361b06c8fb59d74ccc267d2"
+checksum = "a2b42f36aa1cd011945615b92222f6bf73c599a102a300334cd7f8dbeec726cc"
 dependencies = [
  "chrono",
  "dyn-clone",
@@ -3343,9 +3343,9 @@ dependencies = [
 
 [[package]]
 name = "schemars_derive"
-version = "1.2.0"
+version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4908ad288c5035a8eb12cfdf0d49270def0a268ee162b75eeee0f85d155a7c45"
+checksum = "7d115b50f4aaeea07e79c1912f645c7513d81715d0420f8bc77a18c6260b307f"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3502,7 +3502,7 @@ dependencies = [
  "indexmap 1.9.3",
  "indexmap 2.13.0",
  "schemars 0.9.0",
- "schemars 1.2.0",
+ "schemars 1.2.1",
  "serde_core",
  "serde_json",
  "serde_with_macros",
@@ -5252,6 +5252,6 @@ dependencies = [
 
 [[package]]
 name = "zmij"
-version = "1.0.18"
+version = "1.0.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1966f8ac2c1f76987d69a74d0e0f929241c10e78136434e3be70ff7f58f64214"
+checksum = "3ff05f8caa9038894637571ae6b9e29466c1f4f829d26c9b28f869a29cbe3445"
