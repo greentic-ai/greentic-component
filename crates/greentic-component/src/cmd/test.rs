@@ -862,7 +862,13 @@ fn component_error_details(error: &ComponentInvokeError) -> Option<Value> {
 }
 
 fn error_payload_from_anyhow(err: &anyhow::Error) -> TestErrorPayload {
-    if let Some(harness_err) = err
+    let chain: Vec<String> = err
+        .chain()
+        .skip(1)
+        .map(|source| source.to_string())
+        .collect();
+
+    let (code, message, base_details) = if let Some(harness_err) = err
         .chain()
         .find_map(|source| source.downcast_ref::<HarnessError>())
     {
@@ -870,53 +876,64 @@ fn error_payload_from_anyhow(err: &anyhow::Error) -> TestErrorPayload {
             HarnessError::Timeout { .. } => ("test.timeout", harness_err.to_string()),
             HarnessError::MemoryLimit { .. } => ("test.memory_limit", harness_err.to_string()),
         };
-        return TestErrorPayload {
-            code: code.to_string(),
-            message,
-            details: None,
-        };
-    }
-
-    if let Some(world_err) = err
+        (code.to_string(), message, None)
+    } else if let Some(world_err) = err
         .chain()
         .find_map(|source| source.downcast_ref::<UnsupportedWorldError>())
     {
-        return TestErrorPayload {
-            code: "test.world.unsupported".to_string(),
-            message: world_err.to_string(),
-            details: None,
-        };
-    }
-
-    if let Some(limit_err) = err
+        (
+            "test.world.unsupported".to_string(),
+            world_err.to_string(),
+            None,
+        )
+    } else if let Some(limit_err) = err
         .chain()
         .find_map(|source| source.downcast_ref::<OutputLimitError>())
     {
-        return TestErrorPayload {
-            code: "test.output.limit".to_string(),
-            message: limit_err.to_string(),
-            details: Some(serde_json::json!({
+        (
+            "test.output.limit".to_string(),
+            limit_err.to_string(),
+            Some(serde_json::json!({
                 "limit": limit_err.limit,
                 "actual": limit_err.actual,
             })),
-        };
-    }
-
-    if let Some(component_err) = err
+        )
+    } else if let Some(component_err) = err
         .chain()
         .find_map(|source| source.downcast_ref::<ComponentInvokeError>())
     {
-        return TestErrorPayload {
-            code: component_err.code.clone(),
-            message: component_err.message.clone(),
-            details: component_error_details(component_err),
-        };
+        (
+            component_err.code.clone(),
+            component_err.message.clone(),
+            component_error_details(component_err),
+        )
+    } else {
+        ("test.failure".to_string(), err.to_string(), None)
+    };
+
+    let mut details_map = match base_details {
+        Some(Value::Object(map)) => map,
+        Some(other) => {
+            let mut map = Map::new();
+            map.insert("details".into(), other);
+            map
+        }
+        None => Map::new(),
+    };
+    if !chain.is_empty() {
+        let chain_values = chain.into_iter().map(Value::String).collect();
+        details_map.insert("chain".into(), Value::Array(chain_values));
     }
+    let details = if details_map.is_empty() {
+        None
+    } else {
+        Some(Value::Object(details_map))
+    };
 
     TestErrorPayload {
-        code: "test.failure".to_string(),
-        message: err.to_string(),
-        details: None,
+        code,
+        message,
+        details,
     }
 }
 

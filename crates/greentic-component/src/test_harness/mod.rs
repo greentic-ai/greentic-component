@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
+use blake3::Hasher;
 use greentic_interfaces_host::component::v0_5::exports::greentic::component::node;
 use greentic_interfaces_host::component::v0_5::exports::greentic::component::node::GuestIndices;
 use greentic_types::TenantCtx;
@@ -119,6 +120,7 @@ pub struct TestHarness {
     allow_http: bool,
     timeout_ms: u64,
     max_memory_bytes: usize,
+    wasm_bytes_metadata: String,
 }
 
 pub struct InvokeOutcome {
@@ -137,12 +139,41 @@ impl TestHarness {
 
         let component =
             Component::from_binary(&engine, &config.wasm_bytes).context("load component wasm")?;
+        let wasm_bytes_metadata = describe_wasm_metadata(&config.wasm_bytes);
 
         let linker = build_linker(&engine)?;
         let instance_pre = linker
             .instantiate_pre(&component)
-            .context("prepare component instance")?;
-        let guest_indices = GuestIndices::new(&instance_pre).context("load guest indices")?;
+            .map_err(|err| {
+                eprintln!(
+                    "Linker::instantiate_pre failed ({}): {err}",
+                    wasm_bytes_metadata
+                );
+                for source in err.chain().skip(1) {
+                    eprintln!("  cause: {source}");
+                }
+                err
+            })
+            .with_context(|| {
+                format!(
+                    "prepare component instance (wasm metadata: {})",
+                    wasm_bytes_metadata
+                )
+            })?;
+        let guest_indices = GuestIndices::new(&instance_pre)
+            .map_err(|err| {
+                eprintln!("GuestIndices::new failed ({}): {err}", wasm_bytes_metadata);
+                for source in err.chain().skip(1) {
+                    eprintln!("  cause: {source}");
+                }
+                err
+            })
+            .with_context(|| {
+                format!(
+                    "load guest indices (wasm metadata: {})",
+                    wasm_bytes_metadata
+                )
+            })?;
 
         let state_store = Arc::new(InMemoryStateStore::new());
         let secrets_store = InMemorySecretsStore::new(config.allow_secrets, config.allowed_secrets);
@@ -180,6 +211,7 @@ impl TestHarness {
             allow_http: config.allow_http,
             timeout_ms: config.timeout_ms,
             max_memory_bytes: config.max_memory_bytes,
+            wasm_bytes_metadata,
         })
     }
 
@@ -222,6 +254,12 @@ impl TestHarness {
                     .load(&mut store, &instance)
                     .context("load component exports")
                     .map(|exports| (instance, exports))
+            })
+            .with_context(|| {
+                format!(
+                    "failed to prepare component instance (wasm metadata: {})",
+                    self.wasm_bytes_metadata
+                )
             });
 
         let (_instance, exports) = match instance {
@@ -334,4 +372,10 @@ fn is_timeout_error(err: &anyhow::Error) -> bool {
 
 fn duration_ms(duration: Duration) -> u64 {
     duration.as_millis().try_into().unwrap_or(u64::MAX)
+}
+
+fn describe_wasm_metadata(bytes: &[u8]) -> String {
+    let mut hasher = Hasher::new();
+    hasher.update(bytes);
+    format!("len={}, blake3:{}", bytes.len(), hasher.finalize().to_hex())
 }
