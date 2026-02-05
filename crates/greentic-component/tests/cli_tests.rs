@@ -303,7 +303,7 @@ fn build_fails_on_empty_operation_schemas() {
 
     let args = BuildArgs {
         manifest: component.manifest_path.clone(),
-        cargo_bin: Some(std::path::PathBuf::from("/bin/true")),
+        cargo_bin: Some(true_bin()),
         no_flow: true,
         no_infer_config: true,
         no_write_schema: true,
@@ -327,7 +327,7 @@ fn build_permissive_allows_empty_operation_schemas() {
 
     let args = BuildArgs {
         manifest: component.manifest_path.clone(),
-        cargo_bin: Some(std::path::PathBuf::from("/bin/true")),
+        cargo_bin: Some(true_bin()),
         no_flow: true,
         no_infer_config: true,
         no_write_schema: true,
@@ -338,6 +338,21 @@ fn build_permissive_allows_empty_operation_schemas() {
     };
 
     build::run(args).expect("permissive build should succeed");
+}
+
+fn true_bin() -> std::path::PathBuf {
+    if let Some(path) = std::env::var_os("TRUE_BIN") {
+        return std::path::PathBuf::from(path);
+    }
+    if let Some(path) = std::env::var_os("PATH") {
+        for dir in std::env::split_paths(&path) {
+            let candidate = dir.join("true");
+            if candidate.is_file() {
+                return candidate;
+            }
+        }
+    }
+    std::path::PathBuf::from("true")
 }
 
 fn rewrite_operation_schemas_to_empty(manifest_path: &Path) {

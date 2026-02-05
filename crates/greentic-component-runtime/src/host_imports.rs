@@ -272,22 +272,36 @@ pub fn make_exec_ctx(cref: &ComponentRef, tenant: &TenantCtx) -> node::ExecCtx {
 
 pub fn make_component_tenant_ctx(tenant: &TenantCtx) -> node::TenantCtx {
     node::TenantCtx {
+        env: tenant.env.as_str().to_string(),
         tenant: tenant.tenant.as_str().to_string(),
+        tenant_id: tenant.tenant_id.as_str().to_string(),
         team: tenant.team.as_ref().map(|t| t.as_str().to_string()),
+        team_id: tenant.team_id.as_ref().map(|t| t.as_str().to_string()),
         user: tenant.user.as_ref().map(|u| u.as_str().to_string()),
+        user_id: tenant.user_id.as_ref().map(|u| u.as_str().to_string()),
+        session_id: tenant.session_id.clone(),
+        flow_id: tenant.flow_id.clone(),
+        node_id: tenant.node_id.clone(),
+        provider_id: tenant.provider_id.clone(),
         trace_id: tenant.trace_id.clone(),
         i18n_id: tenant.i18n_id.clone(),
         correlation_id: tenant.correlation_id.clone(),
-        deadline_unix_ms: tenant.deadline.and_then(|deadline| {
-            let millis = deadline.unix_millis();
-            if millis >= 0 {
-                u64::try_from(millis).ok()
-            } else {
-                None
-            }
-        }),
+        attributes: tenant
+            .attributes
+            .iter()
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect(),
+        deadline_ms: tenant
+            .deadline
+            .and_then(|deadline| i64::try_from(deadline.unix_millis()).ok()),
         attempt: tenant.attempt,
         idempotency_key: tenant.idempotency_key.clone(),
+        impersonation: tenant.impersonation.as_ref().map(|impersonation| {
+            v0_4::greentic::interfaces_types::types::Impersonation {
+                actor_id: impersonation.actor_id.as_str().to_string(),
+                reason: impersonation.reason.clone(),
+            }
+        }),
     }
 }
 

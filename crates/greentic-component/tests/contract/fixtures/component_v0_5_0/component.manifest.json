@@ -53,7 +53,7 @@
     }
   },
   "hashes": {
-    "component_wasm": "blake3:fc86cadf107920b3ef9323edfaca840119d6a8c5536ad3c35f8750c5c7ad988f"
+    "component_wasm": "blake3:92d791e06d1391d89394b3cc71d823bd19b167d3d281daff36c9aadcc3272f39"
   },
   "id": "com.greentic.contract.fixture",
   "limits": {
