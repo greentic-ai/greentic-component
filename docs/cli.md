@@ -2,9 +2,17 @@
 
 Practical notes for the main `greentic-component` subcommands: what they do, key flags, and why you might tweak them. Pair this with `--help` for the full list of options.
 
+Global:
+- `--help` shows usage for the CLI or a subcommand.
+- `--version` prints the CLI version.
+
 ## new
 - Purpose: scaffold a new component repo from a template (default: `rust-wasi-p2-min`).
-- Usage: `greentic-component new --name hello-world --org ai.greentic [--template rust-wasi-p2-min] [--path ./hello-world] [--non-interactive] [--no-git] [--no-check] [--json]`.
+- Usage: `greentic-component new --name hello-world --org ai.greentic [--template rust-wasi-p2-min] [--path ./hello-world] [--version 0.1.0] [--license MIT] [--wit-world greentic:component/component@0.5.0] [--non-interactive] [--no-git] [--no-check] [--json]`.
+- Options:
+- `--version <semver>` sets the initial component version (default: `0.1.0`).
+- `--license <id>` sets the license identifier embedded in generated sources (default: `MIT`).
+- `--wit-world <name>` sets the exported WIT world name (default: `greentic:component/component@0.5.0`).
 - Tips: keep `--no-check` off in CI unless you already built the wasm; use `--template` to point at custom templates (listed via `templates`); `--no-git` skips the init/commit step. The CLI prints each step (scaffold, git, cargo check) and shows cargo check duration; the first check can take a while while the wasm toolchain downloads.
 
 ## templates
@@ -25,7 +33,7 @@ Practical notes for the main `greentic-component` subcommands: what they do, key
 
 ## build
 - Purpose: one-stop: infer/validate config schema, regenerate dev_flows, build wasm, refresh artifacts/hashes.
-- Usage: `greentic-component build [--manifest path] [--cargo path] [--no-flow] [--no-infer-config] [--no-write-schema] [--force-write-schema] [--no-validate] [--json]`.
+- Usage: `greentic-component build [--manifest path] [--cargo path] [--no-flow] [--no-infer-config] [--no-write-schema] [--force-write-schema] [--no-validate] [--json] [--permissive]`.
 - Behavior: unless `--no-flow`, calls the same regeneration as `flow update` (fails if required defaults are missing). Builds with cargo (override via `--cargo` or `CARGO`). Removes `config_schema` from the written manifest if it was only inferred and `--no-write-schema` is set.
 - Tips: keep `--no-flow` off to avoid stale dev_flows; use `--json` for CI summaries; set `CARGO` to a wrapper if you need a custom toolchain.
 - Schema gate: the command refuses to build when any `operations[].input_schema`/`output_schema` is effectively empty (literal `{}`, unconstrained `{"type":"object"}`, or boolean `true`). Pass `--permissive` to keep building while emitting `W_OP_SCHEMA_EMPTY` warnings.
@@ -34,6 +42,31 @@ Practical notes for the main `greentic-component` subcommands: what they do, key
 - Purpose: invoke a component locally with an in-memory state-store and secrets harness.
 - Usage: `greentic-component test --wasm ./component.wasm --op render --input ./input.json [--state inmem] [--pretty] [--state-dump] [--manifest path] [--output out.json] [--trace-out ./trace.json]`.
 - Behavior: uses `greentic:state/store@1.0.0` in-memory storage scoped by tenant + flow/session prefix; secrets are loaded from `.env`, JSON, or `--secret` flags when declared in the manifest. State/secrets calls are denied when capabilities are not declared. Failures emit JSON with a stable `code`.
+- Options:
+- `--world <world>` overrides the component world (default: `greentic:component/component@0.5.0`).
+- `--manifest <path>` overrides the manifest location (defaults to next to the wasm).
+- `--input-json <json>` supplies inline JSON (repeatable; conflicts with `--input`).
+- `--config <path|json>` supplies component config (file path or inline JSON).
+- `--output <path>` writes the JSON result to a file.
+- `--trace-out <path>` writes a trace file (overrides `GREENTIC_TRACE_OUT`).
+- `--pretty` pretty-prints JSON output.
+- `--raw-output` prints the legacy output without the JSON envelope.
+- `--state <mode>` selects the state backend (only `inmem` supported).
+- `--state-dump` prints the in-memory state after invocation.
+- `--dry-run <bool>` toggles dry-run mode (default: true, disables HTTP and FS writes).
+- `--allow-http` allows outbound HTTP when not in dry-run.
+- `--allow-fs-write` allows filesystem writes when not in dry-run.
+- `--timeout-ms <ms>` sets the invoke timeout (default: 2000).
+- `--max-memory-mb <mb>` sets the memory limit (default: 256).
+- `--state-set <key=base64>` seeds in-memory state (repeatable).
+- `--step` adds a step marker for multi-step runs (repeatable).
+- `--secrets <path>` loads secrets from a .env file.
+- `--secrets-json <path>` loads secrets from a JSON map file.
+- `--secret <key=value>` provides a secret inline (repeatable).
+- `--env <id>` sets the environment id (default: `dev`).
+- `--tenant <id>` sets the tenant id (default: `default`).
+- `--team <id>`, `--user <id>`, `--flow <id>`, `--node <id>`, `--session <id>` set optional exec context identifiers.
+- `--verbose` prints extra diagnostics (including generated session id).
 - Tips: use `--input-json` for inline payloads; add `--secrets` and `--secret` to provide values; seed bytes with `--state-set KEY=BASE64`; pass `--verbose` to print the generated session id; repeat `--op`/`--input` with `--step` between them for multi-step runs; set `GREENTIC_TRACE_OUT` to capture a runner-compatible trace file.
 
 ## flow update
@@ -49,7 +82,7 @@ Practical notes for the main `greentic-component` subcommands: what they do, key
 
 ## doctor
 - Purpose: validate a wasm + manifest pair and print a health report.
-- Usage: `greentic-component doctor <wasm-or-dir> [--manifest path]`.
+- Usage: `greentic-component doctor <wasm-or-dir> [--manifest path] [--permissive]`.
 - Output highlights:
   - `manifest schema: ok` — manifest conforms to schema; fix missing/invalid fields otherwise.
   - `hash verification: ok` — manifest hash matches wasm bytes; run `greentic-component hash` or `build` after rebuilding wasm.

@@ -14,8 +14,7 @@ use crate::scaffold::engine::ScaffoldEngine;
     about = "Toolkit for Greentic component developers",
     version,
     propagate_version = true,
-    arg_required_else_help = true,
-    disable_version_flag = true
+    arg_required_else_help = true
 )]
 pub struct Cli {
     #[command(subcommand)]
