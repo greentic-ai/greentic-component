@@ -433,6 +433,30 @@ run_smoke_mode() {
     fi
 }
 
+run_wizard_smoke() {
+    step "Smoke: wizard scaffold"
+    local wizard_parent
+    local cleanup_wizard=0
+    local cleanup_dir
+    if [ -n "${SMOKE_DIR:-}" ]; then
+        wizard_parent="$SMOKE_DIR"
+    else
+        wizard_parent=$(mktemp -d)
+        cleanup_wizard=1
+        cleanup_dir="$wizard_parent"
+        trap "rm -rf '$cleanup_dir'" EXIT
+    fi
+    local wizard_root="$wizard_parent/wizard-smoke"
+    rm -rf "$wizard_root"
+    run_bin_cmd "wizard new" "$BIN_GREENTIC_COMPONENT" \
+        wizard new wizard-smoke --out "$wizard_parent"
+    run_bin_cmd "wizard doctor" "$BIN_COMPONENT_DOCTOR" "$wizard_root"
+    if [ $cleanup_wizard -eq 1 ]; then
+        rm -rf "$wizard_parent"
+        trap - EXIT
+    fi
+}
+
 if [ "${LOCAL_CHECK_SKIP_SMOKE:-0}" = "1" ]; then
     echo "[skip] smoke scaffold (LOCAL_CHECK_SKIP_SMOKE=1)"
 elif [ "$bins_ready" -ne 1 ]; then
@@ -441,6 +465,7 @@ else
     for mode in local cratesio; do
         run_smoke_mode "$mode"
     done
+    run_wizard_smoke
 fi
 
 publish_crates=(

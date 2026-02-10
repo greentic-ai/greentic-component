@@ -96,6 +96,7 @@ greentic-distributor-client = { workspace = true, optional = true }
 uuid = { workspace = true, optional = true }
 wasmtime = { workspace = true, optional = true }
 wasmtime-wasi = { workspace = true, optional = true }
+toml = { workspace = true }
 
 [dev-dependencies]
 assert_fs = { workspace = true }

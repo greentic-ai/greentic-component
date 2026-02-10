@@ -12,6 +12,11 @@ Practical notes for the main `greentic-component` subcommands: what they do, key
 - Usage: `greentic-component templates [--json]`.
 - Tips: use `--json` to drive tooling/selection in scripts; template paths are shown for local overrides.
 
+## wizard
+- Purpose: generate a component@0.6.0 template scaffold (separate from `new`).
+- Usage: `greentic-component wizard new <name> [--abi-version 0.6.0] [--mode default|setup] [--answers answers.json] [--out dir]`.
+- Tips: `--answers` prefills QA setup (no example file overwrites); `--abi-version` is stored in Cargo metadata and used for wasm naming; run `greentic-component doctor` on the scaffold to validate the structure.
+
 ## inspect
 - Purpose: inspect a component wasm + manifest without enforcing runtime checks.
 - Usage: `greentic-component inspect <wasm-or-dir> [--manifest path] [--json] [--strict]`.

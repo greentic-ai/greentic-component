@@ -1,0 +1,8 @@
+package greentic:component@0.6.0;
+
+world component {
+    export describe: func() -> list<u8>;
+    export qa-spec: func(mode: string) -> list<u8>;
+    export apply-answers: func(mode: string, answers: list<u8>) -> list<u8>;
+    export run: func() -> list<u8>;
+}

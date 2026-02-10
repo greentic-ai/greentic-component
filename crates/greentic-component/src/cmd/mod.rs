@@ -11,3 +11,4 @@ pub mod post;
 pub mod store;
 pub mod templates;
 pub mod test;
+pub mod wizard;

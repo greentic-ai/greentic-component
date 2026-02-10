@@ -35,6 +35,8 @@ pub enum ComponentError {
     Signing(#[from] SigningError),
     /// io failure: {0}
     Io(#[from] std::io::Error),
+    /// doctor failure: {0}
+    Doctor(String),
     /// operation schema empty: {component}/{operation} {direction} ({suggestion})
     SchemaQualityEmpty {
         component: String,
@@ -68,6 +70,7 @@ impl ComponentError {
             ComponentError::Limits(_) => "limits-error",
             ComponentError::Signing(_) => "hash-mismatch",
             ComponentError::Io(_) => "io-error",
+            ComponentError::Doctor(_) => "doctor-failure",
             ComponentError::SchemaQualityEmpty { .. } => "E_OP_SCHEMA_EMPTY",
         }
     }

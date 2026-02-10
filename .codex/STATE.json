@@ -1,0 +1,27 @@
+{
+  "active_pr": null,
+  "created_at": "2026-02-05T00:00:00Z",
+  "track": "component-wizard",
+  "prs": [
+    {
+      "id": "PR-01",
+      "file": "PR-01.md"
+    },
+    {
+      "id": "PR-02",
+      "file": "PR-02.md"
+    },
+    {
+      "id": "PR-03",
+      "file": "PR-03.md"
+    },
+    {
+      "id": "PR-04",
+      "file": "PR-04.md"
+    },
+    {
+      "id": "PR-05",
+      "file": "PR-05.md"
+    }
+  ]
+}

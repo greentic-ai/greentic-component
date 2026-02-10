@@ -4,7 +4,7 @@ use clap::{Parser, Subcommand};
 use crate::cmd::{
     self, build::BuildArgs, doctor::DoctorArgs, flow::FlowCommand, hash::HashArgs,
     inspect::InspectArgs, new::NewArgs, store::StoreCommand, templates::TemplatesArgs,
-    test::TestArgs,
+    test::TestArgs, wizard::WizardCommand,
 };
 use crate::scaffold::engine::ScaffoldEngine;
 
@@ -26,6 +26,9 @@ pub struct Cli {
 enum Commands {
     /// Scaffold a new Greentic component project
     New(NewArgs),
+    /// Component wizard helpers
+    #[command(subcommand)]
+    Wizard(WizardCommand),
     /// List available component templates
     Templates(TemplatesArgs),
     /// Run component doctor checks
@@ -55,6 +58,7 @@ pub fn main() -> Result<()> {
     let engine = ScaffoldEngine::new();
     match cli.command {
         Commands::New(args) => cmd::new::run(args, &engine),
+        Commands::Wizard(command) => cmd::wizard::run(command),
         Commands::Templates(args) => cmd::templates::run(args, &engine),
         Commands::Doctor(args) => cmd::doctor::run(args).map_err(Error::new),
         Commands::Inspect(args) => {
@@ -92,6 +96,28 @@ mod tests {
                 assert!(!args.no_git);
             }
             _ => panic!("expected new args"),
+        }
+    }
+
+    #[test]
+    fn parses_wizard_new_subcommand() {
+        let cli = Cli::try_parse_from([
+            "greentic-component",
+            "wizard",
+            "new",
+            "demo-component",
+            "--abi-version",
+            "0.6.0",
+        ])
+        .expect("expected CLI to parse");
+        match cli.command {
+            Commands::Wizard(command) => match command {
+                WizardCommand::New(args) => {
+                    assert_eq!(args.name, "demo-component");
+                    assert_eq!(args.abi_version, "0.6.0");
+                }
+            },
+            _ => panic!("expected wizard args"),
         }
     }
 }
