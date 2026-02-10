@@ -13,7 +13,6 @@ use crate::scaffold::engine::ScaffoldEngine;
     name = "greentic-component",
     about = "Toolkit for Greentic component developers",
     version,
-    propagate_version = true,
     arg_required_else_help = true
 )]
 pub struct Cli {
