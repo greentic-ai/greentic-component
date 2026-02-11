@@ -251,8 +251,8 @@ Note: the wizard currently emits a fixed 0.6.0 template.
 fn render_makefile() -> String {
     r#"SHELL := /bin/sh
 
-NAME := $(shell awk 'BEGIN{in=0} /^\[package\]/{in=1; next} /^\[/{in=0} in && /^name = / {gsub(/"/ , "", $$3); print $$3; exit}' Cargo.toml)
-ABI_VERSION := $(shell awk 'BEGIN{in=0} /^\[package.metadata.greentic\]/{in=1; next} /^\[/{in=0} in && /^abi_version = / {gsub(/"/ , "", $$3); print $$3; exit}' Cargo.toml)
+NAME := $(shell awk 'BEGIN{in_pkg=0} /^\[package\]/{in_pkg=1; next} /^\[/{in_pkg=0} in_pkg && /^name = / {gsub(/"/ , "", $$3); print $$3; exit}' Cargo.toml)
+ABI_VERSION := $(shell awk 'BEGIN{in_meta=0} /^\[package.metadata.greentic\]/{in_meta=1; next} /^\[/{in_meta=0} in_meta && /^abi_version = / {gsub(/"/ , "", $$3); print $$3; exit}' Cargo.toml)
 ABI_VERSION_UNDERSCORE := $(subst .,_,$(ABI_VERSION))
 DIST_DIR := dist
 WASM_OUT := $(DIST_DIR)/$(NAME)__$(ABI_VERSION_UNDERSCORE).wasm

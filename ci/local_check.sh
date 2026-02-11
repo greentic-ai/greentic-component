@@ -484,9 +484,9 @@ run_wizard_smoke() {
     else
         run_cmd "wizard wasm (make)" make -C "$wizard_root" wasm
         local wizard_name
-        wizard_name=$(awk 'BEGIN{in=0} /^\[package\]/{in=1; next} /^\[/{in=0} in && /^name = / {gsub(/"/ , "", $3); print $3; exit}' "$wizard_root/Cargo.toml")
+        wizard_name=$(awk 'BEGIN{in_pkg=0} /^\[package\]/{in_pkg=1; next} /^\[/{in_pkg=0} in_pkg && /^name = / {gsub(/"/ , "", $3); print $3; exit}' "$wizard_root/Cargo.toml")
         local wizard_abi
-        wizard_abi=$(awk 'BEGIN{in=0} /^\[package.metadata.greentic\]/{in=1; next} /^\[/{in=0} in && /^abi_version = / {gsub(/"/ , "", $3); print $3; exit}' "$wizard_root/Cargo.toml")
+        wizard_abi=$(awk 'BEGIN{in_meta=0} /^\[package.metadata.greentic\]/{in_meta=1; next} /^\[/{in_meta=0} in_meta && /^abi_version = / {gsub(/"/ , "", $3); print $3; exit}' "$wizard_root/Cargo.toml")
         if [ -z "$wizard_abi" ]; then
             wizard_abi="0.6.0"
         fi
