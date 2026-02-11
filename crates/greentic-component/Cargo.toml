@@ -2,7 +2,8 @@
 name = "greentic-component"
 version.workspace=true
 edition = "2024"
-rust-version = "1.89"
+rust-version = "1.90"
+default-run = "greentic-component"
 license = "MIT"
 description = "High-level component loader and store for Greentic components"
 repository = "https://github.com/greentic-ai/greentic-component"
