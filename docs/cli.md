@@ -22,14 +22,16 @@ Global:
 
 ## wizard
 - Purpose: generate a component@0.6.0 template scaffold (separate from `new`).
-- Usage: `greentic-component wizard new <name> [--abi-version 0.6.0] [--mode default|setup] [--answers answers.json] [--out dir]`.
-- Tips: `--answers` prefills QA setup (no example file overwrites); `--abi-version` is stored in Cargo metadata and used for wasm naming; run `greentic-component doctor` on the scaffold to validate the structure.
+- Usage: `greentic-component wizard new <name> [--abi-version 0.6.0] [--mode default|setup|upgrade|remove] [--answers answers.json] [--out dir]`.
+- Tips: `--answers` writes `examples/<mode>.answers.json` + `.cbor` for the selected mode (no files are created without `--answers`); `--abi-version` is stored in Cargo metadata and used for wasm naming; run `greentic-component doctor` on the built wasm to validate the structure.
 
 ## inspect
-- Purpose: inspect a component wasm + manifest without enforcing runtime checks.
-- Usage: `greentic-component inspect <wasm-or-dir> [--manifest path] [--json] [--strict]`.
-- Output: id, wasm path, world match, hash, supports, profiles, lifecycle exports, capabilities, limits. `--strict` turns warnings into errors.
-- Tips: point `--manifest` if the wasm and manifest are not co-located; use `--json` to feed CI checks.
+- Purpose: inspect a component manifest or a self-describing 0.6.0 wasm/describe artifact.
+- Usage:
+  - Manifest flow: `greentic-component inspect <manifest-or-dir> [--manifest path] [--json] [--strict]`
+  - Describe flow: `greentic-component inspect <wasm> [--json] [--verify]` or `greentic-component inspect --describe <file.cbor> [--json] [--verify]`
+- Output: manifest flow prints id, wasm path, world match, hash, supports, profiles, lifecycle exports, capabilities, limits. Describe flow prints component info + operations + SchemaIR summaries; `--verify` checks schema_hash values.
+- Tips: point `--manifest` if the wasm and manifest are not co-located; use `--describe` to inspect a prebuilt artifact without executing wasm; `--json` is CI-friendly.
 
 ## hash
 - Purpose: recompute and write `hashes.component_wasm` in the manifest.
@@ -39,7 +41,7 @@ Global:
 ## build
 - Purpose: one-stop: infer/validate config schema, regenerate dev_flows, build wasm, refresh artifacts/hashes.
 - Usage: `greentic-component build [--manifest path] [--cargo path] [--no-flow] [--no-infer-config] [--no-write-schema] [--force-write-schema] [--no-validate] [--json] [--permissive]`.
-- Behavior: unless `--no-flow`, calls the same regeneration as `flow update` (fails if required defaults are missing). Builds with cargo (override via `--cargo` or `CARGO`). Removes `config_schema` from the written manifest if it was only inferred and `--no-write-schema` is set.
+- Behavior: unless `--no-flow`, calls the same regeneration as `flow update` (fails if required defaults are missing). Builds with cargo (override via `--cargo` or `CARGO`). Removes `config_schema` from the written manifest if it was only inferred and `--no-write-schema` is set. Emits `dist/<name>__<abi>.describe.cbor` + `.json` when `describe()` is available.
 - Tips: keep `--no-flow` off to avoid stale dev_flows; use `--json` for CI summaries; set `CARGO` to a wrapper if you need a custom toolchain.
 - Schema gate: the command refuses to build when any `operations[].input_schema`/`output_schema` is effectively empty (literal `{}`, unconstrained `{"type":"object"}`, or boolean `true`). Pass `--permissive` to keep building while emitting `W_OP_SCHEMA_EMPTY` warnings.
 

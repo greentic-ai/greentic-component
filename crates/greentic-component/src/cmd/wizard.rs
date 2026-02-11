@@ -4,8 +4,9 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, anyhow};
 use clap::{Args, Subcommand, ValueEnum};
+use greentic_types::cbor::canonical;
 use serde_json::Value as JsonValue;
 
 use crate::scaffold::validate::{
@@ -41,6 +42,8 @@ pub struct WizardNewArgs {
 pub enum WizardMode {
     Default,
     Setup,
+    Upgrade,
+    Remove,
 }
 
 pub fn run(command: WizardCommand) -> Result<()> {
@@ -62,8 +65,8 @@ fn run_new(args: WizardNewArgs) -> Result<()> {
         );
     }
 
-    let answers_cbor = match args.answers.as_ref() {
-        Some(path) => Some(load_answers_cbor(path)?),
+    let answers = match args.answers.as_ref() {
+        Some(path) => Some(load_answers_payload(path)?),
         None => None,
     };
 
@@ -71,7 +74,8 @@ fn run_new(args: WizardNewArgs) -> Result<()> {
         name: name.into_string(),
         abi_version,
         prefill_mode: args.mode,
-        prefill_answers_cbor: answers_cbor,
+        prefill_answers_cbor: answers.as_ref().map(|payload| payload.cbor.clone()),
+        prefill_answers_json: answers.map(|payload| payload.json),
     };
 
     write_template(&target, &context)?;
@@ -98,14 +102,19 @@ fn resolve_out_path(
     }
 }
 
-fn load_answers_cbor(path: &Path) -> Result<Vec<u8>> {
-    let handle = fs::File::open(path)
+struct AnswersPayload {
+    json: String,
+    cbor: Vec<u8>,
+}
+
+fn load_answers_payload(path: &Path) -> Result<AnswersPayload> {
+    let json = fs::read_to_string(path)
         .with_context(|| format!("wizard: failed to open answers file {}", path.display()))?;
-    let json: JsonValue = serde_json::from_reader(handle)
+    let value: JsonValue = serde_json::from_str(&json)
         .with_context(|| format!("wizard: answers file {} is not valid JSON", path.display()))?;
-    let mut out = Vec::new();
-    encode_self_described_cbor(&json, &mut out)?;
-    Ok(out)
+    let cbor = canonical::to_canonical_cbor_allow_floats(&value)
+        .map_err(|err| anyhow!("wizard: failed to encode answers as CBOR: {err}"))?;
+    Ok(AnswersPayload { json, cbor })
 }
 
 #[derive(Debug, Clone)]
@@ -114,6 +123,7 @@ struct WizardContext {
     abi_version: String,
     prefill_mode: WizardMode,
     prefill_answers_cbor: Option<Vec<u8>>,
+    prefill_answers_json: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -138,33 +148,40 @@ fn write_template(path: &Path, context: &WizardContext) -> Result<()> {
 }
 
 fn build_files(context: &WizardContext) -> Result<Vec<GeneratedFile>> {
-    let files = vec![
+    let mut files = vec![
         text_file("Cargo.toml", render_cargo_toml(context)),
         text_file("README.md", render_readme(context)),
         text_file("Makefile", render_makefile()),
-        text_file("src/lib.rs", render_lib_rs(context)),
+        text_file("src/lib.rs", render_lib_rs()),
+        text_file("src/descriptor.rs", render_descriptor_rs(context)),
+        text_file("src/schema.rs", render_schema_rs()),
+        text_file("src/runtime.rs", render_runtime_rs()),
         text_file("src/qa.rs", render_qa_rs(context)),
-        text_file("src/schemas.rs", render_schemas_rs()),
         text_file("src/i18n.rs", render_i18n_rs()),
         text_file("wit/package.wit", render_wit_package()),
-        text_file(
-            "examples/default.answers.json",
-            render_example_answers("default"),
-        ),
-        text_file(
-            "examples/setup.answers.json",
-            render_example_answers("setup"),
-        ),
-        text_file(
-            "examples/upgrade.answers.json",
-            render_example_answers("upgrade"),
-        ),
-        text_file(
-            "examples/remove.answers.json",
-            render_example_answers("remove"),
-        ),
-        text_file("examples/example.schema.json", render_example_schema()),
+        text_file("assets/i18n/en.json", render_i18n_bundle()),
     ];
+
+    if let (Some(json), Some(cbor)) = (
+        context.prefill_answers_json.as_ref(),
+        context.prefill_answers_cbor.as_ref(),
+    ) {
+        let mode = match context.prefill_mode {
+            WizardMode::Default => "default",
+            WizardMode::Setup => "setup",
+            WizardMode::Upgrade => "upgrade",
+            WizardMode::Remove => "remove",
+        };
+        files.push(text_file(
+            &format!("examples/{mode}.answers.json"),
+            json.clone(),
+        ));
+        files.push(binary_file(
+            &format!("examples/{mode}.answers.cbor"),
+            cbor.clone(),
+        ));
+    }
+
     Ok(files)
 }
 
@@ -172,6 +189,13 @@ fn text_file(path: &str, contents: String) -> GeneratedFile {
     GeneratedFile {
         path: PathBuf::from(path),
         contents: contents.into_bytes(),
+    }
+}
+
+fn binary_file(path: &str, contents: Vec<u8>) -> GeneratedFile {
+    GeneratedFile {
+        path: PathBuf::from(path),
+        contents,
     }
 }
 
@@ -192,8 +216,8 @@ crate-type = ["cdylib", "rlib"]
 abi_version = "{abi_version}"
 
 [dependencies]
-greentic-interfaces-guest = "0.4"
 greentic-types = "0.4"
+wit-bindgen = "0.24"
 serde = {{ version = "1", features = ["derive"] }}
 serde_json = "1"
 "#,
@@ -209,10 +233,10 @@ fn render_readme(context: &WizardContext) -> String {
 Generated by `greentic-component wizard new` for component@0.6.0.
 
 ## Next steps
-- Update `wit/package.wit` to match your component interface.
-- Implement CBOR encoding in `src/lib.rs` and `src/qa.rs`.
-- Define schemas in `src/schemas.rs` and `examples/example.schema.json`.
-- Register i18n keys in `src/i18n.rs`.
+- Update `wit/package.wit` if you need custom interfaces.
+- Refine schemas in `src/schema.rs`.
+- Implement runtime logic in `src/runtime.rs`.
+- Extend QA flows in `src/qa.rs` and i18n keys in `src/i18n.rs`.
 
 ## ABI version
 Requested ABI version: {abi_version}
@@ -259,83 +283,415 @@ doctor:
     .to_string()
 }
 
-fn render_lib_rs(_context: &WizardContext) -> String {
-    r#"mod i18n;
+fn render_lib_rs() -> String {
+    r#"wit_bindgen::generate!({
+    path: "wit",
+    world: "component-v0-v6-v0",
+});
+
+mod descriptor;
+mod schema;
+mod runtime;
 mod qa;
-mod schemas;
+mod i18n;
 
-pub fn describe() -> Vec<u8> {
-    schemas::describe_cbor().to_vec()
+#[cfg(target_arch = "wasm32")]
+#[used]
+#[unsafe(link_section = ".greentic.wasi")]
+static WASI_TARGET_MARKER: [u8; 13] = *b"wasm32-wasip2";
+
+struct Component;
+
+impl exports::greentic::component::component_descriptor::Guest for Component {
+    fn get_component_info() -> Vec<u8> {
+        descriptor::info_cbor()
+    }
+
+    fn describe() -> Vec<u8> {
+        descriptor::describe_cbor()
+    }
 }
 
-pub fn qa_spec(mode: &str) -> Vec<u8> {
-    qa::qa_spec_cbor(mode).to_vec()
+impl exports::greentic::component::component_schema::Guest for Component {
+    fn input_schema() -> Vec<u8> {
+        schema::input_schema_cbor()
+    }
+
+    fn output_schema() -> Vec<u8> {
+        schema::output_schema_cbor()
+    }
+
+    fn config_schema() -> Vec<u8> {
+        schema::config_schema_cbor()
+    }
 }
 
-pub fn apply_answers(mode: &str, answers: Vec<u8>) -> Vec<u8> {
-    qa::apply_answers(mode, answers)
+impl exports::greentic::component::component_qa::Guest for Component {
+    fn qa_spec(mode: exports::greentic::component::component_qa::QaMode) -> Vec<u8> {
+        qa::qa_spec_cbor(qa::Mode::from(mode))
+    }
+
+    fn apply_answers(
+        mode: exports::greentic::component::component_qa::QaMode,
+        current_config: Vec<u8>,
+        answers: Vec<u8>,
+    ) -> Vec<u8> {
+        qa::apply_answers(qa::Mode::from(mode), current_config, answers)
+    }
 }
 
-pub fn run() -> Vec<u8> {
-    Vec::new()
+impl exports::greentic::component::component_i18n::Guest for Component {
+    fn i18n_keys() -> Vec<String> {
+        i18n::all_keys()
+    }
 }
+
+impl exports::greentic::component::component_runtime::Guest for Component {
+    fn run(
+        input: Vec<u8>,
+        state: Vec<u8>,
+    ) -> exports::greentic::component::component_runtime::RunResult {
+        let (output, new_state) = runtime::run(input, state);
+        exports::greentic::component::component_runtime::RunResult { output, new_state }
+    }
+}
+
+export!(Component);
 "#
     .to_string()
 }
 
 fn render_qa_rs(context: &WizardContext) -> String {
-    let (default_prefill, setup_prefill) = match context.prefill_answers_cbor.as_ref() {
-        Some(bytes) if context.prefill_mode == WizardMode::Default => {
-            (bytes_literal(bytes), "&[]".to_string())
-        }
-        Some(bytes) if context.prefill_mode == WizardMode::Setup => {
-            ("&[]".to_string(), bytes_literal(bytes))
-        }
-        _ => ("&[]".to_string(), "&[]".to_string()),
-    };
+    let (default_prefill, setup_prefill, upgrade_prefill, remove_prefill) =
+        match context.prefill_answers_cbor.as_ref() {
+            Some(bytes) if context.prefill_mode == WizardMode::Default => (
+                bytes_literal(bytes),
+                "&[]".to_string(),
+                "&[]".to_string(),
+                "&[]".to_string(),
+            ),
+            Some(bytes) if context.prefill_mode == WizardMode::Setup => (
+                "&[]".to_string(),
+                bytes_literal(bytes),
+                "&[]".to_string(),
+                "&[]".to_string(),
+            ),
+            Some(bytes) if context.prefill_mode == WizardMode::Upgrade => (
+                "&[]".to_string(),
+                "&[]".to_string(),
+                bytes_literal(bytes),
+                "&[]".to_string(),
+            ),
+            Some(bytes) if context.prefill_mode == WizardMode::Remove => (
+                "&[]".to_string(),
+                "&[]".to_string(),
+                "&[]".to_string(),
+                bytes_literal(bytes),
+            ),
+            _ => (
+                "&[]".to_string(),
+                "&[]".to_string(),
+                "&[]".to_string(),
+                "&[]".to_string(),
+            ),
+        };
 
-    format!(
-        r#"pub const QA_MODES: &[&str] = &["default", "setup", "upgrade", "remove"];
+    let template = r#"use std::collections::BTreeMap;
 
-const DEFAULT_PREFILLED_ANSWERS_CBOR: &[u8] = {default_prefill};
-const SETUP_PREFILLED_ANSWERS_CBOR: &[u8] = {setup_prefill};
-const UPGRADE_PREFILLED_ANSWERS_CBOR: &[u8] = &[];
-const REMOVE_PREFILLED_ANSWERS_CBOR: &[u8] = &[];
+use greentic_types::cbor::canonical;
+use greentic_types::i18n_text::I18nText;
+use greentic_types::schemas::component::v0_6_0::{ComponentQaSpec, QaMode, Question, QuestionKind};
+use serde_json::Value as JsonValue;
 
-pub fn qa_spec_cbor(mode: &str) -> &'static [u8] {{
-    match mode {{
-        "default" => &[],
-        "setup" => &[],
-        "upgrade" => &[],
-        "remove" => &[],
-        _ => &[],
+const DEFAULT_PREFILLED_ANSWERS_CBOR: &[u8] = __DEFAULT_PREFILL__;
+const SETUP_PREFILLED_ANSWERS_CBOR: &[u8] = __SETUP_PREFILL__;
+const UPGRADE_PREFILLED_ANSWERS_CBOR: &[u8] = __UPGRADE_PREFILL__;
+const REMOVE_PREFILLED_ANSWERS_CBOR: &[u8] = __REMOVE_PREFILL__;
+
+#[derive(Debug, Clone, Copy)]
+pub enum Mode {{
+    Default,
+    Setup,
+    Upgrade,
+    Remove,
+}}
+
+impl From<crate::exports::greentic::component::component_qa::QaMode> for Mode {{
+    fn from(mode: crate::exports::greentic::component::component_qa::QaMode) -> Self {{
+        match mode {{
+            crate::exports::greentic::component::component_qa::QaMode::Default => Mode::Default,
+            crate::exports::greentic::component::component_qa::QaMode::Setup => Mode::Setup,
+            crate::exports::greentic::component::component_qa::QaMode::Upgrade => Mode::Upgrade,
+            crate::exports::greentic::component::component_qa::QaMode::Remove => Mode::Remove,
+        }}
     }}
 }}
 
-pub fn prefilled_answers_cbor(mode: &str) -> &'static [u8] {{
+pub fn qa_spec_cbor(mode: Mode) -> Vec<u8> {{
+    let spec = qa_spec(mode);
+    canonical::to_canonical_cbor_allow_floats(&spec).unwrap_or_default()
+}}
+
+pub fn prefilled_answers_cbor(mode: Mode) -> &'static [u8] {{
     match mode {{
-        "default" => DEFAULT_PREFILLED_ANSWERS_CBOR,
-        "setup" => SETUP_PREFILLED_ANSWERS_CBOR,
-        "upgrade" => UPGRADE_PREFILLED_ANSWERS_CBOR,
-        "remove" => REMOVE_PREFILLED_ANSWERS_CBOR,
-        _ => &[],
+        Mode::Default => DEFAULT_PREFILLED_ANSWERS_CBOR,
+        Mode::Setup => SETUP_PREFILLED_ANSWERS_CBOR,
+        Mode::Upgrade => UPGRADE_PREFILLED_ANSWERS_CBOR,
+        Mode::Remove => REMOVE_PREFILLED_ANSWERS_CBOR,
     }}
 }}
 
-pub fn apply_answers(_mode: &str, _answers: Vec<u8>) -> Vec<u8> {{
-    // TODO: merge provided answers with defaults and return the resolved config.
-    Vec::new()
+pub fn apply_answers(mode: Mode, current_config: Vec<u8>, answers: Vec<u8>) -> Vec<u8> {{
+    let mut config = decode_map(&current_config);
+    let updates = decode_map(&answers);
+    match mode {{
+        Mode::Default | Mode::Setup | Mode::Upgrade => {{
+            for (key, value) in updates {{
+                config.insert(key, value);
+            }}
+        }}
+        Mode::Remove => {{
+            config.clear();
+            config.insert("enabled".to_string(), JsonValue::Bool(false));
+        }}
+    }}
+    canonical::to_canonical_cbor_allow_floats(&config).unwrap_or_default()
 }}
-"#,
-        default_prefill = default_prefill,
-        setup_prefill = setup_prefill,
-    )
+
+fn qa_spec(mode: Mode) -> ComponentQaSpec {{
+    let (title_key, description_key, questions) = match mode {{
+        Mode::Default => (
+            "qa.default.title",
+            Some("qa.default.description"),
+            vec![question_enabled("qa.default.enabled.label", "qa.default.enabled.help")],
+        ),
+        Mode::Setup => (
+            "qa.setup.title",
+            Some("qa.setup.description"),
+            vec![question_enabled("qa.setup.enabled.label", "qa.setup.enabled.help")],
+        ),
+        Mode::Upgrade => ("qa.upgrade.title", None, Vec::new()),
+        Mode::Remove => ("qa.remove.title", None, Vec::new()),
+    }};
+    ComponentQaSpec {{
+        mode: match mode {{
+            Mode::Default => QaMode::Default,
+            Mode::Setup => QaMode::Setup,
+            Mode::Upgrade => QaMode::Upgrade,
+            Mode::Remove => QaMode::Remove,
+        }},
+        title: I18nText::new(title_key, None),
+        description: description_key.map(|key| I18nText::new(key, None)),
+        questions,
+        defaults: BTreeMap::new(),
+    }}
+}}
+
+fn question_enabled(label_key: &str, help_key: &str) -> Question {{
+    Question {{
+        id: "enabled".to_string(),
+        label: I18nText::new(label_key, None),
+        help: Some(I18nText::new(help_key, None)),
+        error: None,
+        kind: QuestionKind::Bool,
+        required: true,
+        default: Some(JsonValue::Bool(true)),
+    }}
+}}
+
+fn decode_map(bytes: &[u8]) -> BTreeMap<String, JsonValue> {{
+    if bytes.is_empty() {{
+        return BTreeMap::new();
+    }}
+    let value: JsonValue = match canonical::from_cbor(bytes) {{
+        Ok(value) => value,
+        Err(_) => return BTreeMap::new(),
+    }};
+    let JsonValue::Object(map) = value else {{
+        return BTreeMap::new();
+    }};
+    map.into_iter().collect()
+}}
+"#;
+    template
+        .replace("__DEFAULT_PREFILL__", &default_prefill)
+        .replace("__SETUP_PREFILL__", &setup_prefill)
+        .replace("__UPGRADE_PREFILL__", &upgrade_prefill)
+        .replace("__REMOVE_PREFILL__", &remove_prefill)
 }
 
-fn render_schemas_rs() -> String {
-    r#"pub fn describe_cbor() -> &'static [u8] {
-    // TODO: return self-describing CBOR for the component descriptor.
-    &[]
+fn render_descriptor_rs(context: &WizardContext) -> String {
+    let template = r#"use std::collections::BTreeMap;
+
+use greentic_types::cbor::canonical;
+use greentic_types::schemas::component::v0_6_0::{
+    ComponentDescribe, ComponentInfo, ComponentOperation, ComponentRunInput, ComponentRunOutput,
+    RedactionRule, RedactionKind, schema_hash,
+};
+
+use crate::schema;
+
+pub fn info() -> ComponentInfo {
+    ComponentInfo {
+        id: "com.example.__NAME__".to_string(),
+        version: "0.1.0".to_string(),
+        role: "tool".to_string(),
+        display_name: None,
+    }
+}
+
+pub fn info_cbor() -> Vec<u8> {
+    canonical::to_canonical_cbor_allow_floats(&info()).unwrap_or_default()
+}
+
+pub fn describe() -> ComponentDescribe {
+    let input_schema = schema::input_schema();
+    let output_schema = schema::output_schema();
+    let config_schema = schema::config_schema();
+    let op_hash = schema_hash(&input_schema, &output_schema, &config_schema)
+        .expect("schema hash");
+    let operation = ComponentOperation {
+        id: "run".to_string(),
+        display_name: None,
+        input: ComponentRunInput { schema: input_schema },
+        output: ComponentRunOutput { schema: output_schema },
+        defaults: BTreeMap::new(),
+        redactions: vec![RedactionRule {
+            json_pointer: "/secret".to_string(),
+            kind: RedactionKind::Secret,
+        }],
+        constraints: BTreeMap::new(),
+        schema_hash: op_hash,
+    };
+    ComponentDescribe {
+        info: info(),
+        provided_capabilities: Vec::new(),
+        required_capabilities: Vec::new(),
+        metadata: BTreeMap::new(),
+        operations: vec![operation],
+        config_schema,
+    }
+}
+
+pub fn describe_cbor() -> Vec<u8> {
+    canonical::to_canonical_cbor_allow_floats(&describe()).unwrap_or_default()
+}
+"#;
+    template.replace("__NAME__", &context.name)
+}
+
+fn render_schema_rs() -> String {
+    r#"use std::collections::BTreeMap;
+
+use greentic_types::cbor::canonical;
+use greentic_types::schemas::common::schema_ir::{AdditionalProperties, SchemaIr};
+
+pub fn input_schema() -> SchemaIr {
+    object_schema(vec![(
+        "message",
+        SchemaIr::String {
+            min_len: Some(1),
+            max_len: Some(1024),
+            regex: None,
+            format: None,
+        },
+    )])
+}
+
+pub fn output_schema() -> SchemaIr {
+    object_schema(vec![(
+        "result",
+        SchemaIr::String {
+            min_len: Some(1),
+            max_len: Some(1024),
+            regex: None,
+            format: None,
+        },
+    )])
+}
+
+pub fn config_schema() -> SchemaIr {
+    object_schema(vec![("enabled", SchemaIr::Bool)])
+}
+
+pub fn input_schema_cbor() -> Vec<u8> {
+    canonical::to_canonical_cbor_allow_floats(&input_schema()).unwrap_or_default()
+}
+
+pub fn output_schema_cbor() -> Vec<u8> {
+    canonical::to_canonical_cbor_allow_floats(&output_schema()).unwrap_or_default()
+}
+
+pub fn config_schema_cbor() -> Vec<u8> {
+    canonical::to_canonical_cbor_allow_floats(&config_schema()).unwrap_or_default()
+}
+
+fn object_schema(props: Vec<(&str, SchemaIr)>) -> SchemaIr {
+    let mut properties = BTreeMap::new();
+    let mut required = Vec::new();
+    for (name, schema) in props {
+        properties.insert(name.to_string(), schema);
+        required.push(name.to_string());
+    }
+    SchemaIr::Object {
+        properties,
+        required,
+        additional: AdditionalProperties::Forbid,
+    }
+}
+"#
+    .to_string()
+}
+
+fn render_runtime_rs() -> String {
+    r#"use std::collections::BTreeMap;
+
+use greentic_types::cbor::canonical;
+use serde_json::Value as JsonValue;
+
+pub fn run(input: Vec<u8>, state: Vec<u8>) -> (Vec<u8>, Vec<u8>) {
+    let input_map = decode_map(&input);
+    let message = input_map
+        .get("message")
+        .and_then(|value| value.as_str())
+        .unwrap_or("ok");
+    let mut output = BTreeMap::new();
+    output.insert(
+        "result".to_string(),
+        JsonValue::String(format!("processed: {message}")),
+    );
+    let output_cbor = canonical::to_canonical_cbor_allow_floats(&output).unwrap_or_default();
+    let state_cbor = canonicalize_or_empty(&state);
+    (output_cbor, state_cbor)
+}
+
+fn canonicalize_or_empty(bytes: &[u8]) -> Vec<u8> {
+    let empty = || {
+        canonical::to_canonical_cbor_allow_floats(&BTreeMap::<String, JsonValue>::new())
+            .unwrap_or_default()
+    };
+    if bytes.is_empty() {
+        return empty();
+    }
+    let value: JsonValue = match canonical::from_cbor(bytes) {
+        Ok(value) => value,
+        Err(_) => return empty(),
+    };
+    canonical::to_canonical_cbor_allow_floats(&value).unwrap_or_default()
+}
+
+fn decode_map(bytes: &[u8]) -> BTreeMap<String, JsonValue> {
+    if bytes.is_empty() {
+        return BTreeMap::new();
+    }
+    let value: JsonValue = match canonical::from_cbor(bytes) {
+        Ok(value) => value,
+        Err(_) => return BTreeMap::new(),
+    };
+    let JsonValue::Object(map) = value else {
+        return BTreeMap::new();
+    };
+    map.into_iter().collect()
 }
 "#
     .to_string()
@@ -343,17 +699,37 @@ fn render_schemas_rs() -> String {
 
 fn render_i18n_rs() -> String {
     r#"pub const I18N_KEYS: &[&str] = &[
-    "component.title",
-    "component.description",
-    "qa.prompt.example",
+    "qa.default.title",
+    "qa.default.description",
+    "qa.default.enabled.label",
+    "qa.default.enabled.help",
+    "qa.setup.title",
+    "qa.setup.description",
+    "qa.setup.enabled.label",
+    "qa.setup.enabled.help",
+    "qa.upgrade.title",
+    "qa.remove.title",
 ];
 
-pub fn all_keys() -> &'static [&'static str] {
-    I18N_KEYS
+pub fn all_keys() -> Vec<String> {
+    I18N_KEYS.iter().map(|key| (*key).to_string()).collect()
+}
+"#
+    .to_string()
 }
 
-pub fn contains(key: &str) -> bool {
-    I18N_KEYS.iter().any(|value| value == &key)
+fn render_i18n_bundle() -> String {
+    r#"{
+  "qa.default.title": "Default configuration",
+  "qa.default.description": "Review default settings for this component.",
+  "qa.default.enabled.label": "Enable the component",
+  "qa.default.enabled.help": "Toggle whether the component should run.",
+  "qa.setup.title": "Initial setup",
+  "qa.setup.description": "Provide initial configuration values.",
+  "qa.setup.enabled.label": "Enable on setup",
+  "qa.setup.enabled.help": "Enable the component after setup completes.",
+  "qa.upgrade.title": "Upgrade configuration",
+  "qa.remove.title": "Removal settings"
 }
 "#
     .to_string()
@@ -362,34 +738,46 @@ pub fn contains(key: &str) -> bool {
 fn render_wit_package() -> String {
     r#"package greentic:component@0.6.0;
 
-world component {
-    export describe: func() -> list<u8>;
-    export qa-spec: func(mode: string) -> list<u8>;
-    export apply-answers: func(mode: string, answers: list<u8>) -> list<u8>;
-    export run: func() -> list<u8>;
-}
-"#
-    .to_string()
+interface component-descriptor {
+  get-component-info: func() -> list<u8>;
+  describe: func() -> list<u8>;
 }
 
-fn render_example_answers(_mode: &str) -> String {
-    r#"{
-  "example": "value"
-}
-"#
-    .to_string()
+interface component-schema {
+  input-schema: func() -> list<u8>;
+  output-schema: func() -> list<u8>;
+  config-schema: func() -> list<u8>;
 }
 
-fn render_example_schema() -> String {
-    r#"{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "type": "object",
-  "properties": {
-    "example": {
-      "type": "string"
-    }
-  },
-  "additionalProperties": false
+interface component-runtime {
+  record run-result {
+    output: list<u8>,
+    new-state: list<u8>,
+  }
+  run: func(input: list<u8>, state: list<u8>) -> run-result;
+}
+
+interface component-qa {
+  enum qa-mode {
+    default,
+    setup,
+    upgrade,
+    remove,
+  }
+  qa-spec: func(mode: qa-mode) -> list<u8>;
+  apply-answers: func(mode: qa-mode, current-config: list<u8>, answers: list<u8>) -> list<u8>;
+}
+
+interface component-i18n {
+  i18n-keys: func() -> list<string>;
+}
+
+world component-v0-v6-v0 {
+  export component-descriptor;
+  export component-schema;
+  export component-runtime;
+  export component-qa;
+  export component-i18n;
 }
 "#
     .to_string()
@@ -407,110 +795,14 @@ fn bytes_literal(bytes: &[u8]) -> String {
     format!("&[{rendered}]")
 }
 
-fn encode_self_described_cbor(value: &JsonValue, out: &mut Vec<u8>) -> Result<()> {
-    encode_tag(55799, out);
-    encode_value(value, out)?;
-    Ok(())
-}
-
-fn encode_value(value: &JsonValue, out: &mut Vec<u8>) -> Result<()> {
-    match value {
-        JsonValue::Null => out.push(0xf6),
-        JsonValue::Bool(false) => out.push(0xf4),
-        JsonValue::Bool(true) => out.push(0xf5),
-        JsonValue::Number(num) => {
-            if let Some(i) = num.as_i64() {
-                encode_signed(i, out);
-            } else if let Some(u) = num.as_u64() {
-                encode_unsigned(0, u, out);
-            } else if let Some(f) = num.as_f64() {
-                encode_f64(f, out);
-            } else {
-                bail!("wizard: unsupported JSON number format");
-            }
-        }
-        JsonValue::String(text) => encode_text(text, out),
-        JsonValue::Array(values) => {
-            encode_unsigned(4, values.len() as u64, out);
-            for item in values {
-                encode_value(item, out)?;
-            }
-        }
-        JsonValue::Object(map) => {
-            let mut items = map.iter().collect::<Vec<_>>();
-            items.sort_by(|(a, _), (b, _)| {
-                let a_bytes = a.as_bytes();
-                let b_bytes = b.as_bytes();
-                a_bytes
-                    .len()
-                    .cmp(&b_bytes.len())
-                    .then_with(|| a_bytes.cmp(b_bytes))
-            });
-            encode_unsigned(5, items.len() as u64, out);
-            for (key, value) in items {
-                encode_text(key, out);
-                encode_value(value, out)?;
-            }
-        }
-    }
-    Ok(())
-}
-
-fn encode_text(text: &str, out: &mut Vec<u8>) {
-    encode_unsigned(3, text.len() as u64, out);
-    out.extend_from_slice(text.as_bytes());
-}
-
-fn encode_signed(value: i64, out: &mut Vec<u8>) {
-    if value >= 0 {
-        encode_unsigned(0, value as u64, out);
-    } else {
-        let encoded = (-1 - value) as u64;
-        encode_unsigned(1, encoded, out);
-    }
-}
-
-fn encode_tag(tag: u64, out: &mut Vec<u8>) {
-    encode_unsigned(6, tag, out);
-}
-
-fn encode_f64(value: f64, out: &mut Vec<u8>) {
-    out.push(0xfb);
-    out.extend_from_slice(&value.to_be_bytes());
-}
-
-fn encode_unsigned(major: u8, value: u64, out: &mut Vec<u8>) {
-    let major = major << 5;
-    match value {
-        0..=23 => out.push(major | value as u8),
-        24..=0xff => {
-            out.push(major | 24);
-            out.push(value as u8);
-        }
-        0x100..=0xffff => {
-            out.push(major | 25);
-            out.extend_from_slice(&(value as u16).to_be_bytes());
-        }
-        0x1_0000..=0xffff_ffff => {
-            out.push(major | 26);
-            out.extend_from_slice(&(value as u32).to_be_bytes());
-        }
-        _ => {
-            out.push(major | 27);
-            out.extend_from_slice(&value.to_be_bytes());
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn encodes_text_deterministically() {
+    fn encodes_answers_cbor() {
         let json = serde_json::json!({"b": 1, "a": 2});
-        let mut out = Vec::new();
-        encode_self_described_cbor(&json, &mut out).unwrap();
-        assert!(!out.is_empty());
+        let cbor = canonical::to_canonical_cbor_allow_floats(&json).unwrap();
+        assert!(!cbor.is_empty());
     }
 }

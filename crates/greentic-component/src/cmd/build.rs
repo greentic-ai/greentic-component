@@ -8,6 +8,9 @@ use std::process::Command;
 use anyhow::{Context, Result, anyhow, bail};
 use clap::Args;
 use serde_json::Value as JsonValue;
+use wasmtime::component::{Component, Linker, Val};
+use wasmtime::{Engine, Store};
+use wasmtime_wasi::{ResourceTable, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 
 use crate::abi::{self, AbiError};
 use crate::cmd::component_world::{canonical_component_world, is_fallback_world};
@@ -20,6 +23,8 @@ use crate::config::{
 use crate::parse_manifest;
 use crate::path_safety::normalize_under_root;
 use crate::schema_quality::{SchemaQualityMode, validate_operation_schemas};
+use greentic_types::cbor::canonical;
+use greentic_types::schemas::component::v0_6_0::ComponentDescribe;
 
 const DEFAULT_MANIFEST: &str = "component.manifest.json";
 
@@ -131,6 +136,7 @@ pub fn run(args: BuildArgs) -> Result<()> {
             .map(|obj| obj.remove("config_schema"));
     }
     let (wasm_path, wasm_hash) = update_manifest_hashes(manifest_dir, &mut manifest_to_write)?;
+    emit_describe_artifacts(manifest_dir, &manifest_to_write, &wasm_path)?;
     write_manifest(&manifest_path, &manifest_to_write)?;
 
     if args.json {
@@ -322,4 +328,173 @@ fn write_manifest(manifest_path: &Path, manifest: &JsonValue) -> Result<()> {
     let formatted = serde_json::to_string_pretty(manifest)?;
     fs::write(manifest_path, formatted + "\n")
         .with_context(|| format!("failed to write {}", manifest_path.display()))
+}
+
+fn emit_describe_artifacts(
+    manifest_dir: &Path,
+    manifest: &JsonValue,
+    wasm_path: &Path,
+) -> Result<()> {
+    let abi_version = read_abi_version(manifest_dir);
+    let require_describe = abi_version.as_deref() == Some("0.6.0");
+
+    let describe_bytes = match call_describe(wasm_path) {
+        Ok(bytes) => bytes,
+        Err(err) => {
+            if require_describe {
+                return Err(anyhow!("describe failed: {err}"));
+            }
+            eprintln!("warning: skipping describe artifacts ({err})");
+            return Ok(());
+        }
+    };
+
+    let payload = strip_self_describe_tag(&describe_bytes);
+    let canonical_bytes = canonical::canonicalize_allow_floats(payload)
+        .map_err(|err| anyhow!("describe canonicalization failed: {err}"))?;
+    let describe: ComponentDescribe = canonical::from_cbor(&canonical_bytes)
+        .map_err(|err| anyhow!("describe decode failed: {err}"))?;
+
+    let dist_dir = manifest_dir.join("dist");
+    fs::create_dir_all(&dist_dir)
+        .with_context(|| format!("failed to create {}", dist_dir.display()))?;
+
+    let (name, abi_underscore) = artifact_basename(manifest, wasm_path, abi_version.as_deref());
+    let base = format!("{name}__{abi_underscore}");
+    let describe_cbor_path = dist_dir.join(format!("{base}.describe.cbor"));
+    fs::write(&describe_cbor_path, &canonical_bytes)
+        .with_context(|| format!("failed to write {}", describe_cbor_path.display()))?;
+
+    let describe_json_path = dist_dir.join(format!("{base}.describe.json"));
+    let json = serde_json::to_string_pretty(&describe)?;
+    fs::write(&describe_json_path, json + "\n")
+        .with_context(|| format!("failed to write {}", describe_json_path.display()))?;
+
+    let wasm_out = dist_dir.join(format!("{base}.wasm"));
+    if wasm_out != wasm_path {
+        let _ = fs::copy(wasm_path, &wasm_out);
+    }
+
+    Ok(())
+}
+
+fn read_abi_version(manifest_dir: &Path) -> Option<String> {
+    let cargo_path = manifest_dir.join("Cargo.toml");
+    let contents = fs::read_to_string(cargo_path).ok()?;
+    let doc: toml::Value = toml::from_str(&contents).ok()?;
+    doc.get("package")
+        .and_then(|pkg| pkg.get("metadata"))
+        .and_then(|meta| meta.get("greentic"))
+        .and_then(|g| g.get("abi_version"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+}
+
+fn artifact_basename(
+    manifest: &JsonValue,
+    wasm_path: &Path,
+    abi_version: Option<&str>,
+) -> (String, String) {
+    let name = manifest
+        .get("name")
+        .and_then(|v| v.as_str())
+        .or_else(|| manifest.get("id").and_then(|v| v.as_str()))
+        .map(sanitize_name)
+        .unwrap_or_else(|| {
+            wasm_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .map(sanitize_name)
+                .unwrap_or_else(|| "component".to_string())
+        });
+    let abi = abi_version.unwrap_or("0.6.0").replace('.', "_");
+    (name, abi)
+}
+
+fn sanitize_name(raw: &str) -> String {
+    raw.chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
+        .collect::<String>()
+        .trim_matches('_')
+        .to_string()
+}
+
+fn call_describe(wasm_path: &Path) -> Result<Vec<u8>> {
+    let mut config = wasmtime::Config::new();
+    config.wasm_component_model(true);
+    let engine = Engine::new(&config).context("failed to create engine")?;
+    let component = Component::from_file(&engine, wasm_path)
+        .with_context(|| format!("failed to load component {}", wasm_path.display()))?;
+    let mut linker = Linker::new(&engine);
+    wasmtime_wasi::p2::add_to_linker_sync(&mut linker).context("failed to add wasi")?;
+    let mut store = Store::new(&engine, BuildWasi::new()?);
+    let instance = linker
+        .instantiate(&mut store, &component)
+        .context("failed to instantiate component")?;
+    let instance_index = instance
+        .get_export_index(&mut store, None, "component-descriptor")
+        .ok_or_else(|| anyhow!("missing export interface component-descriptor"))?;
+    let func_index = instance
+        .get_export_index(&mut store, Some(&instance_index), "describe")
+        .ok_or_else(|| anyhow!("missing export component-descriptor.describe"))?;
+    let func = instance
+        .get_func(&mut store, func_index)
+        .ok_or_else(|| anyhow!("describe export is not callable"))?;
+    let mut results = vec![Val::Bool(false); func.ty(&mut store).results().len()];
+    func.call(&mut store, &[], &mut results)
+        .context("describe call failed")?;
+    func.post_return(&mut store).context("post-return failed")?;
+    let val = results
+        .first()
+        .ok_or_else(|| anyhow!("describe returned no value"))?;
+    val_to_bytes(val).map_err(|err| anyhow!(err))
+}
+
+fn val_to_bytes(val: &Val) -> Result<Vec<u8>, String> {
+    match val {
+        Val::List(items) => {
+            let mut out = Vec::with_capacity(items.len());
+            for item in items {
+                match item {
+                    Val::U8(byte) => out.push(*byte),
+                    _ => return Err("expected list<u8>".to_string()),
+                }
+            }
+            Ok(out)
+        }
+        _ => Err("expected list<u8>".to_string()),
+    }
+}
+
+fn strip_self_describe_tag(bytes: &[u8]) -> &[u8] {
+    const SELF_DESCRIBE_TAG: [u8; 3] = [0xd9, 0xd9, 0xf7];
+    if bytes.starts_with(&SELF_DESCRIBE_TAG) {
+        &bytes[SELF_DESCRIBE_TAG.len()..]
+    } else {
+        bytes
+    }
+}
+
+struct BuildWasi {
+    ctx: WasiCtx,
+    table: ResourceTable,
+}
+
+impl BuildWasi {
+    fn new() -> Result<Self> {
+        let ctx = WasiCtxBuilder::new().build();
+        Ok(Self {
+            ctx,
+            table: ResourceTable::new(),
+        })
+    }
+}
+
+impl WasiView for BuildWasi {
+    fn ctx(&mut self) -> WasiCtxView<'_> {
+        WasiCtxView {
+            ctx: &mut self.ctx,
+            table: &mut self.table,
+        }
+    }
 }

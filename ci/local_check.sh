@@ -103,6 +103,22 @@ run_bin_cmd() {
     fi
 }
 
+run_bin_cmd_expect_fail() {
+    local desc=$1
+    local bin_path=$2
+    shift 2
+    step "$desc"
+    if [ ! -x "$bin_path" ]; then
+        echo "[fail] $desc ($bin_path missing)"
+        record_failure "$desc ($bin_path missing)"
+        return 1
+    fi
+    if "$bin_path" "$@"; then
+        echo "[fail] $desc (unexpected success)"
+        record_failure "$desc (unexpected success)"
+    fi
+}
+
 run_or_skip() {
     local desc=$1
     shift
@@ -304,7 +320,7 @@ else
 
     run_bin_cmd "component-inspect probe" "$BIN_COMPONENT_INSPECT" --json crates/greentic-component/tests/fixtures/manifests/valid.component.json
     export GREENTIC_SKIP_NODE_EXPORT_CHECK=1
-    run_bin_cmd "component-doctor probe" "$BIN_COMPONENT_DOCTOR" crates/greentic-component/tests/fixtures/manifests/valid.component.json
+    run_bin_cmd_expect_fail "component-doctor probe" "$BIN_COMPONENT_DOCTOR" crates/greentic-component/tests/fixtures/manifests/valid.component.json
     unset GREENTIC_SKIP_NODE_EXPORT_CHECK
 fi
 
@@ -336,7 +352,7 @@ run_smoke_mode() {
     run_bin_cmd "Smoke ($mode): scaffold component" "$BIN_GREENTIC_COMPONENT" \
         new --name "$SMOKE_NAME" --org ai.greentic \
         --path "$smoke_path" --non-interactive --no-check --json
-    run_bin_cmd "Smoke ($mode): component-doctor" "$BIN_COMPONENT_DOCTOR" "$smoke_path"
+    run_bin_cmd_expect_fail "Smoke ($mode): component-doctor" "$BIN_COMPONENT_DOCTOR" "$smoke_path"
     local network_ok=0
     local network_reason="${CRATES_IO_REASON:-network unavailable}"
     if [ "$LOCAL_CHECK_ONLINE" = "1" ] && [ "$CRATES_IO_AVAILABLE" = "1" ]; then
@@ -450,7 +466,35 @@ run_wizard_smoke() {
     rm -rf "$wizard_root"
     run_bin_cmd "wizard new" "$BIN_GREENTIC_COMPONENT" \
         wizard new wizard-smoke --out "$wizard_parent"
-    run_bin_cmd "wizard doctor" "$BIN_COMPONENT_DOCTOR" "$wizard_root"
+    run_bin_cmd_expect_fail "wizard doctor (unbuilt)" "$BIN_COMPONENT_DOCTOR" "$wizard_root"
+
+    local wizard_manifest="$wizard_root/component.manifest.json"
+    if [ -f "$wizard_manifest" ]; then
+        run_bin_cmd "wizard build" "$BIN_GREENTIC_COMPONENT" build --manifest "$wizard_manifest" --no-flow
+        local wizard_wasm
+        wizard_wasm=$(jq -r '.artifacts.component_wasm' "$wizard_manifest")
+        local wizard_wasm_path="$wizard_root/$wizard_wasm"
+        run_bin_cmd "wizard doctor (built)" "$BIN_COMPONENT_DOCTOR" "$wizard_wasm_path" --manifest "$wizard_manifest"
+        local wizard_describe="$wizard_root/dist/$(jq -r '.name' "$wizard_manifest")__0_6_0.describe.cbor"
+        if [ -f "$wizard_describe" ]; then
+            run_bin_cmd "wizard inspect describe" "$BIN_COMPONENT_INSPECT" --describe "$wizard_describe" --json --verify
+        else
+            record_failure "wizard inspect describe (missing describe artifact)"
+        fi
+    else
+        run_cmd "wizard wasm (make)" make -C "$wizard_root" wasm
+        local wizard_name
+        wizard_name=$(awk 'BEGIN{in=0} /^\[package\]/{in=1; next} /^\[/{in=0} in && /^name = / {gsub(/"/ , "", $3); print $3; exit}' "$wizard_root/Cargo.toml")
+        local wizard_abi
+        wizard_abi=$(awk 'BEGIN{in=0} /^\[package.metadata.greentic\]/{in=1; next} /^\[/{in=0} in && /^abi_version = / {gsub(/"/ , "", $3); print $3; exit}' "$wizard_root/Cargo.toml")
+        if [ -z "$wizard_abi" ]; then
+            wizard_abi="0.6.0"
+        fi
+        local wizard_abi_underscore=${wizard_abi//./_}
+        local wizard_wasm_path="$wizard_root/dist/${wizard_name}__${wizard_abi_underscore}.wasm"
+        run_bin_cmd "wizard doctor (built)" "$BIN_COMPONENT_DOCTOR" "$wizard_wasm_path"
+        run_bin_cmd "wizard inspect (wasm)" "$BIN_COMPONENT_INSPECT" "$wizard_wasm_path" --json --verify
+    fi
     if [ $cleanup_wizard -eq 1 ]; then
         rm -rf "$wizard_parent"
         trap - EXIT

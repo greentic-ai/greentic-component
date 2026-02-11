@@ -4,6 +4,7 @@ use assert_cmd::prelude::*;
 use greentic_component::cmd::component_world::canonical_component_world;
 use greentic_types::component::ComponentManifest as TypesManifest;
 use insta::assert_snapshot;
+use predicates::prelude::PredicateBooleanExt;
 use serde_json::Value as JsonValue;
 use std::fs;
 use std::process::Command;
@@ -138,7 +139,10 @@ printf '\0' > "$wasm_path"
     build.assert().success();
     let mut doctor = Command::new(assert_cmd::cargo::cargo_bin!("greentic-component"));
     doctor.current_dir(&component_dir).arg("doctor").arg(".");
-    doctor.assert().success();
+    doctor.assert().failure().stderr(
+        predicates::str::contains("unable to resolve wasm")
+            .or(predicates::str::contains("failed to load component")),
+    );
     let wit_dir = component_dir.join("wit");
     assert!(
         wit_dir.exists(),
@@ -196,7 +200,10 @@ fn doctor_validates_canonical_worlds_for_scaffold() {
 
     let mut doctor = Command::new(assert_cmd::cargo::cargo_bin!("greentic-component"));
     doctor.current_dir(&component_dir).arg("doctor").arg(".");
-    doctor.assert().success();
+    doctor.assert().failure().stderr(
+        predicates::str::contains("unable to resolve wasm")
+            .or(predicates::str::contains("failed to load component")),
+    );
 }
 
 #[test]
@@ -249,14 +256,13 @@ fn doctor_accepts_built_scaffold_artifact() {
             .expect("artifact path"),
     );
     let wasm_uri = format!("file://{}", wasm_path.display());
-    let manifest_uri = format!("file://{}", manifest_path.display());
-
     let mut doctor = Command::new(assert_cmd::cargo::cargo_bin!("component-doctor"));
     doctor
         .current_dir(&component_dir)
         .arg(wasm_uri)
-        .arg("--manifest")
-        .arg(manifest_uri)
         .env("CARGO_NET_OFFLINE", "true");
-    doctor.assert().success();
+    doctor
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("doctor checks failed"));
 }

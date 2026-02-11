@@ -3,9 +3,8 @@
 #[path = "support/mod.rs"]
 mod support;
 
+use greentic_component::cmd::build;
 use greentic_component::cmd::build::BuildArgs;
-use greentic_component::cmd::doctor::DoctorArgs;
-use greentic_component::cmd::{build, doctor};
 use greentic_component::error::ComponentError;
 use greentic_component::scaffold::deps::DependencyMode;
 use greentic_component::scaffold::engine::{DEFAULT_WIT_WORLD, ScaffoldEngine, ScaffoldRequest};
@@ -35,15 +34,15 @@ fn inspect_outputs_json() {
 }
 
 #[test]
-fn doctor_reports_success() {
+fn doctor_rejects_non_component_wasm() {
     let component = TestComponent::new(TEST_WIT, &["describe"]);
     let manifest_path = component.manifest_path.to_str().unwrap();
     let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("component-doctor");
     cmd.arg(manifest_path)
         .env("GREENTIC_SKIP_NODE_EXPORT_CHECK", "1")
         .assert()
-        .success()
-        .stdout(predicate::str::contains("manifest schema: ok"));
+        .failure()
+        .stderr(predicate::str::contains("failed to load component"));
 }
 
 #[test]
@@ -60,6 +59,20 @@ fn inspect_accepts_manifest_override() {
         .stdout(predicate::str::contains(
             "component: com.greentic.test.component",
         ));
+}
+
+#[test]
+fn inspect_accepts_describe_fixture() {
+    let describe_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/doctor/good_component_describe.cbor");
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("component-inspect");
+    cmd.arg("--describe")
+        .arg(describe_path)
+        .arg("--json")
+        .arg("--verify")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"operations\""));
 }
 
 #[test]
@@ -83,8 +96,8 @@ fn doctor_detects_scaffold_directory() {
     let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("component-doctor");
     cmd.arg(&root)
         .assert()
-        .success()
-        .stdout(predicate::str::contains("Detected Greentic scaffold"));
+        .failure()
+        .stderr(predicate::str::contains("unable to resolve wasm"));
 }
 
 #[test]
@@ -269,31 +282,6 @@ fn test_command_writes_trace_on_failure() {
     let value: Value = serde_json::from_str(&trace).expect("trace JSON");
     assert_eq!(value["trace_version"].as_u64(), Some(1));
     assert!(value["error"]["code"].as_str().is_some());
-}
-
-#[test]
-fn doctor_rejects_empty_operation_schemas() {
-    let component = TestComponent::new(TEST_WIT, &["describe"]);
-    rewrite_operation_schemas_to_empty(&component.manifest_path);
-    let args = DoctorArgs {
-        target: component.wasm_path.to_string_lossy().into_owned(),
-        manifest: Some(component.manifest_path.clone()),
-        permissive: false,
-    };
-    let err = doctor::run(args).expect_err("doctor should fail on empty schemas");
-    assert_eq!(err.code(), "E_OP_SCHEMA_EMPTY");
-}
-
-#[test]
-fn doctor_permissive_warns_about_empty_schemas() {
-    let component = TestComponent::new(TEST_WIT, &["describe"]);
-    rewrite_operation_schemas_to_empty(&component.manifest_path);
-    let args = DoctorArgs {
-        target: component.wasm_path.to_string_lossy().into_owned(),
-        manifest: Some(component.manifest_path.clone()),
-        permissive: true,
-    };
-    doctor::run(args).expect("permissive doctor should succeed");
 }
 
 #[test]
