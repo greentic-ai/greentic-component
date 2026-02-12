@@ -413,57 +413,57 @@ const UPGRADE_PREFILLED_ANSWERS_CBOR: &[u8] = __UPGRADE_PREFILL__;
 const REMOVE_PREFILLED_ANSWERS_CBOR: &[u8] = __REMOVE_PREFILL__;
 
 #[derive(Debug, Clone, Copy)]
-pub enum Mode {{
+pub enum Mode {
     Default,
     Setup,
     Upgrade,
     Remove,
-}}
+}
 
-impl From<crate::exports::greentic::component::component_qa::QaMode> for Mode {{
-    fn from(mode: crate::exports::greentic::component::component_qa::QaMode) -> Self {{
-        match mode {{
+impl From<crate::exports::greentic::component::component_qa::QaMode> for Mode {
+    fn from(mode: crate::exports::greentic::component::component_qa::QaMode) -> Self {
+        match mode {
             crate::exports::greentic::component::component_qa::QaMode::Default => Mode::Default,
             crate::exports::greentic::component::component_qa::QaMode::Setup => Mode::Setup,
             crate::exports::greentic::component::component_qa::QaMode::Upgrade => Mode::Upgrade,
             crate::exports::greentic::component::component_qa::QaMode::Remove => Mode::Remove,
-        }}
-    }}
-}}
+        }
+    }
+}
 
-pub fn qa_spec_cbor(mode: Mode) -> Vec<u8> {{
+pub fn qa_spec_cbor(mode: Mode) -> Vec<u8> {
     let spec = qa_spec(mode);
     canonical::to_canonical_cbor_allow_floats(&spec).unwrap_or_default()
-}}
+}
 
-pub fn prefilled_answers_cbor(mode: Mode) -> &'static [u8] {{
-    match mode {{
+pub fn prefilled_answers_cbor(mode: Mode) -> &'static [u8] {
+    match mode {
         Mode::Default => DEFAULT_PREFILLED_ANSWERS_CBOR,
         Mode::Setup => SETUP_PREFILLED_ANSWERS_CBOR,
         Mode::Upgrade => UPGRADE_PREFILLED_ANSWERS_CBOR,
         Mode::Remove => REMOVE_PREFILLED_ANSWERS_CBOR,
-    }}
-}}
+    }
+}
 
-pub fn apply_answers(mode: Mode, current_config: Vec<u8>, answers: Vec<u8>) -> Vec<u8> {{
+pub fn apply_answers(mode: Mode, current_config: Vec<u8>, answers: Vec<u8>) -> Vec<u8> {
     let mut config = decode_map(&current_config);
     let updates = decode_map(&answers);
-    match mode {{
-        Mode::Default | Mode::Setup | Mode::Upgrade => {{
-            for (key, value) in updates {{
+    match mode {
+        Mode::Default | Mode::Setup | Mode::Upgrade => {
+            for (key, value) in updates {
                 config.insert(key, value);
-            }}
-        }}
-        Mode::Remove => {{
+            }
+        }
+        Mode::Remove => {
             config.clear();
             config.insert("enabled".to_string(), JsonValue::Bool(false));
-        }}
-    }}
+        }
+    }
     canonical::to_canonical_cbor_allow_floats(&config).unwrap_or_default()
-}}
+}
 
-fn qa_spec(mode: Mode) -> ComponentQaSpec {{
-    let (title_key, description_key, questions) = match mode {{
+fn qa_spec(mode: Mode) -> ComponentQaSpec {
+    let (title_key, description_key, questions) = match mode {
         Mode::Default => (
             "qa.default.title",
             Some("qa.default.description"),
@@ -476,23 +476,23 @@ fn qa_spec(mode: Mode) -> ComponentQaSpec {{
         ),
         Mode::Upgrade => ("qa.upgrade.title", None, Vec::new()),
         Mode::Remove => ("qa.remove.title", None, Vec::new()),
-    }};
-    ComponentQaSpec {{
-        mode: match mode {{
+    };
+    ComponentQaSpec {
+        mode: match mode {
             Mode::Default => QaMode::Default,
             Mode::Setup => QaMode::Setup,
             Mode::Upgrade => QaMode::Upgrade,
             Mode::Remove => QaMode::Remove,
-        }},
+        },
         title: I18nText::new(title_key, None),
         description: description_key.map(|key| I18nText::new(key, None)),
         questions,
         defaults: BTreeMap::new(),
-    }}
-}}
+    }
+}
 
-fn question_enabled(label_key: &str, help_key: &str) -> Question {{
-    Question {{
+fn question_enabled(label_key: &str, help_key: &str) -> Question {
+    Question {
         id: "enabled".to_string(),
         label: I18nText::new(label_key, None),
         help: Some(I18nText::new(help_key, None)),
@@ -500,22 +500,22 @@ fn question_enabled(label_key: &str, help_key: &str) -> Question {{
         kind: QuestionKind::Bool,
         required: true,
         default: Some(JsonValue::Bool(true)),
-    }}
-}}
+    }
+}
 
-fn decode_map(bytes: &[u8]) -> BTreeMap<String, JsonValue> {{
-    if bytes.is_empty() {{
+fn decode_map(bytes: &[u8]) -> BTreeMap<String, JsonValue> {
+    if bytes.is_empty() {
         return BTreeMap::new();
-    }}
-    let value: JsonValue = match canonical::from_cbor(bytes) {{
+    }
+    let value: JsonValue = match canonical::from_cbor(bytes) {
         Ok(value) => value,
         Err(_) => return BTreeMap::new(),
-    }};
-    let JsonValue::Object(map) = value else {{
+    };
+    let JsonValue::Object(map) = value else {
         return BTreeMap::new();
-    }};
+    };
     map.into_iter().collect()
-}}
+}
 "#;
     template
         .replace("__DEFAULT_PREFILL__", &default_prefill)
