@@ -34,7 +34,7 @@ pub struct TestArgs {
     #[arg(long, value_name = "PATH")]
     pub wasm: PathBuf,
     /// Component world to invoke.
-    #[arg(long, default_value = "greentic:component/component@0.5.0")]
+    #[arg(long, default_value = "greentic:component/component@0.6.0")]
     pub world: String,
     /// Optional manifest path (defaults to component.manifest.json next to the wasm).
     #[arg(long, value_name = "PATH")]

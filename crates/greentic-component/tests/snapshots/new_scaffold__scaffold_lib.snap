@@ -23,7 +23,7 @@ pub fn describe_payload() -> String {
             "name": "demo-component",
             "org": "ai.greentic",
             "version": "0.1.0",
-            "world": "greentic:component/component@0.5.0",
+            "world": "greentic:component/component@0.6.0",
             "schemas": {
                 "component": "schemas/component.schema.json",
                 "input": "schemas/io/input.schema.json",

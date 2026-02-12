@@ -24,7 +24,7 @@ use super::write::{GeneratedFile, WriteError, Writer};
 static BUILTIN_COMPONENT_TEMPLATES: Dir<'_> =
     include_dir!("$CARGO_MANIFEST_DIR/assets/templates/component");
 
-pub const DEFAULT_WIT_WORLD: &str = "greentic:component/component@0.5.0";
+pub const DEFAULT_WIT_WORLD: &str = "greentic:component/component@0.6.0";
 
 const METADATA_FILE: &str = "template.json";
 const TEMPLATE_HOME_ENV: &str = "GREENTIC_TEMPLATE_ROOT";
