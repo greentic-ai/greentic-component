@@ -283,8 +283,12 @@ wasm:
 	for cand in \
 		"$${CARGO_TARGET_DIR:-target}/wasm32-wasip2/release/$(NAME_UNDERSCORE).wasm" \
 		"$${CARGO_TARGET_DIR:-target}/wasm32-wasip2/release/$(NAME).wasm" \
+		"$${CARGO_TARGET_DIR:-target}/wasm32-wasip1/release/$(NAME_UNDERSCORE).wasm" \
+		"$${CARGO_TARGET_DIR:-target}/wasm32-wasip1/release/$(NAME).wasm" \
 		"target/wasm32-wasip2/release/$(NAME_UNDERSCORE).wasm" \
-		"target/wasm32-wasip2/release/$(NAME).wasm"; do \
+		"target/wasm32-wasip2/release/$(NAME).wasm" \
+		"target/wasm32-wasip1/release/$(NAME_UNDERSCORE).wasm" \
+		"target/wasm32-wasip1/release/$(NAME).wasm"; do \
 		if [ -f "$$cand" ]; then WASM_SRC="$$cand"; break; fi; \
 	done; \
 	if [ -z "$$WASM_SRC" ]; then \
