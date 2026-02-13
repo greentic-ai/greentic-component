@@ -11,187 +11,74 @@ const COMPONENT_NAME: &str = "{{ name }}";
 const COMPONENT_ORG: &str = "{{ org }}";
 const COMPONENT_VERSION: &str = "{{ version }}";
 
+wit_bindgen::generate!({
+    path: "wit",
+    world: "component-v0-v6-v0",
+});
+
 #[cfg(target_arch = "wasm32")]
 #[used]
 #[unsafe(link_section = ".greentic.wasi")]
 static WASI_TARGET_MARKER: [u8; 13] = *b"wasm32-wasip2";
 
-#[cfg(target_arch = "wasm32")]
-mod component {
-    use greentic_interfaces_guest::component_v0_6::{
-        component_descriptor, component_i18n, component_qa, component_runtime, component_schema,
-    };
+struct Component;
 
-    use super::{
-        apply_answers_cbor, component_describe_cbor, component_info_cbor, config_schema_cbor,
-        i18n_keys, input_schema_cbor, output_schema_cbor, qa_spec_cbor, run_component_cbor,
-    };
-
-    pub(super) struct Component;
-
-    impl component_descriptor::Guest for Component {
-        fn get_component_info() -> Vec<u8> {
-            component_info_cbor()
-        }
-
-        fn describe() -> Vec<u8> {
-            component_describe_cbor()
-        }
+impl exports::greentic::component::component_descriptor::Guest for Component {
+    fn get_component_info() -> Vec<u8> {
+        component_info_cbor()
     }
 
-    impl component_schema::Guest for Component {
-        fn input_schema() -> Vec<u8> {
-            input_schema_cbor()
-        }
+    fn describe() -> Vec<u8> {
+        component_describe_cbor()
+    }
+}
 
-        fn output_schema() -> Vec<u8> {
-            output_schema_cbor()
-        }
-
-        fn config_schema() -> Vec<u8> {
-            config_schema_cbor()
-        }
+impl exports::greentic::component::component_schema::Guest for Component {
+    fn input_schema() -> Vec<u8> {
+        input_schema_cbor()
     }
 
-    impl component_runtime::Guest for Component {
-        fn run(input: Vec<u8>, state: Vec<u8>) -> component_runtime::RunResult {
-            let (output, new_state) = run_component_cbor(input, state);
-            component_runtime::RunResult { output, new_state }
-        }
+    fn output_schema() -> Vec<u8> {
+        output_schema_cbor()
     }
 
-    impl component_qa::Guest for Component {
-        fn qa_spec(mode: component_qa::QaMode) -> Vec<u8> {
-            qa_spec_cbor(mode)
-        }
+    fn config_schema() -> Vec<u8> {
+        config_schema_cbor()
+    }
+}
 
-        fn apply_answers(
-            mode: component_qa::QaMode,
-            current_config: Vec<u8>,
-            answers: Vec<u8>,
-        ) -> Vec<u8> {
-            apply_answers_cbor(mode, current_config, answers)
-        }
+impl exports::greentic::component::component_qa::Guest for Component {
+    fn qa_spec(mode: exports::greentic::component::component_qa::QaMode) -> Vec<u8> {
+        qa_spec_cbor(mode)
     }
 
-    impl component_i18n::Guest for Component {
-        fn i18n_keys() -> Vec<String> {
-            i18n_keys()
-        }
+    fn apply_answers(
+        mode: exports::greentic::component::component_qa::QaMode,
+        current_config: Vec<u8>,
+        answers: Vec<u8>,
+    ) -> Vec<u8> {
+        apply_answers_cbor(mode, current_config, answers)
+    }
+}
+
+impl exports::greentic::component::component_i18n::Guest for Component {
+    fn i18n_keys() -> Vec<String> {
+        i18n_keys()
+    }
+}
+
+impl exports::greentic::component::component_runtime::Guest for Component {
+    fn run(
+        input: Vec<u8>,
+        state: Vec<u8>,
+    ) -> exports::greentic::component::component_runtime::RunResult {
+        let (output, new_state) = run_component_cbor(input, state);
+        exports::greentic::component::component_runtime::RunResult { output, new_state }
     }
 }
 
 #[cfg(target_arch = "wasm32")]
-mod exports {
-    use greentic_interfaces_guest::component_v0_6::{
-        component_descriptor, component_i18n, component_qa, component_runtime, component_schema,
-    };
-
-    use super::component::Component;
-
-    #[unsafe(export_name = "greentic:component/component-descriptor@0.6.0#get-component-info")]
-    unsafe extern "C" fn export_get_component_info() -> *mut u8 {
-        unsafe { component_descriptor::_export_get_component_info_cabi::<Component>() }
-    }
-
-    #[unsafe(export_name = "cabi_post_greentic:component/component-descriptor@0.6.0#get-component-info")]
-    unsafe extern "C" fn post_return_get_component_info(arg0: *mut u8) {
-        unsafe { component_descriptor::__post_return_get_component_info::<Component>(arg0) };
-    }
-
-    #[unsafe(export_name = "greentic:component/component-descriptor@0.6.0#describe")]
-    unsafe extern "C" fn export_describe() -> *mut u8 {
-        unsafe { component_descriptor::_export_describe_cabi::<Component>() }
-    }
-
-    #[unsafe(export_name = "cabi_post_greentic:component/component-descriptor@0.6.0#describe")]
-    unsafe extern "C" fn post_return_describe(arg0: *mut u8) {
-        unsafe { component_descriptor::__post_return_describe::<Component>(arg0) };
-    }
-
-    #[unsafe(export_name = "greentic:component/component-schema@0.6.0#input-schema")]
-    unsafe extern "C" fn export_input_schema() -> *mut u8 {
-        unsafe { component_schema::_export_input_schema_cabi::<Component>() }
-    }
-
-    #[unsafe(export_name = "cabi_post_greentic:component/component-schema@0.6.0#input-schema")]
-    unsafe extern "C" fn post_return_input_schema(arg0: *mut u8) {
-        unsafe { component_schema::__post_return_input_schema::<Component>(arg0) };
-    }
-
-    #[unsafe(export_name = "greentic:component/component-schema@0.6.0#output-schema")]
-    unsafe extern "C" fn export_output_schema() -> *mut u8 {
-        unsafe { component_schema::_export_output_schema_cabi::<Component>() }
-    }
-
-    #[unsafe(export_name = "cabi_post_greentic:component/component-schema@0.6.0#output-schema")]
-    unsafe extern "C" fn post_return_output_schema(arg0: *mut u8) {
-        unsafe { component_schema::__post_return_output_schema::<Component>(arg0) };
-    }
-
-    #[unsafe(export_name = "greentic:component/component-schema@0.6.0#config-schema")]
-    unsafe extern "C" fn export_config_schema() -> *mut u8 {
-        unsafe { component_schema::_export_config_schema_cabi::<Component>() }
-    }
-
-    #[unsafe(export_name = "cabi_post_greentic:component/component-schema@0.6.0#config-schema")]
-    unsafe extern "C" fn post_return_config_schema(arg0: *mut u8) {
-        unsafe { component_schema::__post_return_config_schema::<Component>(arg0) };
-    }
-
-    #[unsafe(export_name = "greentic:component/component-runtime@0.6.0#run")]
-    unsafe extern "C" fn export_run(
-        arg0: *mut u8,
-        arg1: usize,
-        arg2: *mut u8,
-        arg3: usize,
-    ) -> *mut u8 {
-        unsafe { component_runtime::_export_run_cabi::<Component>(arg0, arg1, arg2, arg3) }
-    }
-
-    #[unsafe(export_name = "cabi_post_greentic:component/component-runtime@0.6.0#run")]
-    unsafe extern "C" fn post_return_run(arg0: *mut u8) {
-        unsafe { component_runtime::__post_return_run::<Component>(arg0) };
-    }
-
-    #[unsafe(export_name = "greentic:component/component-qa@0.6.0#qa-spec")]
-    unsafe extern "C" fn export_qa_spec(arg0: i32) -> *mut u8 {
-        unsafe { component_qa::_export_qa_spec_cabi::<Component>(arg0) }
-    }
-
-    #[unsafe(export_name = "cabi_post_greentic:component/component-qa@0.6.0#qa-spec")]
-    unsafe extern "C" fn post_return_qa_spec(arg0: *mut u8) {
-        unsafe { component_qa::__post_return_qa_spec::<Component>(arg0) };
-    }
-
-    #[unsafe(export_name = "greentic:component/component-qa@0.6.0#apply-answers")]
-    unsafe extern "C" fn export_apply_answers(
-        arg0: i32,
-        arg1: *mut u8,
-        arg2: usize,
-        arg3: *mut u8,
-        arg4: usize,
-    ) -> *mut u8 {
-        unsafe {
-            component_qa::_export_apply_answers_cabi::<Component>(arg0, arg1, arg2, arg3, arg4)
-        }
-    }
-
-    #[unsafe(export_name = "cabi_post_greentic:component/component-qa@0.6.0#apply-answers")]
-    unsafe extern "C" fn post_return_apply_answers(arg0: *mut u8) {
-        unsafe { component_qa::__post_return_apply_answers::<Component>(arg0) };
-    }
-
-    #[unsafe(export_name = "greentic:component/component-i18n@0.6.0#i18n-keys")]
-    unsafe extern "C" fn export_i18n_keys() -> *mut u8 {
-        unsafe { component_i18n::_export_i18n_keys_cabi::<Component>() }
-    }
-
-    #[unsafe(export_name = "cabi_post_greentic:component/component-i18n@0.6.0#i18n-keys")]
-    unsafe extern "C" fn post_return_i18n_keys(arg0: *mut u8) {
-        unsafe { component_i18n::__post_return_i18n_keys::<Component>(arg0) };
-    }
-}
+export!(Component);
 
 pub fn describe_payload() -> String {
     serde_json::json!({
@@ -314,13 +201,12 @@ fn config_schema_cbor() -> Vec<u8> {
     encode_cbor(&config_schema())
 }
 
-#[cfg(target_arch = "wasm32")]
-fn qa_spec_cbor(mode: greentic_interfaces_guest::component_v0_6::component_qa::QaMode) -> Vec<u8> {
+fn qa_spec_cbor(mode: exports::greentic::component::component_qa::QaMode) -> Vec<u8> {
     let mode = match mode {
-        greentic_interfaces_guest::component_v0_6::component_qa::QaMode::Default => QaMode::Default,
-        greentic_interfaces_guest::component_v0_6::component_qa::QaMode::Setup => QaMode::Setup,
-        greentic_interfaces_guest::component_v0_6::component_qa::QaMode::Upgrade => QaMode::Upgrade,
-        greentic_interfaces_guest::component_v0_6::component_qa::QaMode::Remove => QaMode::Remove,
+        exports::greentic::component::component_qa::QaMode::Default => QaMode::Default,
+        exports::greentic::component::component_qa::QaMode::Setup => QaMode::Setup,
+        exports::greentic::component::component_qa::QaMode::Upgrade => QaMode::Upgrade,
+        exports::greentic::component::component_qa::QaMode::Remove => QaMode::Remove,
     };
 
     let spec = ComponentQaSpec {
@@ -341,9 +227,8 @@ fn qa_spec_cbor(mode: greentic_interfaces_guest::component_v0_6::component_qa::Q
     encode_cbor(&spec)
 }
 
-#[cfg(target_arch = "wasm32")]
 fn apply_answers_cbor(
-    _mode: greentic_interfaces_guest::component_v0_6::component_qa::QaMode,
+    _mode: exports::greentic::component::component_qa::QaMode,
     current_config: Vec<u8>,
     answers: Vec<u8>,
 ) -> Vec<u8> {

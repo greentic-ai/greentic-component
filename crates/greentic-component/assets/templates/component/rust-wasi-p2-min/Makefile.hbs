@@ -11,7 +11,12 @@ flows:
 	greentic-component flow update
 
 wasm:
-	cargo build --target wasm32-wasip2 --release
+	if ! cargo component --version >/dev/null 2>&1; then \
+		echo "cargo-component is required for component@0.6.0 builds"; \
+		echo "install with: cargo install cargo-component --locked"; \
+		exit 1; \
+	fi
+	cargo component build --release --target wasm32-wasip2
 
 check:
 	greentic-dev component doctor target/wasm32-wasip2/release/{{ name_snake }}.wasm --manifest ./component.manifest.json

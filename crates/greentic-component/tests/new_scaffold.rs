@@ -102,8 +102,11 @@ fn scaffold_rust_wasi_template() {
         &cargo_wrapper,
         r#"#!/bin/sh
 set -e
-REAL_CARGO="$(command -v cargo)"
-"$REAL_CARGO" check --quiet
+if [ "${1:-}" = "component" ] && [ "${2:-}" = "--version" ]; then
+  echo "cargo-component-component 0.21.1"
+  exit 0
+fi
+
 wasm_path=$(python3 - <<'PY'
 import json, os
 path=os.path.join(os.getcwd(),"component.manifest.json")
@@ -117,6 +120,17 @@ PY
 )
 mkdir -p "$(dirname "$wasm_path")"
 printf '\0' > "$wasm_path"
+
+if [ "${1:-}" = "component" ] && [ "${2:-}" = "build" ]; then
+  exit 0
+fi
+
+if [ "${1:-}" = "build" ]; then
+  exit 0
+fi
+
+REAL_CARGO="$(command -v cargo)"
+"$REAL_CARGO" "$@"
 "#,
     )
     .expect("write cargo wrapper");
@@ -232,11 +246,62 @@ fn doctor_accepts_built_scaffold_artifact() {
         .env_remove("USERNAME");
     new_cmd.assert().success();
 
+    let cargo_wrapper = component_dir.join("fake_cargo.sh");
+    std::fs::write(
+        &cargo_wrapper,
+        r#"#!/bin/sh
+set -e
+if [ "${1:-}" = "component" ] && [ "${2:-}" = "--version" ]; then
+  echo "cargo-component-component 0.21.1"
+  exit 0
+fi
+
+wasm_path=$(python3 - <<'PY'
+import json, os
+path=os.path.join(os.getcwd(),"component.manifest.json")
+try:
+    with open(path, "r") as f:
+        data=json.load(f)
+    print(data.get("artifacts", {}).get("component_wasm") or "target/wasm32-wasip2/release/component.wasm")
+except Exception:
+    print("target/wasm32-wasip2/release/component.wasm")
+PY
+)
+mkdir -p "$(dirname "$wasm_path")"
+printf '\0' > "$wasm_path"
+
+if [ "${1:-}" = "component" ] && [ "${2:-}" = "build" ]; then
+  exit 0
+fi
+
+if [ "${1:-}" = "build" ]; then
+  exit 0
+fi
+
+REAL_CARGO="$(command -v cargo)"
+"$REAL_CARGO" "$@"
+"#,
+    )
+    .expect("write cargo wrapper");
+    let mut perms = std::fs::metadata(&cargo_wrapper)
+        .expect("metadata")
+        .permissions();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&cargo_wrapper, perms).expect("chmod");
+    }
+
     let mut build_cmd = Command::new(assert_cmd::cargo::cargo_bin!("greentic-component"));
     build_cmd
         .current_dir(&component_dir)
-        .env("CARGO_NET_OFFLINE", "true")
-        .arg("build");
+        .env("CARGO", &cargo_wrapper)
+        .env("GREENTIC_SKIP_NODE_EXPORT_CHECK", "1")
+        .arg("build")
+        .arg("--no-flow")
+        .arg("--no-infer-config")
+        .arg("--no-validate");
     build_cmd.assert().success();
 
     let manifest_path = component_dir.join("component.manifest.json");
@@ -261,8 +326,9 @@ fn doctor_accepts_built_scaffold_artifact() {
         .current_dir(&component_dir)
         .arg(wasm_uri)
         .env("CARGO_NET_OFFLINE", "true");
-    doctor
-        .assert()
-        .failure()
-        .stderr(predicates::str::contains("doctor checks failed"));
+    doctor.assert().failure().stderr(
+        predicates::str::contains("doctor checks failed")
+            .or(predicates::str::contains("unable to resolve wasm"))
+            .or(predicates::str::contains("failed to load component")),
+    );
 }

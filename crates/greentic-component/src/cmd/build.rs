@@ -127,7 +127,7 @@ pub fn run(args: BuildArgs) -> Result<()> {
         .unwrap_or_else(|| config.manifest.clone());
 
     let manifest_dir = manifest_path.parent().unwrap_or_else(|| Path::new("."));
-    build_wasm(manifest_dir, &cargo_bin)?;
+    build_wasm(manifest_dir, &cargo_bin, &manifest_to_write)?;
     check_canonical_world_export(manifest_dir, &manifest_to_write)?;
 
     if !config.persist_schema {
@@ -174,7 +174,51 @@ pub fn run(args: BuildArgs) -> Result<()> {
     Ok(())
 }
 
-fn build_wasm(manifest_dir: &Path, cargo_bin: &Path) -> Result<()> {
+fn build_wasm(manifest_dir: &Path, cargo_bin: &Path, manifest: &JsonValue) -> Result<()> {
+    let require_component = manifest
+        .get("world")
+        .and_then(|v| v.as_str())
+        .map(|world| world.contains("component@0.6.0"))
+        .unwrap_or(false);
+
+    if require_component {
+        if cargo_component_available(cargo_bin) {
+            println!(
+                "Running cargo component build via {} in {}",
+                cargo_bin.display(),
+                manifest_dir.display()
+            );
+            let mut cmd = Command::new(cargo_bin);
+            if let Some(flags) = resolved_wasm_rustflags() {
+                cmd.env("RUSTFLAGS", sanitize_wasm_rustflags(&flags));
+            }
+            let status = cmd
+                .arg("component")
+                .arg("build")
+                .arg("--target")
+                .arg("wasm32-wasip2")
+                .arg("--release")
+                .current_dir(manifest_dir)
+                .status()
+                .with_context(|| {
+                    format!(
+                        "failed to run cargo component build via {}",
+                        cargo_bin.display()
+                    )
+                })?;
+            if !status.success() {
+                bail!(
+                    "cargo component build --target wasm32-wasip2 --release failed with status {}",
+                    status
+                );
+            }
+            return Ok(());
+        }
+        bail!(
+            "component@0.6.0 manifests require cargo-component; install it with `cargo install cargo-component --locked`"
+        );
+    }
+
     println!(
         "Running cargo build via {} in {}",
         cargo_bin.display(),
@@ -200,6 +244,15 @@ fn build_wasm(manifest_dir: &Path, cargo_bin: &Path) -> Result<()> {
         );
     }
     Ok(())
+}
+
+fn cargo_component_available(cargo_bin: &Path) -> bool {
+    Command::new(cargo_bin)
+        .arg("component")
+        .arg("--version")
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
 }
 
 /// Reads the wasm-specific rustflags that CI exports for wasm builds.

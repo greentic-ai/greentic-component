@@ -4,19 +4,22 @@ A minimal Rust + WASI-P2 Greentic component scaffolded via `greentic-component n
 
 ## Requirements
 
- - Rust 1.90+
+- Rust 1.90+
 - `wasm32-wasip2` target (`rustup target add wasm32-wasip2`)
+- `cargo-component` (`cargo install cargo-component --locked`)
 
 ## Getting Started
 
 ```bash
-cargo build --target wasm32-wasip2
+cargo component build --release --target wasm32-wasip2
 cargo test
 ```
 
 The generated `component.manifest.json` references the release artifact at
-`target/wasm32-wasip2/release/{{ name_snake }}.wasm`. Update the manifest hash by
-running `greentic-component inspect --json target/wasm32-wasip2/release/{{ name_snake }}.wasm`.
+`target/wasm32-wasip2/release/{{ name_snake }}.wasm`.
+Update the manifest hash by running `greentic-component hash component.manifest.json`.
+Validate the artifact by running
+`greentic-component doctor target/wasm32-wasip2/release/{{ name_snake }}.wasm --manifest component.manifest.json`.
 
 ## Next Steps
 
