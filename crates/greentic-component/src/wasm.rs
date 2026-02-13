@@ -1,4 +1,5 @@
 use anyhow::{Result, anyhow};
+use wasmparser::Parser;
 use wit_component::{DecodedWasm, metadata};
 use wit_parser::{Resolve, WorldId};
 
@@ -20,22 +21,42 @@ pub struct DecodedWorld {
 
 /// Decode a wasm module or component into its WIT world description.
 pub fn decode_world(bytes: &[u8]) -> Result<DecodedWorld> {
-    match metadata::decode(bytes) {
-        Ok((_maybe_module, bindgen)) => Ok(DecodedWorld {
-            resolve: bindgen.resolve,
-            world: bindgen.world,
-            source: WorldSource::Metadata,
-        }),
-        Err(module_err) => match wit_component::decode(bytes) {
+    if Parser::is_component(bytes) {
+        match wit_component::decode(bytes) {
             Ok(DecodedWasm::Component(resolve, world)) => Ok(DecodedWorld {
                 resolve,
                 world,
                 source: WorldSource::Component,
             }),
-            Ok(DecodedWasm::WitPackage(_, _)) => Err(module_err),
-            Err(component_err) => Err(anyhow!(
-                "failed to decode module metadata ({module_err}) and component ({component_err})"
-            )),
-        },
+            Ok(DecodedWasm::WitPackage(_, _)) | Err(_) => match metadata::decode(bytes) {
+                Ok((_maybe_module, bindgen)) => Ok(DecodedWorld {
+                    resolve: bindgen.resolve,
+                    world: bindgen.world,
+                    source: WorldSource::Metadata,
+                }),
+                Err(module_err) => Err(anyhow!(
+                    "failed to decode component and module metadata ({module_err})"
+                )),
+            },
+        }
+    } else {
+        match metadata::decode(bytes) {
+            Ok((_maybe_module, bindgen)) => Ok(DecodedWorld {
+                resolve: bindgen.resolve,
+                world: bindgen.world,
+                source: WorldSource::Metadata,
+            }),
+            Err(module_err) => match wit_component::decode(bytes) {
+                Ok(DecodedWasm::Component(resolve, world)) => Ok(DecodedWorld {
+                    resolve,
+                    world,
+                    source: WorldSource::Component,
+                }),
+                Ok(DecodedWasm::WitPackage(_, _)) => Err(module_err),
+                Err(component_err) => Err(anyhow!(
+                    "failed to decode module metadata ({module_err}) and component ({component_err})"
+                )),
+            },
+        }
     }
 }

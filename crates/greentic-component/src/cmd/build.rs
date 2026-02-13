@@ -484,8 +484,7 @@ fn call_describe(wasm_path: &Path) -> Result<Vec<u8>> {
     let instance = linker
         .instantiate(&mut store, &component)
         .context("failed to instantiate component")?;
-    let instance_index = instance
-        .get_export_index(&mut store, None, "component-descriptor")
+    let instance_index = resolve_interface_index(&instance, &mut store, "component-descriptor")
         .ok_or_else(|| anyhow!("missing export interface component-descriptor"))?;
     let func_index = instance
         .get_export_index(&mut store, Some(&instance_index), "describe")
@@ -501,6 +500,27 @@ fn call_describe(wasm_path: &Path) -> Result<Vec<u8>> {
         .first()
         .ok_or_else(|| anyhow!("describe returned no value"))?;
     val_to_bytes(val).map_err(|err| anyhow!(err))
+}
+
+fn resolve_interface_index(
+    instance: &wasmtime::component::Instance,
+    store: &mut Store<BuildWasi>,
+    interface: &str,
+) -> Option<wasmtime::component::ComponentExportIndex> {
+    for candidate in interface_candidates(interface) {
+        if let Some(index) = instance.get_export_index(&mut *store, None, &candidate) {
+            return Some(index);
+        }
+    }
+    None
+}
+
+fn interface_candidates(interface: &str) -> [String; 3] {
+    [
+        interface.to_string(),
+        format!("greentic:component/{interface}@0.6.0"),
+        format!("greentic:component/{interface}"),
+    ]
 }
 
 fn val_to_bytes(val: &Val) -> Result<Vec<u8>, String> {

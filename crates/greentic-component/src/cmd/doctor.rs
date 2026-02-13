@@ -10,6 +10,7 @@ use wasmtime::{Engine, Store};
 use wasmtime_wasi::{ResourceTable, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 
 use super::path::strip_file_scheme;
+use crate::cmd::component_world::is_fallback_world;
 use crate::{ComponentError, abi, loader};
 
 use greentic_types::cbor::canonical;
@@ -165,7 +166,7 @@ impl DoctorReport {
         let i18n_keys =
             report.require_export_strings(&mut caller, "component-i18n", "i18n-keys", &[]);
 
-        report.require_export_bytes(
+        report.require_export_call(
             &mut caller,
             "component-runtime",
             "run",
@@ -277,12 +278,15 @@ impl DoctorReport {
 
     fn validate_world(&mut self, wasm_path: &Path) {
         if let Err(err) = abi::check_world_base(wasm_path, COMPONENT_WORLD_V0_6_0) {
-            self.error(
-                "doctor.world.mismatch",
-                format!("component world mismatch: {err}"),
-                "world",
-                Some("expected component@0.6.0 world".to_string()),
-            );
+            match err {
+                abi::AbiError::WorldMismatch { found, .. } if is_fallback_world(&found) => {}
+                other => self.error(
+                    "doctor.world.mismatch",
+                    format!("component world mismatch: {other}"),
+                    "world",
+                    Some("expected component@0.6.0 world".to_string()),
+                ),
+            }
         }
     }
 
@@ -506,6 +510,23 @@ impl DoctorReport {
         }
     }
 
+    fn require_export_call(
+        &mut self,
+        caller: &mut ComponentCaller,
+        interface: &str,
+        func: &str,
+        params: &[Val],
+    ) {
+        if let Err(err) = caller.call(interface, func, params) {
+            self.error(
+                "doctor.export.call_failed",
+                format!("{interface}.{func} failed: {err}"),
+                format!("{interface}.{func}"),
+                None,
+            );
+        }
+    }
+
     fn error(
         &mut self,
         code: impl Into<String>,
@@ -609,9 +630,7 @@ impl ComponentCaller {
     }
 
     fn call(&mut self, interface: &str, func: &str, params: &[Val]) -> Result<Vec<Val>, String> {
-        let instance_index = self
-            .instance
-            .get_export_index(&mut self.store, None, interface)
+        let instance_index = resolve_interface_index(&self.instance, &mut self.store, interface)
             .ok_or_else(|| format!("missing export interface {interface}"))?;
         let func_index = self
             .instance
@@ -624,6 +643,27 @@ impl ComponentCaller {
 
         call_component_func(&mut self.store, &func, params)
     }
+}
+
+fn resolve_interface_index(
+    instance: &wasmtime::component::Instance,
+    store: &mut Store<DoctorWasi>,
+    interface: &str,
+) -> Option<wasmtime::component::ComponentExportIndex> {
+    for candidate in interface_candidates(interface) {
+        if let Some(index) = instance.get_export_index(&mut *store, None, &candidate) {
+            return Some(index);
+        }
+    }
+    None
+}
+
+fn interface_candidates(interface: &str) -> [String; 3] {
+    [
+        interface.to_string(),
+        format!("greentic:component/{interface}@0.6.0"),
+        format!("greentic:component/{interface}"),
+    ]
 }
 
 fn call_component_func(
