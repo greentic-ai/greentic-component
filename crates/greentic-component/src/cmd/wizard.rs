@@ -217,7 +217,7 @@ abi_version = "{abi_version}"
 
 [dependencies]
 greentic-types = "0.4"
-wit-bindgen = "0.24"
+wit-bindgen = "0.53"
 serde = {{ version = "1", features = ["derive"] }}
 serde_json = "1"
 "#,
