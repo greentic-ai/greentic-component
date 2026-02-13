@@ -252,11 +252,12 @@ fn render_makefile() -> String {
     r#"SHELL := /bin/sh
 
 NAME := $(shell awk 'BEGIN{in_pkg=0} /^\[package\]/{in_pkg=1; next} /^\[/{in_pkg=0} in_pkg && /^name = / {gsub(/"/ , "", $$3); print $$3; exit}' Cargo.toml)
+NAME_UNDERSCORE := $(subst -,_,$(NAME))
 ABI_VERSION := $(shell awk 'BEGIN{in_meta=0} /^\[package.metadata.greentic\]/{in_meta=1; next} /^\[/{in_meta=0} in_meta && /^abi_version = / {gsub(/"/ , "", $$3); print $$3; exit}' Cargo.toml)
 ABI_VERSION_UNDERSCORE := $(subst .,_,$(ABI_VERSION))
 DIST_DIR := dist
 WASM_OUT := $(DIST_DIR)/$(NAME)__$(ABI_VERSION_UNDERSCORE).wasm
-WASM_SRC := target/wasm32-wasip2/release/$(NAME).wasm
+WASM_SRC := target/wasm32-wasip2/release/$(NAME_UNDERSCORE).wasm
 
 .PHONY: build test fmt clippy wasm doctor
 
@@ -274,9 +275,9 @@ clippy:
 
 wasm:
 	if cargo component --version >/dev/null 2>&1; then \
-		cargo component build --release; \
+		RUSTFLAGS= CARGO_ENCODED_RUSTFLAGS= cargo component build --release; \
 	else \
-		cargo build --target wasm32-wasip2 --release; \
+		RUSTFLAGS= CARGO_ENCODED_RUSTFLAGS= cargo build --target wasm32-wasip2 --release; \
 	fi
 	mkdir -p $(DIST_DIR)
 	cp $(WASM_SRC) $(WASM_OUT)
