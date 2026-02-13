@@ -1,7 +1,7 @@
 ---
 source: crates/greentic-component/tests/new_scaffold.rs
-assertion_line: 70
-expression: manifest.trim()
+assertion_line: 81
+expression: normalize_text(manifest.trim())
 ---
 {
   "$schema": "https://greentic-ai.github.io/greentic-component/schemas/v1/component.manifest.schema.json",
@@ -9,7 +9,7 @@ expression: manifest.trim()
   "name": "demo-component",
   "version": "0.1.0",
   "world": "greentic:component/component@0.6.0",
-  "describe_export": "get-manifest",
+  "describe_export": "describe",
   "operations": [
     {
       "name": "handle_message",

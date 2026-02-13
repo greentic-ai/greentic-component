@@ -4,7 +4,7 @@ A minimal Rust + WASI-P2 Greentic component scaffolded via `greentic-component n
 
 ## Requirements
 
- - Rust 1.89+
+ - Rust 1.90+
 - `wasm32-wasip2` target (`rustup target add wasm32-wasip2`)
 
 ## Getting Started
@@ -20,6 +20,6 @@ running `greentic-component inspect --json target/wasm32-wasip2/release/{{ name_
 
 ## Next Steps
 
-- Implement domain-specific logic inside `src/lib.rs` (the `component_entrypoint!` macro wires exports for you).
+- Implement domain-specific logic inside `src/lib.rs` (the 0.6 descriptor/schema/runtime exports are wired there).
 - Extend `schemas/` with the inputs/outputs your component expects.
 - Wire additional capabilities or telemetry requirements into `component.manifest.json`.

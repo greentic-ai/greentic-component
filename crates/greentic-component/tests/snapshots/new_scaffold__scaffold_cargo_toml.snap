@@ -1,14 +1,14 @@
 ---
 source: crates/greentic-component/tests/new_scaffold.rs
-assertion_line: 69
-expression: cargo.trim()
+assertion_line: 80
+expression: normalize_text(cargo.trim())
 ---
 [package]
 name = "demo-component"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
-rust-version = "1.89"
+rust-version = "1.90"
 description = "Greentic component demo-component"
 repository = "https://github.com/demo-component"
 authors = ["Greentic Labs"]
@@ -17,9 +17,10 @@ authors = ["Greentic Labs"]
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-greentic-types = { version = "0.4" }
-greentic-interfaces-guest = { version = "0.4.93", default-features = false, features = ["component-node"] }
+greentic-types = { version = "0.4.49" }
+greentic-interfaces-guest = { version = "0.4.93", default-features = false, features = ["component-v0-6"] }
 
 [dev-dependencies]
 serde_json = "1"
