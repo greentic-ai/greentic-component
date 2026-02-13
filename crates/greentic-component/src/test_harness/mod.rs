@@ -355,7 +355,7 @@ impl TestHarness {
                     Ok(value) => value,
                     Err(err) => {
                         return map_invoke_error(
-                            err.into(),
+                            err,
                             &store,
                             self.timeout_ms,
                             self.max_memory_bytes,
@@ -391,7 +391,7 @@ impl TestHarness {
                     Ok(value) => value,
                     Err(err) => {
                         return map_invoke_error(
-                            err.into(),
+                            err,
                             &store,
                             self.timeout_ms,
                             self.max_memory_bytes,
