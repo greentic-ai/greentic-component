@@ -278,7 +278,7 @@ wasm:
 		echo "install with: cargo install cargo-component --locked"; \
 		exit 1; \
 	fi
-	RUSTFLAGS= CARGO_ENCODED_RUSTFLAGS= cargo component build --release
+	RUSTFLAGS= CARGO_ENCODED_RUSTFLAGS= cargo component build --release --target wasm32-wasip2
 	WASM_SRC=""; \
 	for cand in \
 		"$${CARGO_TARGET_DIR:-target}/wasm32-wasip2/release/$(NAME_UNDERSCORE).wasm" \
