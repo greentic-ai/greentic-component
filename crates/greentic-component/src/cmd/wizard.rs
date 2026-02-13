@@ -290,7 +290,7 @@ wasm:
 		echo "unable to locate wasm build artifact for $(NAME)"; \
 		exit 1; \
 	fi; \
-	mkdir -p $(DIST_DIR)
+	mkdir -p $(DIST_DIR); \
 	cp "$$WASM_SRC" $(WASM_OUT)
 
 doctor:
