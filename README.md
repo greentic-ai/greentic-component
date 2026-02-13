@@ -35,7 +35,7 @@ What you get:
 
 - `component.manifest.json` with operations, schemas, and a default dev_flow in the YGTc v2 shape.
 - `src/lib.rs` already wired with the exports macro.
-- A WIT world (`greentic:component/component@0.5.0`) so config inference works.
+- A WIT world (`greentic:component/component@0.6.0`) so config inference works.
 
 ## Author the logic
 
@@ -57,7 +57,7 @@ pub fn describe_payload() -> String {
             "name": "hello-world",
             "org": "ai.greentic",
             "version": "0.1.0",
-            "world": "greentic:component/component@0.5.0",
+            "world": "greentic:component/component@0.6.0",
             "schemas": {
                 "component": "schemas/component.schema.json",
                 "input": "schemas/io/input.schema.json",

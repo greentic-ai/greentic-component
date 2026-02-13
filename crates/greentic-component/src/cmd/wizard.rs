@@ -215,9 +215,16 @@ crate-type = ["cdylib", "rlib"]
 [package.metadata.greentic]
 abi_version = "{abi_version}"
 
+[package.metadata.component]
+package = "greentic:component"
+
+[package.metadata.component.target]
+path = "wit"
+world = "component-v0-v6-v0"
+
 [dependencies]
 greentic-types = "0.4"
-wit-bindgen = "0.24"
+wit-bindgen = "0.53"
 serde = {{ version = "1", features = ["derive"] }}
 serde_json = "1"
 "#,
@@ -252,11 +259,11 @@ fn render_makefile() -> String {
     r#"SHELL := /bin/sh
 
 NAME := $(shell awk 'BEGIN{in_pkg=0} /^\[package\]/{in_pkg=1; next} /^\[/{in_pkg=0} in_pkg && /^name = / {gsub(/"/ , "", $$3); print $$3; exit}' Cargo.toml)
+NAME_UNDERSCORE := $(subst -,_,$(NAME))
 ABI_VERSION := $(shell awk 'BEGIN{in_meta=0} /^\[package.metadata.greentic\]/{in_meta=1; next} /^\[/{in_meta=0} in_meta && /^abi_version = / {gsub(/"/ , "", $$3); print $$3; exit}' Cargo.toml)
 ABI_VERSION_UNDERSCORE := $(subst .,_,$(ABI_VERSION))
 DIST_DIR := dist
 WASM_OUT := $(DIST_DIR)/$(NAME)__$(ABI_VERSION_UNDERSCORE).wasm
-WASM_SRC := target/wasm32-wasip2/release/$(NAME).wasm
 
 .PHONY: build test fmt clippy wasm doctor
 
@@ -273,9 +280,30 @@ clippy:
 	cargo clippy --all-targets --all-features -- -D warnings
 
 wasm:
-	cargo component build --release
-	mkdir -p $(DIST_DIR)
-	cp $(WASM_SRC) $(WASM_OUT)
+	if ! cargo component --version >/dev/null 2>&1; then \
+		echo "cargo-component is required to produce a valid component@0.6.0 wasm"; \
+		echo "install with: cargo install cargo-component --locked"; \
+		exit 1; \
+	fi
+	RUSTFLAGS= CARGO_ENCODED_RUSTFLAGS= cargo component build --release --target wasm32-wasip2
+	WASM_SRC=""; \
+	for cand in \
+		"$${CARGO_TARGET_DIR:-target}/wasm32-wasip2/release/$(NAME_UNDERSCORE).wasm" \
+		"$${CARGO_TARGET_DIR:-target}/wasm32-wasip2/release/$(NAME).wasm" \
+		"$${CARGO_TARGET_DIR:-target}/wasm32-wasip1/release/$(NAME_UNDERSCORE).wasm" \
+		"$${CARGO_TARGET_DIR:-target}/wasm32-wasip1/release/$(NAME).wasm" \
+		"target/wasm32-wasip2/release/$(NAME_UNDERSCORE).wasm" \
+		"target/wasm32-wasip2/release/$(NAME).wasm" \
+		"target/wasm32-wasip1/release/$(NAME_UNDERSCORE).wasm" \
+		"target/wasm32-wasip1/release/$(NAME).wasm"; do \
+		if [ -f "$$cand" ]; then WASM_SRC="$$cand"; break; fi; \
+	done; \
+	if [ -z "$$WASM_SRC" ]; then \
+		echo "unable to locate wasm build artifact for $(NAME)"; \
+		exit 1; \
+	fi; \
+	mkdir -p $(DIST_DIR); \
+	cp "$$WASM_SRC" $(WASM_OUT)
 
 doctor:
 	greentic-component doctor $(WASM_OUT)
@@ -409,57 +437,57 @@ const UPGRADE_PREFILLED_ANSWERS_CBOR: &[u8] = __UPGRADE_PREFILL__;
 const REMOVE_PREFILLED_ANSWERS_CBOR: &[u8] = __REMOVE_PREFILL__;
 
 #[derive(Debug, Clone, Copy)]
-pub enum Mode {{
+pub enum Mode {
     Default,
     Setup,
     Upgrade,
     Remove,
-}}
+}
 
-impl From<crate::exports::greentic::component::component_qa::QaMode> for Mode {{
-    fn from(mode: crate::exports::greentic::component::component_qa::QaMode) -> Self {{
-        match mode {{
+impl From<crate::exports::greentic::component::component_qa::QaMode> for Mode {
+    fn from(mode: crate::exports::greentic::component::component_qa::QaMode) -> Self {
+        match mode {
             crate::exports::greentic::component::component_qa::QaMode::Default => Mode::Default,
             crate::exports::greentic::component::component_qa::QaMode::Setup => Mode::Setup,
             crate::exports::greentic::component::component_qa::QaMode::Upgrade => Mode::Upgrade,
             crate::exports::greentic::component::component_qa::QaMode::Remove => Mode::Remove,
-        }}
-    }}
-}}
+        }
+    }
+}
 
-pub fn qa_spec_cbor(mode: Mode) -> Vec<u8> {{
+pub fn qa_spec_cbor(mode: Mode) -> Vec<u8> {
     let spec = qa_spec(mode);
     canonical::to_canonical_cbor_allow_floats(&spec).unwrap_or_default()
-}}
+}
 
-pub fn prefilled_answers_cbor(mode: Mode) -> &'static [u8] {{
-    match mode {{
+pub fn prefilled_answers_cbor(mode: Mode) -> &'static [u8] {
+    match mode {
         Mode::Default => DEFAULT_PREFILLED_ANSWERS_CBOR,
         Mode::Setup => SETUP_PREFILLED_ANSWERS_CBOR,
         Mode::Upgrade => UPGRADE_PREFILLED_ANSWERS_CBOR,
         Mode::Remove => REMOVE_PREFILLED_ANSWERS_CBOR,
-    }}
-}}
+    }
+}
 
-pub fn apply_answers(mode: Mode, current_config: Vec<u8>, answers: Vec<u8>) -> Vec<u8> {{
+pub fn apply_answers(mode: Mode, current_config: Vec<u8>, answers: Vec<u8>) -> Vec<u8> {
     let mut config = decode_map(&current_config);
     let updates = decode_map(&answers);
-    match mode {{
-        Mode::Default | Mode::Setup | Mode::Upgrade => {{
-            for (key, value) in updates {{
+    match mode {
+        Mode::Default | Mode::Setup | Mode::Upgrade => {
+            for (key, value) in updates {
                 config.insert(key, value);
-            }}
-        }}
-        Mode::Remove => {{
+            }
+        }
+        Mode::Remove => {
             config.clear();
             config.insert("enabled".to_string(), JsonValue::Bool(false));
-        }}
-    }}
+        }
+    }
     canonical::to_canonical_cbor_allow_floats(&config).unwrap_or_default()
-}}
+}
 
-fn qa_spec(mode: Mode) -> ComponentQaSpec {{
-    let (title_key, description_key, questions) = match mode {{
+fn qa_spec(mode: Mode) -> ComponentQaSpec {
+    let (title_key, description_key, questions) = match mode {
         Mode::Default => (
             "qa.default.title",
             Some("qa.default.description"),
@@ -472,46 +500,46 @@ fn qa_spec(mode: Mode) -> ComponentQaSpec {{
         ),
         Mode::Upgrade => ("qa.upgrade.title", None, Vec::new()),
         Mode::Remove => ("qa.remove.title", None, Vec::new()),
-    }};
-    ComponentQaSpec {{
-        mode: match mode {{
+    };
+    ComponentQaSpec {
+        mode: match mode {
             Mode::Default => QaMode::Default,
             Mode::Setup => QaMode::Setup,
             Mode::Upgrade => QaMode::Upgrade,
             Mode::Remove => QaMode::Remove,
-        }},
+        },
         title: I18nText::new(title_key, None),
         description: description_key.map(|key| I18nText::new(key, None)),
         questions,
         defaults: BTreeMap::new(),
-    }}
-}}
+    }
+}
 
-fn question_enabled(label_key: &str, help_key: &str) -> Question {{
-    Question {{
+fn question_enabled(label_key: &str, help_key: &str) -> Question {
+    Question {
         id: "enabled".to_string(),
         label: I18nText::new(label_key, None),
         help: Some(I18nText::new(help_key, None)),
         error: None,
         kind: QuestionKind::Bool,
         required: true,
-        default: Some(JsonValue::Bool(true)),
-    }}
-}}
+        default: None,
+    }
+}
 
-fn decode_map(bytes: &[u8]) -> BTreeMap<String, JsonValue> {{
-    if bytes.is_empty() {{
+fn decode_map(bytes: &[u8]) -> BTreeMap<String, JsonValue> {
+    if bytes.is_empty() {
         return BTreeMap::new();
-    }}
-    let value: JsonValue = match canonical::from_cbor(bytes) {{
+    }
+    let value: JsonValue = match canonical::from_cbor(bytes) {
         Ok(value) => value,
         Err(_) => return BTreeMap::new(),
-    }};
-    let JsonValue::Object(map) = value else {{
+    };
+    let JsonValue::Object(map) = value else {
         return BTreeMap::new();
-    }};
+    };
     map.into_iter().collect()
-}}
+}
 "#;
     template
         .replace("__DEFAULT_PREFILL__", &default_prefill)

@@ -1,23 +1,204 @@
-use greentic_interfaces_guest::component::node::InvokeResult;
-use greentic_interfaces_guest::component_entrypoint;
+use std::collections::{BTreeMap, BTreeSet};
+
+use greentic_types::cbor::canonical;
+use greentic_types::schemas::common::schema_ir::{AdditionalProperties, SchemaIr};
+use greentic_types::schemas::component::v0_6_0::{
+    ComponentDescribe, ComponentInfo, ComponentOperation, ComponentQaSpec, ComponentRunInput,
+    ComponentRunOutput, I18nText, QaMode, Question, schema_hash,
+};
+
+const COMPONENT_NAME: &str = "{{ name }}";
+const COMPONENT_ORG: &str = "{{ org }}";
+const COMPONENT_VERSION: &str = "{{ version }}";
 
 #[cfg(target_arch = "wasm32")]
 #[used]
 #[unsafe(link_section = ".greentic.wasi")]
 static WASI_TARGET_MARKER: [u8; 13] = *b"wasm32-wasip2";
 
-component_entrypoint!({
-    manifest: crate::describe_payload,
-    invoke: crate::handle_message,
-    invoke_stream: true,
-});
+#[cfg(target_arch = "wasm32")]
+mod component {
+    use greentic_interfaces_guest::component_v0_6::{
+        component_descriptor, component_i18n, component_qa, component_runtime, component_schema,
+    };
+
+    use super::{
+        apply_answers_cbor, component_describe_cbor, component_info_cbor, config_schema_cbor,
+        i18n_keys, input_schema_cbor, output_schema_cbor, qa_spec_cbor, run_component_cbor,
+    };
+
+    pub(super) struct Component;
+
+    impl component_descriptor::Guest for Component {
+        fn get_component_info() -> Vec<u8> {
+            component_info_cbor()
+        }
+
+        fn describe() -> Vec<u8> {
+            component_describe_cbor()
+        }
+    }
+
+    impl component_schema::Guest for Component {
+        fn input_schema() -> Vec<u8> {
+            input_schema_cbor()
+        }
+
+        fn output_schema() -> Vec<u8> {
+            output_schema_cbor()
+        }
+
+        fn config_schema() -> Vec<u8> {
+            config_schema_cbor()
+        }
+    }
+
+    impl component_runtime::Guest for Component {
+        fn run(input: Vec<u8>, state: Vec<u8>) -> component_runtime::RunResult {
+            let (output, new_state) = run_component_cbor(input, state);
+            component_runtime::RunResult { output, new_state }
+        }
+    }
+
+    impl component_qa::Guest for Component {
+        fn qa_spec(mode: component_qa::QaMode) -> Vec<u8> {
+            qa_spec_cbor(mode)
+        }
+
+        fn apply_answers(
+            mode: component_qa::QaMode,
+            current_config: Vec<u8>,
+            answers: Vec<u8>,
+        ) -> Vec<u8> {
+            apply_answers_cbor(mode, current_config, answers)
+        }
+    }
+
+    impl component_i18n::Guest for Component {
+        fn i18n_keys() -> Vec<String> {
+            i18n_keys()
+        }
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+mod exports {
+    use greentic_interfaces_guest::component_v0_6::{
+        component_descriptor, component_i18n, component_qa, component_runtime, component_schema,
+    };
+
+    use super::component::Component;
+
+    #[unsafe(export_name = "greentic:component/component-descriptor@0.6.0#get-component-info")]
+    unsafe extern "C" fn export_get_component_info() -> *mut u8 {
+        unsafe { component_descriptor::_export_get_component_info_cabi::<Component>() }
+    }
+
+    #[unsafe(export_name = "cabi_post_greentic:component/component-descriptor@0.6.0#get-component-info")]
+    unsafe extern "C" fn post_return_get_component_info(arg0: *mut u8) {
+        unsafe { component_descriptor::__post_return_get_component_info::<Component>(arg0) };
+    }
+
+    #[unsafe(export_name = "greentic:component/component-descriptor@0.6.0#describe")]
+    unsafe extern "C" fn export_describe() -> *mut u8 {
+        unsafe { component_descriptor::_export_describe_cabi::<Component>() }
+    }
+
+    #[unsafe(export_name = "cabi_post_greentic:component/component-descriptor@0.6.0#describe")]
+    unsafe extern "C" fn post_return_describe(arg0: *mut u8) {
+        unsafe { component_descriptor::__post_return_describe::<Component>(arg0) };
+    }
+
+    #[unsafe(export_name = "greentic:component/component-schema@0.6.0#input-schema")]
+    unsafe extern "C" fn export_input_schema() -> *mut u8 {
+        unsafe { component_schema::_export_input_schema_cabi::<Component>() }
+    }
+
+    #[unsafe(export_name = "cabi_post_greentic:component/component-schema@0.6.0#input-schema")]
+    unsafe extern "C" fn post_return_input_schema(arg0: *mut u8) {
+        unsafe { component_schema::__post_return_input_schema::<Component>(arg0) };
+    }
+
+    #[unsafe(export_name = "greentic:component/component-schema@0.6.0#output-schema")]
+    unsafe extern "C" fn export_output_schema() -> *mut u8 {
+        unsafe { component_schema::_export_output_schema_cabi::<Component>() }
+    }
+
+    #[unsafe(export_name = "cabi_post_greentic:component/component-schema@0.6.0#output-schema")]
+    unsafe extern "C" fn post_return_output_schema(arg0: *mut u8) {
+        unsafe { component_schema::__post_return_output_schema::<Component>(arg0) };
+    }
+
+    #[unsafe(export_name = "greentic:component/component-schema@0.6.0#config-schema")]
+    unsafe extern "C" fn export_config_schema() -> *mut u8 {
+        unsafe { component_schema::_export_config_schema_cabi::<Component>() }
+    }
+
+    #[unsafe(export_name = "cabi_post_greentic:component/component-schema@0.6.0#config-schema")]
+    unsafe extern "C" fn post_return_config_schema(arg0: *mut u8) {
+        unsafe { component_schema::__post_return_config_schema::<Component>(arg0) };
+    }
+
+    #[unsafe(export_name = "greentic:component/component-runtime@0.6.0#run")]
+    unsafe extern "C" fn export_run(
+        arg0: *mut u8,
+        arg1: usize,
+        arg2: *mut u8,
+        arg3: usize,
+    ) -> *mut u8 {
+        unsafe { component_runtime::_export_run_cabi::<Component>(arg0, arg1, arg2, arg3) }
+    }
+
+    #[unsafe(export_name = "cabi_post_greentic:component/component-runtime@0.6.0#run")]
+    unsafe extern "C" fn post_return_run(arg0: *mut u8) {
+        unsafe { component_runtime::__post_return_run::<Component>(arg0) };
+    }
+
+    #[unsafe(export_name = "greentic:component/component-qa@0.6.0#qa-spec")]
+    unsafe extern "C" fn export_qa_spec(arg0: i32) -> *mut u8 {
+        unsafe { component_qa::_export_qa_spec_cabi::<Component>(arg0) }
+    }
+
+    #[unsafe(export_name = "cabi_post_greentic:component/component-qa@0.6.0#qa-spec")]
+    unsafe extern "C" fn post_return_qa_spec(arg0: *mut u8) {
+        unsafe { component_qa::__post_return_qa_spec::<Component>(arg0) };
+    }
+
+    #[unsafe(export_name = "greentic:component/component-qa@0.6.0#apply-answers")]
+    unsafe extern "C" fn export_apply_answers(
+        arg0: i32,
+        arg1: *mut u8,
+        arg2: usize,
+        arg3: *mut u8,
+        arg4: usize,
+    ) -> *mut u8 {
+        unsafe {
+            component_qa::_export_apply_answers_cabi::<Component>(arg0, arg1, arg2, arg3, arg4)
+        }
+    }
+
+    #[unsafe(export_name = "cabi_post_greentic:component/component-qa@0.6.0#apply-answers")]
+    unsafe extern "C" fn post_return_apply_answers(arg0: *mut u8) {
+        unsafe { component_qa::__post_return_apply_answers::<Component>(arg0) };
+    }
+
+    #[unsafe(export_name = "greentic:component/component-i18n@0.6.0#i18n-keys")]
+    unsafe extern "C" fn export_i18n_keys() -> *mut u8 {
+        unsafe { component_i18n::_export_i18n_keys_cabi::<Component>() }
+    }
+
+    #[unsafe(export_name = "cabi_post_greentic:component/component-i18n@0.6.0#i18n-keys")]
+    unsafe extern "C" fn post_return_i18n_keys(arg0: *mut u8) {
+        unsafe { component_i18n::__post_return_i18n_keys::<Component>(arg0) };
+    }
+}
 
 pub fn describe_payload() -> String {
     serde_json::json!({
         "component": {
-            "name": "{{ name }}",
-            "org": "{{ org }}",
-            "version": "{{ version }}",
+            "name": COMPONENT_NAME,
+            "org": COMPONENT_ORG,
+            "version": COMPONENT_VERSION,
             "world": "{{ wit_world }}",
             "schemas": {
                 "component": "schemas/component.schema.json",
@@ -29,8 +210,187 @@ pub fn describe_payload() -> String {
     .to_string()
 }
 
-pub fn handle_message(operation: String, input: String) -> InvokeResult {
-    InvokeResult::Ok(format!("{{ name }}::{operation} => {}", input.trim()))
+pub fn handle_message(operation: &str, input: &str) -> String {
+    format!("{COMPONENT_NAME}::{operation} => {}", input.trim())
+}
+
+fn encode_cbor<T: serde::Serialize>(value: &T) -> Vec<u8> {
+    canonical::to_canonical_cbor_allow_floats(value).expect("encode cbor")
+}
+
+fn input_schema() -> SchemaIr {
+    SchemaIr::Object {
+        properties: BTreeMap::from([(
+            "input".to_string(),
+            SchemaIr::String {
+                min_len: Some(0),
+                max_len: None,
+                regex: None,
+                format: None,
+            },
+        )]),
+        required: vec!["input".to_string()],
+        additional: AdditionalProperties::Allow,
+    }
+}
+
+fn output_schema() -> SchemaIr {
+    SchemaIr::Object {
+        properties: BTreeMap::from([(
+            "message".to_string(),
+            SchemaIr::String {
+                min_len: Some(0),
+                max_len: None,
+                regex: None,
+                format: None,
+            },
+        )]),
+        required: vec!["message".to_string()],
+        additional: AdditionalProperties::Allow,
+    }
+}
+
+fn config_schema() -> SchemaIr {
+    SchemaIr::Object {
+        properties: BTreeMap::new(),
+        required: Vec::new(),
+        additional: AdditionalProperties::Forbid,
+    }
+}
+
+fn component_info() -> ComponentInfo {
+    ComponentInfo {
+        id: format!("{COMPONENT_ORG}.{COMPONENT_NAME}"),
+        version: COMPONENT_VERSION.to_string(),
+        role: "tool".to_string(),
+        display_name: Some(I18nText::new(
+            "component.display_name",
+            Some(COMPONENT_NAME.to_string()),
+        )),
+    }
+}
+
+fn component_describe() -> ComponentDescribe {
+    let input = input_schema();
+    let output = output_schema();
+    let config = config_schema();
+    let hash = schema_hash(&input, &output, &config).unwrap_or_default();
+    ComponentDescribe {
+        info: component_info(),
+        provided_capabilities: Vec::new(),
+        required_capabilities: Vec::new(),
+        metadata: BTreeMap::new(),
+        operations: vec![ComponentOperation {
+            id: "handle_message".to_string(),
+            display_name: None,
+            input: ComponentRunInput { schema: input },
+            output: ComponentRunOutput { schema: output },
+            defaults: BTreeMap::new(),
+            redactions: Vec::new(),
+            constraints: BTreeMap::new(),
+            schema_hash: hash,
+        }],
+        config_schema: config,
+    }
+}
+
+fn component_info_cbor() -> Vec<u8> {
+    encode_cbor(&component_info())
+}
+
+fn component_describe_cbor() -> Vec<u8> {
+    encode_cbor(&component_describe())
+}
+
+fn input_schema_cbor() -> Vec<u8> {
+    encode_cbor(&input_schema())
+}
+
+fn output_schema_cbor() -> Vec<u8> {
+    encode_cbor(&output_schema())
+}
+
+fn config_schema_cbor() -> Vec<u8> {
+    encode_cbor(&config_schema())
+}
+
+#[cfg(target_arch = "wasm32")]
+fn qa_spec_cbor(mode: greentic_interfaces_guest::component_v0_6::component_qa::QaMode) -> Vec<u8> {
+    let mode = match mode {
+        greentic_interfaces_guest::component_v0_6::component_qa::QaMode::Default => QaMode::Default,
+        greentic_interfaces_guest::component_v0_6::component_qa::QaMode::Setup => QaMode::Setup,
+        greentic_interfaces_guest::component_v0_6::component_qa::QaMode::Upgrade => QaMode::Upgrade,
+        greentic_interfaces_guest::component_v0_6::component_qa::QaMode::Remove => QaMode::Remove,
+    };
+
+    let spec = ComponentQaSpec {
+        mode,
+        title: I18nText::new("qa.title", Some("Component settings".to_string())),
+        description: None,
+        questions: vec![Question {
+            id: "enabled".to_string(),
+            label: I18nText::new("qa.enabled.label", Some("Enabled".to_string())),
+            help: None,
+            error: None,
+            kind: greentic_types::schemas::component::v0_6_0::QuestionKind::Bool,
+            required: false,
+            default: None,
+        }],
+        defaults: BTreeMap::new(),
+    };
+    encode_cbor(&spec)
+}
+
+#[cfg(target_arch = "wasm32")]
+fn apply_answers_cbor(
+    _mode: greentic_interfaces_guest::component_v0_6::component_qa::QaMode,
+    current_config: Vec<u8>,
+    answers: Vec<u8>,
+) -> Vec<u8> {
+    let current: Result<serde_json::Value, _> = canonical::from_cbor(&current_config);
+    let incoming: Result<serde_json::Value, _> = canonical::from_cbor(&answers);
+    let merged = match (current.ok(), incoming.ok()) {
+        (_, Some(value @ serde_json::Value::Object(_))) => value,
+        (Some(value @ serde_json::Value::Object(_)), _) => value,
+        _ => serde_json::json!({}),
+    };
+    encode_cbor(&merged)
+}
+
+fn i18n_keys() -> Vec<String> {
+    let mut keys = BTreeSet::new();
+    keys.insert("component.display_name".to_string());
+    keys.insert("qa.title".to_string());
+    keys.insert("qa.enabled.label".to_string());
+    keys.into_iter().collect()
+}
+
+fn run_component_cbor(input: Vec<u8>, _state: Vec<u8>) -> (Vec<u8>, Vec<u8>) {
+    let invocation: Result<serde_json::Value, _> = canonical::from_cbor(&input);
+    let output = match invocation {
+        Ok(value) => {
+            let operation = value
+                .get("operation")
+                .and_then(|v| v.as_str())
+                .unwrap_or("handle_message");
+            let input_text = value
+                .get("input")
+                .and_then(|v| v.as_str())
+                .map(ToOwned::to_owned)
+                .unwrap_or_else(|| value.to_string());
+            serde_json::json!({
+                "message": handle_message(operation, &input_text)
+            })
+        }
+        Err(err) => serde_json::json!({
+            "error": {
+                "code": "SCHEMA_INVALID",
+                "message": err.to_string()
+            }
+        }),
+    };
+
+    (encode_cbor(&output), encode_cbor(&serde_json::json!({})))
 }
 
 #[cfg(test)]
@@ -46,10 +406,7 @@ mod tests {
 
     #[test]
     fn handle_message_round_trips() {
-        let value = handle_message("handle".to_string(), "demo".to_string());
-        match value {
-            InvokeResult::Ok(body) => assert!(body.contains("demo")),
-            other => panic!("unexpected invoke result: {:?}", other),
-        }
+        let body = handle_message("handle", "demo");
+        assert!(body.contains("demo"));
     }
 }

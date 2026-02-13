@@ -81,7 +81,7 @@ fn readme_quickstart_example_stays_fresh() {
 
     let lib_rs = fs::read_to_string(component_dir.join("src/lib.rs")).expect("lib.rs");
     assert!(
-        lib_rs.contains("component_entrypoint!"),
-        "scaffold should use component_entrypoint macro"
+        lib_rs.contains("component-runtime@0.6.0#run"),
+        "scaffold should expose 0.6 component runtime exports"
     );
 }

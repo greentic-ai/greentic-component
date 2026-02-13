@@ -22,7 +22,11 @@ clippy:
 	cargo clippy --all-targets --all-features -- -D warnings
 
 wasm:
-	cargo component build --release
+	if cargo component --version >/dev/null 2>&1; then \
+		cargo component build --release; \
+	else \
+		cargo build --target wasm32-wasip2 --release; \
+	fi
 	mkdir -p $(DIST_DIR)
 	cp $(WASM_SRC) $(WASM_OUT)
 

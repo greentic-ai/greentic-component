@@ -8,11 +8,11 @@ Global:
 
 ## new
 - Purpose: scaffold a new component repo from a template (default: `rust-wasi-p2-min`).
-- Usage: `greentic-component new --name hello-world --org ai.greentic [--template rust-wasi-p2-min] [--path ./hello-world] [--version 0.1.0] [--license MIT] [--wit-world greentic:component/component@0.5.0] [--non-interactive] [--no-git] [--no-check] [--json]`.
+- Usage: `greentic-component new --name hello-world --org ai.greentic [--template rust-wasi-p2-min] [--path ./hello-world] [--version 0.1.0] [--license MIT] [--wit-world greentic:component/component@0.6.0] [--non-interactive] [--no-git] [--no-check] [--json]`.
 - Options:
 - `--version <semver>` sets the initial component version (default: `0.1.0`).
 - `--license <id>` sets the license identifier embedded in generated sources (default: `MIT`).
-- `--wit-world <name>` sets the exported WIT world name (default: `greentic:component/component@0.5.0`).
+- `--wit-world <name>` sets the exported WIT world name (default: `greentic:component/component@0.6.0`).
 - Tips: keep `--no-check` off in CI unless you already built the wasm; use `--template` to point at custom templates (listed via `templates`); `--no-git` skips the init/commit step. The CLI prints each step (scaffold, git, cargo check) and shows cargo check duration; the first check can take a while while the wasm toolchain downloads.
 
 ## templates
@@ -50,7 +50,7 @@ Global:
 - Usage: `greentic-component test --wasm ./component.wasm --op render --input ./input.json [--state inmem] [--pretty] [--state-dump] [--manifest path] [--output out.json] [--trace-out ./trace.json]`.
 - Behavior: uses `greentic:state/store@1.0.0` in-memory storage scoped by tenant + flow/session prefix; secrets are loaded from `.env`, JSON, or `--secret` flags when declared in the manifest. State/secrets calls are denied when capabilities are not declared. Failures emit JSON with a stable `code`.
 - Options:
-- `--world <world>` overrides the component world (default: `greentic:component/component@0.5.0`).
+- `--world <world>` overrides the component world (default: `greentic:component/component@0.6.0`).
 - `--manifest <path>` overrides the manifest location (defaults to next to the wasm).
 - `--input-json <json>` supplies inline JSON (repeatable; conflicts with `--input`).
 - `--config <path|json>` supplies component config (file path or inline JSON).

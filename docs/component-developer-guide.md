@@ -27,7 +27,7 @@ Every component has three core pieces:
   "id": "com.example.hello",
   "name": "Hello Component",
   "version": "0.1.0",
-  "world": "greentic:component/component@0.5.0",
+  "world": "greentic:component/component@0.6.0",
   "describe_export": "describe",
   "operations": [
     { "name": "render", "input_schema": {}, "output_schema": {} }
