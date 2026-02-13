@@ -499,7 +499,7 @@ fn question_enabled(label_key: &str, help_key: &str) -> Question {
         error: None,
         kind: QuestionKind::Bool,
         required: true,
-        default: Some(JsonValue::Bool(true)),
+        default: None,
     }
 }
 
