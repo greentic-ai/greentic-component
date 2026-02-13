@@ -257,7 +257,6 @@ ABI_VERSION := $(shell awk 'BEGIN{in_meta=0} /^\[package.metadata.greentic\]/{in
 ABI_VERSION_UNDERSCORE := $(subst .,_,$(ABI_VERSION))
 DIST_DIR := dist
 WASM_OUT := $(DIST_DIR)/$(NAME)__$(ABI_VERSION_UNDERSCORE).wasm
-WASM_SRC := target/wasm32-wasip2/release/$(NAME_UNDERSCORE).wasm
 
 .PHONY: build test fmt clippy wasm doctor
 
@@ -279,8 +278,20 @@ wasm:
 	else \
 		RUSTFLAGS= CARGO_ENCODED_RUSTFLAGS= cargo build --target wasm32-wasip2 --release; \
 	fi
+	WASM_SRC=""; \
+	for cand in \
+		"$${CARGO_TARGET_DIR:-target}/wasm32-wasip2/release/$(NAME_UNDERSCORE).wasm" \
+		"$${CARGO_TARGET_DIR:-target}/wasm32-wasip2/release/$(NAME).wasm" \
+		"target/wasm32-wasip2/release/$(NAME_UNDERSCORE).wasm" \
+		"target/wasm32-wasip2/release/$(NAME).wasm"; do \
+		if [ -f "$$cand" ]; then WASM_SRC="$$cand"; break; fi; \
+	done; \
+	if [ -z "$$WASM_SRC" ]; then \
+		echo "unable to locate wasm build artifact for $(NAME)"; \
+		exit 1; \
+	fi; \
 	mkdir -p $(DIST_DIR)
-	cp $(WASM_SRC) $(WASM_OUT)
+	cp "$$WASM_SRC" $(WASM_OUT)
 
 doctor:
 	greentic-component doctor $(WASM_OUT)
