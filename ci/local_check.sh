@@ -468,6 +468,16 @@ run_wizard_smoke() {
         wizard new wizard-smoke --out "$wizard_parent"
     run_bin_cmd_expect_fail "wizard doctor (unbuilt)" "$BIN_COMPONENT_DOCTOR" "$wizard_root"
 
+    # Wizard wasm builds must produce a component-model artifact. Installing
+    # cargo-component avoids falling back to plain cargo build modules.
+    if ! cargo component --version >/dev/null 2>&1; then
+        if [ "$LOCAL_CHECK_ONLINE" = "1" ] && [ "$CRATES_IO_AVAILABLE" = "1" ]; then
+            run_cmd "wizard: install cargo-component" cargo install cargo-component --locked
+        else
+            skip_step "wizard: install cargo-component" "${CRATES_IO_REASON:-crates.io unreachable}"
+        fi
+    fi
+
     local wizard_manifest="$wizard_root/component.manifest.json"
     if [ -f "$wizard_manifest" ]; then
         run_bin_cmd "wizard build" "$BIN_GREENTIC_COMPONENT" build --manifest "$wizard_manifest" --no-flow

@@ -273,11 +273,12 @@ clippy:
 	cargo clippy --all-targets --all-features -- -D warnings
 
 wasm:
-	if cargo component --version >/dev/null 2>&1; then \
-		RUSTFLAGS= CARGO_ENCODED_RUSTFLAGS= cargo component build --release; \
-	else \
-		RUSTFLAGS= CARGO_ENCODED_RUSTFLAGS= cargo build --target wasm32-wasip2 --release; \
+	if ! cargo component --version >/dev/null 2>&1; then \
+		echo "cargo-component is required to produce a valid component@0.6.0 wasm"; \
+		echo "install with: cargo install cargo-component --locked"; \
+		exit 1; \
 	fi
+	RUSTFLAGS= CARGO_ENCODED_RUSTFLAGS= cargo component build --release
 	WASM_SRC=""; \
 	for cand in \
 		"$${CARGO_TARGET_DIR:-target}/wasm32-wasip2/release/$(NAME_UNDERSCORE).wasm" \
