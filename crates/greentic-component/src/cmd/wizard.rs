@@ -509,6 +509,9 @@ pub fn apply_answers(mode: Mode, current_config: Vec<u8>, answers: Vec<u8>) -> V
             for (key, value) in updates {
                 config.insert(key, value);
             }
+            config
+                .entry("enabled".to_string())
+                .or_insert(JsonValue::Bool(true));
         }
         Mode::Remove => {
             config.clear();

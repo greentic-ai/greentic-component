@@ -96,3 +96,28 @@ fn wizard_new_embeds_declared_capabilities_in_descriptor() {
     ));
     assert!(descriptor.contains("const PROVIDED_CAPABILITIES: &[&str] = &[\"telemetry.emit\"];"));
 }
+
+#[test]
+fn wizard_new_qa_apply_answers_enforces_mode_contracts() {
+    let temp = tempfile::TempDir::new().unwrap();
+    let args = WizardNewArgs {
+        name: "qa-contract-component".into(),
+        abi_version: "0.6.0".into(),
+        mode: WizardMode::Default,
+        answers: None,
+        out: Some(temp.path().to_path_buf()),
+        required_capabilities: Vec::new(),
+        provided_capabilities: Vec::new(),
+    };
+
+    run(WizardCommand::New(args)).expect("wizard new should succeed");
+
+    let root = temp.path().join("qa-contract-component");
+    let qa_rs = fs::read_to_string(root.join("src/qa.rs")).unwrap();
+
+    assert!(qa_rs.contains("Mode::Default | Mode::Setup | Mode::Update"));
+    assert!(qa_rs.contains(".entry(\"enabled\".to_string())"));
+    assert!(qa_rs.contains(".or_insert(JsonValue::Bool(true));"));
+    assert!(qa_rs.contains("Mode::Remove => {"));
+    assert!(qa_rs.contains("config.insert(\"enabled\".to_string(), JsonValue::Bool(false));"));
+}
