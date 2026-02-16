@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use pathdiff::diff_paths;
 use serde::Serialize;
 use thiserror::Error;
+use toml::Value as TomlValue;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -111,10 +112,62 @@ pub fn ensure_cratesio_manifest_clean(root: &Path) -> Result<(), DependencyError
         manifest: manifest.clone(),
         source,
     })?;
-    if contents.contains("path =") {
+    let parsed: TomlValue = contents.parse().map_err(|source| DependencyError::Io {
+        manifest: manifest.clone(),
+        source: io::Error::new(io::ErrorKind::InvalidData, source),
+    })?;
+    if manifest_has_path_dependency(&parsed) {
         return Err(DependencyError::PathDependency { manifest });
     }
     Ok(())
+}
+
+fn manifest_has_path_dependency(doc: &TomlValue) -> bool {
+    has_path_dep_table(doc.get("dependencies").and_then(TomlValue::as_table))
+        || has_path_dep_table(doc.get("dev-dependencies").and_then(TomlValue::as_table))
+        || has_path_dep_table(doc.get("build-dependencies").and_then(TomlValue::as_table))
+        || has_path_dep_workspace(doc.get("workspace").and_then(TomlValue::as_table))
+        || has_path_dep_patch(doc.get("patch").and_then(TomlValue::as_table))
+        || has_path_dep_target(doc.get("target").and_then(TomlValue::as_table))
+}
+
+fn has_path_dep_workspace(workspace: Option<&toml::Table>) -> bool {
+    let Some(workspace) = workspace else {
+        return false;
+    };
+    has_path_dep_table(workspace.get("dependencies").and_then(TomlValue::as_table))
+}
+
+fn has_path_dep_patch(patch: Option<&toml::Table>) -> bool {
+    let Some(patch) = patch else {
+        return false;
+    };
+    patch
+        .values()
+        .filter_map(TomlValue::as_table)
+        .any(|registry| has_path_dep_table(Some(registry)))
+}
+
+fn has_path_dep_target(target: Option<&toml::Table>) -> bool {
+    let Some(target) = target else {
+        return false;
+    };
+    target.values().filter_map(TomlValue::as_table).any(|cfg| {
+        has_path_dep_table(cfg.get("dependencies").and_then(TomlValue::as_table))
+            || has_path_dep_table(cfg.get("dev-dependencies").and_then(TomlValue::as_table))
+            || has_path_dep_table(cfg.get("build-dependencies").and_then(TomlValue::as_table))
+    })
+}
+
+fn has_path_dep_table(table: Option<&toml::Table>) -> bool {
+    let Some(table) = table else {
+        return false;
+    };
+    table.values().any(value_has_path_key)
+}
+
+fn value_has_path_key(value: &TomlValue) -> bool {
+    matches!(value, TomlValue::Table(dep) if dep.contains_key("path"))
 }
 
 #[cfg(test)]
@@ -140,6 +193,24 @@ mod tests {
         std::fs::write(
             temp.path().join("Cargo.toml"),
             "[dependencies]\nfoo = \"0.1\"\n",
+        )
+        .unwrap();
+        ensure_cratesio_manifest_clean(temp.path()).unwrap();
+    }
+
+    #[test]
+    fn cratesio_manifest_allows_component_metadata_path() {
+        let temp = TempDir::new().unwrap();
+        std::fs::write(
+            temp.path().join("Cargo.toml"),
+            r#"[package]
+name = "demo"
+version = "0.1.0"
+
+[package.metadata.component.target]
+path = "wit"
+world = "component-v0-v6-v0"
+"#,
         )
         .unwrap();
         ensure_cratesio_manifest_clean(temp.path()).unwrap();
