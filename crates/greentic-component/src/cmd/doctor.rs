@@ -209,41 +209,6 @@ impl DoctorReport {
             }
         }
 
-        for (_mode, mode_name) in qa_modes() {
-            let bytes = report.require_export_bytes(
-                &mut caller,
-                "component-qa",
-                "apply-answers",
-                &[
-                    Val::Enum(mode_name.to_string()),
-                    Val::List(bytes_to_vals(&EMPTY_CBOR_MAP)),
-                    Val::List(bytes_to_vals(&EMPTY_CBOR_MAP)),
-                ],
-            );
-            if let Some(bytes) = bytes {
-                match decode_cbor::<JsonValue>(&bytes) {
-                    Ok(value) => {
-                        if !value.is_object() {
-                            report.error(
-                                "doctor.qa.apply_answers.not_map",
-                                format!("apply-answers({mode_name}) returned non-map CBOR"),
-                                "apply-answers",
-                                None,
-                            );
-                        }
-                    }
-                    Err(err) => {
-                        report.error(
-                            "doctor.qa.apply_answers.decode_failed",
-                            format!("apply-answers({mode_name}) decode failed: {err}"),
-                            "apply-answers",
-                            None,
-                        );
-                    }
-                }
-            }
-        }
-
         if let Some(bytes) = info_bytes {
             match decode_cbor::<ComponentInfo>(&bytes) {
                 Ok(info) => report.validate_info(&info, "get-component-info"),
@@ -262,6 +227,7 @@ impl DoctorReport {
                     report.validate_info(&describe.info, "describe");
                     report.validate_describe(&describe, &bytes);
                     report.validate_i18n(&i18n_keys, &qa_specs);
+                    report.validate_apply_answers(&mut caller, &describe, &bytes);
                 }
                 Err(err) => report.error(
                     "doctor.describe.decode_failed",
@@ -406,6 +372,65 @@ impl DoctorReport {
                         "doctor.i18n.key_missing",
                         format!("missing i18n key {key} referenced in qa-spec({mode})"),
                         "component-i18n",
+                        None,
+                    );
+                }
+            }
+        }
+    }
+
+    fn validate_apply_answers(
+        &mut self,
+        caller: &mut ComponentCaller,
+        describe: &ComponentDescribe,
+        describe_bytes: &[u8],
+    ) {
+        let context = describe_hash_context(describe, describe_bytes);
+        for (_mode, mode_name) in qa_modes() {
+            let bytes = self.require_export_bytes(
+                caller,
+                "component-qa",
+                "apply-answers",
+                &[
+                    Val::Enum(mode_name.to_string()),
+                    Val::List(bytes_to_vals(&EMPTY_CBOR_MAP)),
+                    Val::List(bytes_to_vals(&EMPTY_CBOR_MAP)),
+                ],
+            );
+            let Some(bytes) = bytes else {
+                continue;
+            };
+            if let Err(err) = ensure_canonical_allow_floats(&bytes) {
+                self.error(
+                    "doctor.qa.apply_answers.non_canonical",
+                    format!(
+                        "apply-answers({mode_name}) returned non-canonical CBOR: {err}; {context}"
+                    ),
+                    format!("apply-answers.{mode_name}"),
+                    None,
+                );
+            }
+            match decode_cbor::<JsonValue>(&bytes) {
+                Ok(value) => {
+                    let mut issues = Vec::new();
+                    validate_json_value(&describe.config_schema, &value, "$", &mut issues);
+                    if !issues.is_empty() {
+                        self.error(
+                            "doctor.qa.apply_answers.schema_invalid",
+                            format!(
+                                "apply-answers({mode_name}) violates config_schema: {}; {context}",
+                                format_validation_issues(&issues)
+                            ),
+                            format!("apply-answers.{mode_name}"),
+                            None,
+                        );
+                    }
+                }
+                Err(err) => {
+                    self.error(
+                        "doctor.qa.apply_answers.decode_failed",
+                        format!("apply-answers({mode_name}) decode failed: {err}; {context}"),
+                        "apply-answers",
                         None,
                     );
                 }
@@ -684,7 +709,7 @@ fn qa_modes() -> [(QaMode, &'static str); 4] {
     [
         (QaMode::Default, "default"),
         (QaMode::Setup, "setup"),
-        (QaMode::Upgrade, "upgrade"),
+        (QaMode::Update, "update"),
         (QaMode::Remove, "remove"),
     ]
 }
@@ -893,6 +918,295 @@ fn is_unconstrained(schema: &SchemaIr) -> bool {
     }
 }
 
+#[derive(Debug)]
+struct ValueIssue {
+    path: String,
+    message: String,
+}
+
+fn describe_hash_context(describe: &ComponentDescribe, describe_bytes: &[u8]) -> String {
+    let describe_hash =
+        compute_describe_hash(describe_bytes).unwrap_or_else(|err| format!("unavailable ({err})"));
+    let schema_hashes = describe
+        .operations
+        .iter()
+        .map(|op| format!("{}={}", op.id, op.schema_hash))
+        .collect::<Vec<_>>();
+    if schema_hashes.is_empty() {
+        format!("describe_hash={describe_hash}")
+    } else {
+        format!(
+            "describe_hash={describe_hash}; schema_hashes=[{}]",
+            schema_hashes.join(", ")
+        )
+    }
+}
+
+fn compute_describe_hash(raw_bytes: &[u8]) -> Result<String, String> {
+    let payload = strip_self_describe_tag(raw_bytes);
+    let canonicalized = canonical::canonicalize_allow_floats(payload)
+        .map_err(|err| format!("canonicalization failed: {err}"))?;
+    Ok(blake3::hash(&canonicalized).to_hex().to_string())
+}
+
+fn format_validation_issues(issues: &[ValueIssue]) -> String {
+    issues
+        .iter()
+        .take(8)
+        .map(|issue| format!("{}: {}", issue.path, issue.message))
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
+fn validate_json_value(
+    schema: &SchemaIr,
+    value: &JsonValue,
+    path: &str,
+    issues: &mut Vec<ValueIssue>,
+) {
+    match schema {
+        SchemaIr::Object {
+            properties,
+            required,
+            additional,
+        } => {
+            let Some(obj) = value.as_object() else {
+                issues.push(ValueIssue {
+                    path: path.to_string(),
+                    message: "expected object".to_string(),
+                });
+                return;
+            };
+            for key in required {
+                if !obj.contains_key(key) {
+                    issues.push(ValueIssue {
+                        path: format!("{path}/{key}"),
+                        message: "required field missing".to_string(),
+                    });
+                }
+            }
+            for (key, subschema) in properties {
+                if let Some(subvalue) = obj.get(key) {
+                    validate_json_value(subschema, subvalue, &format!("{path}/{key}"), issues);
+                }
+            }
+            for (key, subvalue) in obj {
+                if properties.contains_key(key) {
+                    continue;
+                }
+                match additional {
+                    AdditionalProperties::Allow => {}
+                    AdditionalProperties::Forbid => issues.push(ValueIssue {
+                        path: format!("{path}/{key}"),
+                        message: "additional property not allowed".to_string(),
+                    }),
+                    AdditionalProperties::Schema(extra_schema) => {
+                        validate_json_value(
+                            extra_schema,
+                            subvalue,
+                            &format!("{path}/{key}"),
+                            issues,
+                        );
+                    }
+                }
+            }
+        }
+        SchemaIr::Array {
+            items,
+            min_items,
+            max_items,
+        } => {
+            let Some(arr) = value.as_array() else {
+                issues.push(ValueIssue {
+                    path: path.to_string(),
+                    message: "expected array".to_string(),
+                });
+                return;
+            };
+            if let Some(min) = min_items
+                && arr.len() < *min as usize
+            {
+                issues.push(ValueIssue {
+                    path: path.to_string(),
+                    message: format!("expected at least {min} items"),
+                });
+            }
+            if let Some(max) = max_items
+                && arr.len() > *max as usize
+            {
+                issues.push(ValueIssue {
+                    path: path.to_string(),
+                    message: format!("expected at most {max} items"),
+                });
+            }
+            for (idx, item) in arr.iter().enumerate() {
+                validate_json_value(items, item, &format!("{path}/{idx}"), issues);
+            }
+        }
+        SchemaIr::String {
+            min_len,
+            max_len,
+            regex,
+            ..
+        } => {
+            let Some(s) = value.as_str() else {
+                issues.push(ValueIssue {
+                    path: path.to_string(),
+                    message: "expected string".to_string(),
+                });
+                return;
+            };
+            if let Some(min) = min_len
+                && s.chars().count() < *min as usize
+            {
+                issues.push(ValueIssue {
+                    path: path.to_string(),
+                    message: format!("expected minimum length {min}"),
+                });
+            }
+            if let Some(max) = max_len
+                && s.chars().count() > *max as usize
+            {
+                issues.push(ValueIssue {
+                    path: path.to_string(),
+                    message: format!("expected maximum length {max}"),
+                });
+            }
+            if let Some(pattern) = regex {
+                match regex::Regex::new(pattern) {
+                    Ok(re) => {
+                        if !re.is_match(s) {
+                            issues.push(ValueIssue {
+                                path: path.to_string(),
+                                message: format!("string does not match regex `{pattern}`"),
+                            });
+                        }
+                    }
+                    Err(err) => issues.push(ValueIssue {
+                        path: path.to_string(),
+                        message: format!("invalid schema regex `{pattern}`: {err}"),
+                    }),
+                }
+            }
+        }
+        SchemaIr::Int { min, max } => {
+            let Some(i) = value.as_i64() else {
+                issues.push(ValueIssue {
+                    path: path.to_string(),
+                    message: "expected integer".to_string(),
+                });
+                return;
+            };
+            if let Some(min) = min
+                && i < *min
+            {
+                issues.push(ValueIssue {
+                    path: path.to_string(),
+                    message: format!("expected value >= {min}"),
+                });
+            }
+            if let Some(max) = max
+                && i > *max
+            {
+                issues.push(ValueIssue {
+                    path: path.to_string(),
+                    message: format!("expected value <= {max}"),
+                });
+            }
+        }
+        SchemaIr::Float { min, max } => {
+            let Some(f) = value.as_f64() else {
+                issues.push(ValueIssue {
+                    path: path.to_string(),
+                    message: "expected number".to_string(),
+                });
+                return;
+            };
+            if let Some(min) = min
+                && f < *min
+            {
+                issues.push(ValueIssue {
+                    path: path.to_string(),
+                    message: format!("expected value >= {min}"),
+                });
+            }
+            if let Some(max) = max
+                && f > *max
+            {
+                issues.push(ValueIssue {
+                    path: path.to_string(),
+                    message: format!("expected value <= {max}"),
+                });
+            }
+        }
+        SchemaIr::Enum { values } => match json_to_cbor_value(value) {
+            Ok(cbor_value) => {
+                if !values.iter().any(|candidate| candidate == &cbor_value) {
+                    issues.push(ValueIssue {
+                        path: path.to_string(),
+                        message: "value not present in enum".to_string(),
+                    });
+                }
+            }
+            Err(err) => {
+                issues.push(ValueIssue {
+                    path: path.to_string(),
+                    message: format!("failed to normalize enum value: {err}"),
+                });
+            }
+        },
+        SchemaIr::OneOf { variants } => {
+            let any_match = variants.iter().any(|variant| {
+                let mut inner = Vec::new();
+                validate_json_value(variant, value, path, &mut inner);
+                inner.is_empty()
+            });
+            if !any_match {
+                issues.push(ValueIssue {
+                    path: path.to_string(),
+                    message: "value does not match any oneOf variant".to_string(),
+                });
+            }
+        }
+        SchemaIr::Bool => {
+            if !value.is_boolean() {
+                issues.push(ValueIssue {
+                    path: path.to_string(),
+                    message: "expected boolean".to_string(),
+                });
+            }
+        }
+        SchemaIr::Null => {
+            if !value.is_null() {
+                issues.push(ValueIssue {
+                    path: path.to_string(),
+                    message: "expected null".to_string(),
+                });
+            }
+        }
+        SchemaIr::Bytes => {
+            if !value.is_string() && !value.is_array() {
+                issues.push(ValueIssue {
+                    path: path.to_string(),
+                    message: "expected bytes-like value".to_string(),
+                });
+            }
+        }
+        SchemaIr::Ref { id } => {
+            issues.push(ValueIssue {
+                path: path.to_string(),
+                message: format!("schema ref `{id}` is unsupported for strict validation"),
+            });
+        }
+    }
+}
+
+fn json_to_cbor_value(value: &JsonValue) -> Result<ciborium::Value, String> {
+    let bytes = canonical::to_canonical_cbor_allow_floats(value)
+        .map_err(|err| format!("CBOR encode failed: {err}"))?;
+    canonical::from_cbor(&bytes).map_err(|err| format!("CBOR decode failed: {err}"))
+}
+
 struct DoctorWasi {
     ctx: WasiCtx,
     table: ResourceTable,
@@ -926,6 +1240,7 @@ mod tests {
         ComponentRunInput, ComponentRunOutput, QaMode, Question, QuestionKind, RedactionKind,
         RedactionRule,
     };
+    use serde_json::json;
 
     fn fixture_path(name: &str) -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -1192,5 +1507,61 @@ mod tests {
         report.validate_i18n(&Some(keys), &qa_specs);
         report.finalize();
         assert!(has_code(&report, "doctor.i18n.key_missing"));
+    }
+
+    #[test]
+    fn validation_issues_include_field_paths_and_hash_context() {
+        let describe = good_describe();
+        let describe_bytes = encode_describe(&describe);
+        let context = describe_hash_context(&describe, &describe_bytes);
+
+        let mut issues = Vec::new();
+        let invalid_config = json!({ "enabled": "true" });
+        validate_json_value(&describe.config_schema, &invalid_config, "$", &mut issues);
+        assert!(
+            !issues.is_empty(),
+            "expected at least one schema validation issue"
+        );
+
+        let rendered = format_validation_issues(&issues);
+        assert!(
+            rendered.contains("$/enabled"),
+            "issues should include field path"
+        );
+        assert!(
+            rendered.contains("expected boolean"),
+            "issues should include type mismatch message"
+        );
+        assert!(
+            context.contains("describe_hash="),
+            "context should include describe hash"
+        );
+        assert!(
+            context.contains("schema_hashes=[run="),
+            "context should include operation schema hash"
+        );
+    }
+
+    #[test]
+    fn non_map_config_reports_object_error_with_hash_context() {
+        let describe = good_describe();
+        let describe_bytes = encode_describe(&describe);
+        let context = describe_hash_context(&describe, &describe_bytes);
+
+        let mut issues = Vec::new();
+        let non_map = json!(42);
+        validate_json_value(&describe.config_schema, &non_map, "$", &mut issues);
+
+        let rendered = format_validation_issues(&issues);
+        assert!(
+            rendered.contains("$: expected object"),
+            "non-map config should be rejected with object error"
+        );
+        let combined = format!(
+            "apply-answers(update) violates config_schema: {}; {}",
+            rendered, context
+        );
+        assert!(combined.contains("describe_hash="));
+        assert!(combined.contains("schema_hashes=[run="));
     }
 }

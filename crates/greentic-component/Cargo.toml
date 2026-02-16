@@ -55,6 +55,7 @@ fuzz = ["dep:proptest"]
 anyhow = { workspace = true }
 blake3 = { workspace = true }
 bytes = { workspace = true }
+ciborium = { workspace = true }
 clap = { workspace = true, optional = true }
 directories = { workspace = true }
 hex = { workspace = true }

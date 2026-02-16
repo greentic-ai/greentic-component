@@ -20,6 +20,17 @@ Every component has three core pieces:
 - **Component manifest** (`component.manifest.json`) — metadata and capabilities.
 - **Operations** — named handlers the runner (or local test harness) can invoke.
 
+### 2.1 Contract authority in 0.6
+
+For `component@0.6.0`, the component itself is authoritative for:
+
+- config schema
+- secret requirements
+- i18n keys/catalog references
+- QA spec/questions
+
+Do not treat manifest-sourced schema overrides as valid for 0.6 flows.
+
 ### Minimal manifest example
 
 ```json
@@ -110,6 +121,42 @@ In local testing, secrets can be provided from:
 - repeated `--secret KEY=VALUE` flags
 
 If a secret is not declared in the manifest, the test harness denies access.
+
+### 5.1 Happy path: declare `http` + `secrets`
+
+Manifest capability declaration example:
+
+```json
+"capabilities": {
+  "host": {
+    "http": { "client": true, "server": false },
+    "secrets": {
+      "required": [
+        { "key": "API_TOKEN", "required": true, "format": "text" }
+      ]
+    }
+  }
+}
+```
+
+Generated scaffold note: capability contract fields in `describe()` come from static component-authored declarations (edit those constants/helpers in generated source).
+
+Wizard shortcut for scaffolds:
+
+```bash
+greentic-component wizard new hello-component \
+  --required-capability host.http.client \
+  --required-capability host.secrets.required
+```
+
+### 5.2 Denial path: capability missing
+
+If `host.state.write` is not granted and the component writes state, expect:
+
+- code: `state.write.denied`
+- message: `state store writes are disabled by manifest capability`
+
+Fix: grant the missing capability (`capabilities.host.state.write: true`) and rebuild/retest.
 
 ## 6) Building a component
 

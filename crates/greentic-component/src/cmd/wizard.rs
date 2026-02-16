@@ -4,8 +4,8 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result, anyhow};
-use clap::{Args, Subcommand, ValueEnum};
+use anyhow::{Context, Result, anyhow, bail};
+use clap::{ArgAction, Args, Subcommand, ValueEnum};
 use greentic_types::cbor::canonical;
 use serde_json::Value as JsonValue;
 
@@ -36,13 +36,27 @@ pub struct WizardNewArgs {
     /// Output directory (template will be created under <out>/<name>)
     #[arg(long = "out", value_name = "dir")]
     pub out: Option<PathBuf>,
+    /// Required capabilities to embed in describe payload (repeatable)
+    #[arg(
+        long = "required-capability",
+        value_name = "capability",
+        action = ArgAction::Append
+    )]
+    pub required_capabilities: Vec<String>,
+    /// Provided capabilities to embed in describe payload (repeatable)
+    #[arg(
+        long = "provided-capability",
+        value_name = "capability",
+        action = ArgAction::Append
+    )]
+    pub provided_capabilities: Vec<String>,
 }
 
 #[derive(ValueEnum, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WizardMode {
     Default,
     Setup,
-    Upgrade,
+    Update,
     Remove,
 }
 
@@ -76,6 +90,8 @@ fn run_new(args: WizardNewArgs) -> Result<()> {
         prefill_mode: args.mode,
         prefill_answers_cbor: answers.as_ref().map(|payload| payload.cbor.clone()),
         prefill_answers_json: answers.map(|payload| payload.json),
+        required_capabilities: normalize_capabilities(args.required_capabilities)?,
+        provided_capabilities: normalize_capabilities(args.provided_capabilities)?,
     };
 
     write_template(&target, &context)?;
@@ -124,6 +140,22 @@ struct WizardContext {
     prefill_mode: WizardMode,
     prefill_answers_cbor: Option<Vec<u8>>,
     prefill_answers_json: Option<String>,
+    required_capabilities: Vec<String>,
+    provided_capabilities: Vec<String>,
+}
+
+fn normalize_capabilities(capabilities: Vec<String>) -> Result<Vec<String>> {
+    let mut cleaned = Vec::new();
+    for capability in capabilities {
+        let trimmed = capability.trim();
+        if trimmed.is_empty() {
+            bail!("wizard: capability values cannot be empty");
+        }
+        cleaned.push(trimmed.to_string());
+    }
+    cleaned.sort();
+    cleaned.dedup();
+    Ok(cleaned)
 }
 
 #[derive(Debug, Clone)]
@@ -169,7 +201,7 @@ fn build_files(context: &WizardContext) -> Result<Vec<GeneratedFile>> {
         let mode = match context.prefill_mode {
             WizardMode::Default => "default",
             WizardMode::Setup => "setup",
-            WizardMode::Upgrade => "upgrade",
+            WizardMode::Update => "update",
             WizardMode::Remove => "remove",
         };
         files.push(text_file(
@@ -390,7 +422,7 @@ export!(Component);
 }
 
 fn render_qa_rs(context: &WizardContext) -> String {
-    let (default_prefill, setup_prefill, upgrade_prefill, remove_prefill) =
+    let (default_prefill, setup_prefill, update_prefill, remove_prefill) =
         match context.prefill_answers_cbor.as_ref() {
             Some(bytes) if context.prefill_mode == WizardMode::Default => (
                 bytes_literal(bytes),
@@ -404,7 +436,7 @@ fn render_qa_rs(context: &WizardContext) -> String {
                 "&[]".to_string(),
                 "&[]".to_string(),
             ),
-            Some(bytes) if context.prefill_mode == WizardMode::Upgrade => (
+            Some(bytes) if context.prefill_mode == WizardMode::Update => (
                 "&[]".to_string(),
                 "&[]".to_string(),
                 bytes_literal(bytes),
@@ -433,14 +465,14 @@ use serde_json::Value as JsonValue;
 
 const DEFAULT_PREFILLED_ANSWERS_CBOR: &[u8] = __DEFAULT_PREFILL__;
 const SETUP_PREFILLED_ANSWERS_CBOR: &[u8] = __SETUP_PREFILL__;
-const UPGRADE_PREFILLED_ANSWERS_CBOR: &[u8] = __UPGRADE_PREFILL__;
+const UPDATE_PREFILLED_ANSWERS_CBOR: &[u8] = __UPDATE_PREFILL__;
 const REMOVE_PREFILLED_ANSWERS_CBOR: &[u8] = __REMOVE_PREFILL__;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Mode {
     Default,
     Setup,
-    Upgrade,
+    Update,
     Remove,
 }
 
@@ -449,7 +481,7 @@ impl From<crate::exports::greentic::component::component_qa::QaMode> for Mode {
         match mode {
             crate::exports::greentic::component::component_qa::QaMode::Default => Mode::Default,
             crate::exports::greentic::component::component_qa::QaMode::Setup => Mode::Setup,
-            crate::exports::greentic::component::component_qa::QaMode::Upgrade => Mode::Upgrade,
+            crate::exports::greentic::component::component_qa::QaMode::Update => Mode::Update,
             crate::exports::greentic::component::component_qa::QaMode::Remove => Mode::Remove,
         }
     }
@@ -464,7 +496,7 @@ pub fn prefilled_answers_cbor(mode: Mode) -> &'static [u8] {
     match mode {
         Mode::Default => DEFAULT_PREFILLED_ANSWERS_CBOR,
         Mode::Setup => SETUP_PREFILLED_ANSWERS_CBOR,
-        Mode::Upgrade => UPGRADE_PREFILLED_ANSWERS_CBOR,
+        Mode::Update => UPDATE_PREFILLED_ANSWERS_CBOR,
         Mode::Remove => REMOVE_PREFILLED_ANSWERS_CBOR,
     }
 }
@@ -473,7 +505,7 @@ pub fn apply_answers(mode: Mode, current_config: Vec<u8>, answers: Vec<u8>) -> V
     let mut config = decode_map(&current_config);
     let updates = decode_map(&answers);
     match mode {
-        Mode::Default | Mode::Setup | Mode::Upgrade => {
+        Mode::Default | Mode::Setup | Mode::Update => {
             for (key, value) in updates {
                 config.insert(key, value);
             }
@@ -498,14 +530,14 @@ fn qa_spec(mode: Mode) -> ComponentQaSpec {
             Some("qa.setup.description"),
             vec![question_enabled("qa.setup.enabled.label", "qa.setup.enabled.help")],
         ),
-        Mode::Upgrade => ("qa.upgrade.title", None, Vec::new()),
+        Mode::Update => ("qa.update.title", None, Vec::new()),
         Mode::Remove => ("qa.remove.title", None, Vec::new()),
     };
     ComponentQaSpec {
         mode: match mode {
             Mode::Default => QaMode::Default,
             Mode::Setup => QaMode::Setup,
-            Mode::Upgrade => QaMode::Upgrade,
+            Mode::Update => QaMode::Update,
             Mode::Remove => QaMode::Remove,
         },
         title: I18nText::new(title_key, None),
@@ -544,11 +576,13 @@ fn decode_map(bytes: &[u8]) -> BTreeMap<String, JsonValue> {
     template
         .replace("__DEFAULT_PREFILL__", &default_prefill)
         .replace("__SETUP_PREFILL__", &setup_prefill)
-        .replace("__UPGRADE_PREFILL__", &upgrade_prefill)
+        .replace("__UPDATE_PREFILL__", &update_prefill)
         .replace("__REMOVE_PREFILL__", &remove_prefill)
 }
 
 fn render_descriptor_rs(context: &WizardContext) -> String {
+    let required_capabilities = render_capability_list(&context.required_capabilities);
+    let provided_capabilities = render_capability_list(&context.provided_capabilities);
     let template = r#"use std::collections::BTreeMap;
 
 use greentic_types::cbor::canonical;
@@ -593,19 +627,50 @@ pub fn describe() -> ComponentDescribe {
     };
     ComponentDescribe {
         info: info(),
-        provided_capabilities: Vec::new(),
-        required_capabilities: Vec::new(),
+        provided_capabilities: provided_capabilities(),
+        required_capabilities: required_capabilities(),
         metadata: BTreeMap::new(),
         operations: vec![operation],
         config_schema,
     }
 }
 
+fn required_capabilities() -> Vec<String> {
+    const REQUIRED_CAPABILITIES: &[&str] = __REQUIRED_CAPABILITIES__;
+    REQUIRED_CAPABILITIES
+        .iter()
+        .map(|capability| (*capability).to_string())
+        .collect()
+}
+
+fn provided_capabilities() -> Vec<String> {
+    const PROVIDED_CAPABILITIES: &[&str] = __PROVIDED_CAPABILITIES__;
+    PROVIDED_CAPABILITIES
+        .iter()
+        .map(|capability| (*capability).to_string())
+        .collect()
+}
+
 pub fn describe_cbor() -> Vec<u8> {
     canonical::to_canonical_cbor_allow_floats(&describe()).unwrap_or_default()
 }
 "#;
-    template.replace("__NAME__", &context.name)
+    template
+        .replace("__NAME__", &context.name)
+        .replace("__REQUIRED_CAPABILITIES__", &required_capabilities)
+        .replace("__PROVIDED_CAPABILITIES__", &provided_capabilities)
+}
+
+fn render_capability_list(capabilities: &[String]) -> String {
+    if capabilities.is_empty() {
+        return "&[]".to_string();
+    }
+    let values = capabilities
+        .iter()
+        .map(|capability| serde_json::to_string(capability).unwrap_or_else(|_| "\"\"".to_string()))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("&[{values}]")
 }
 
 fn render_schema_rs() -> String {
@@ -735,7 +800,7 @@ fn render_i18n_rs() -> String {
     "qa.setup.description",
     "qa.setup.enabled.label",
     "qa.setup.enabled.help",
-    "qa.upgrade.title",
+    "qa.update.title",
     "qa.remove.title",
 ];
 
@@ -756,7 +821,7 @@ fn render_i18n_bundle() -> String {
   "qa.setup.description": "Provide initial configuration values.",
   "qa.setup.enabled.label": "Enable on setup",
   "qa.setup.enabled.help": "Enable the component after setup completes.",
-  "qa.upgrade.title": "Upgrade configuration",
+  "qa.update.title": "Update configuration",
   "qa.remove.title": "Removal settings"
 }
 "#
@@ -789,7 +854,7 @@ interface component-qa {
   enum qa-mode {
     default,
     setup,
-    upgrade,
+    update,
     remove,
   }
   qa-spec: func(mode: qa-mode) -> list<u8>;

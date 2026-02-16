@@ -9,7 +9,7 @@ resolver = "2"
 
 [workspace.package]
 edition = "2024"
-version = "0.4.56"
+version = "0.4.57"
 license = "MIT"
 rust-version = "1.90"
 
@@ -21,6 +21,7 @@ async-trait = "0.1"
 base64 = "0.22"
 blake3 = "1"
 bytes = "1"
+ciborium = "0.2"
 clap = { version = "4", features = ["derive"] }
 greentic-component-manifest = { version = "0.4", path = "crates/component-manifest" }
 greentic-component-store = { version = "0.4",path = "crates/greentic-component-store" }

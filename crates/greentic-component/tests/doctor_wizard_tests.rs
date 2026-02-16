@@ -14,6 +14,8 @@ fn doctor_rejects_unbuilt_wizard_scaffold() {
         mode: WizardMode::Default,
         answers: None,
         out: Some(temp.path().to_path_buf()),
+        required_capabilities: Vec::new(),
+        provided_capabilities: Vec::new(),
     };
     wizard_run(WizardCommand::New(args)).unwrap();
 

@@ -26,7 +26,16 @@ The wizard stores ABI version in `Cargo.toml` under `[package.metadata.greentic]
 - Example: `dist/hello-component__0_6_0.wasm`
 
 **QA Modes**
-The template includes four QA modes: default, setup, upgrade, remove. Use `--mode` (default/setup/upgrade/remove) with `--answers` to write `examples/<mode>.answers.json` and `examples/<mode>.answers.cbor`. If `--answers` is not provided, no example answers are created.
+The template includes four QA modes: default, setup, update, remove. Use `--mode` (default/setup/update/remove) with `--answers` to write `examples/<mode>.answers.json` and `examples/<mode>.answers.cbor`. If `--answers` is not provided, no example answers are created. `upgrade` is intentionally not accepted in 0.6 scaffolds.
+
+**Capabilities in describe()**
+Use repeatable flags to embed explicit capability declarations in generated `src/descriptor.rs`:
+- `--required-capability host.http.client`
+- `--required-capability host.secrets.required`
+- `--provided-capability telemetry.emit`
+
+Example:
+`greentic-component wizard new hello-component --required-capability host.http.client --required-capability host.secrets.required`
 
 **Doctor Validation**
 `greentic-component doctor` validates the built wasm artifact for:

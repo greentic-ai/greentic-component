@@ -10,6 +10,7 @@ use greentic_interfaces_wasmtime::host_helpers::v1::state_store::{
     OpAck, StateStoreError, StateStoreHost, TenantCtx as WitTenantCtx, add_state_store_to_linker,
 };
 use greentic_types::TenantCtx;
+use greentic_types::cbor::canonical;
 use reqwest::blocking::Client as HttpClient;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde_json::Value;
@@ -172,7 +173,8 @@ impl RunnerHost for RunnerHostImpl {
             .state_store
             .lock()
             .expect("state store mutex poisoned");
-        guard.insert(key, _val.into_bytes());
+        let bytes = _val.into_bytes();
+        guard.insert(key, canonicalize_cbor_or_passthrough(&bytes));
         Ok(())
     }
 }
@@ -240,7 +242,7 @@ impl StateStoreHost for HostState {
             });
         }
         let mut guard = self.state_store.lock().expect("state store mutex poisoned");
-        guard.insert(key, bytes);
+        guard.insert(key, canonicalize_cbor_or_passthrough(&bytes));
         Ok(OpAck::Ok)
     }
 
@@ -258,6 +260,13 @@ impl StateStoreHost for HostState {
         let mut guard = self.state_store.lock().expect("state store mutex poisoned");
         guard.remove(&key);
         Ok(OpAck::Ok)
+    }
+}
+
+fn canonicalize_cbor_or_passthrough(bytes: &[u8]) -> Vec<u8> {
+    match canonical::canonicalize_allow_floats(bytes) {
+        Ok(canonical_bytes) => canonical_bytes,
+        Err(_) => bytes.to_vec(),
     }
 }
 
@@ -401,5 +410,18 @@ mod tests {
 
         let missing = StateStoreHost::read(&mut host, "demo".into(), None);
         assert!(matches!(missing, Err(err) if err.code == "state.read.miss"));
+    }
+
+    #[test]
+    fn state_store_write_canonicalizes_cbor_payload() {
+        let mut host = host_state(false, true, true, false);
+        let non_canonical = vec![0xa2, 0x61, b'b', 0x01, 0x61, b'a', 0x02];
+        let expected = canonical::canonicalize_allow_floats(&non_canonical).expect("canonical");
+
+        let write = StateStoreHost::write(&mut host, "demo".into(), non_canonical, None);
+        assert!(matches!(write, Ok(OpAck::Ok)));
+
+        let read = StateStoreHost::read(&mut host, "demo".into(), None).expect("state read");
+        assert_eq!(read, expected);
     }
 }

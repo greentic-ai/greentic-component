@@ -12,6 +12,8 @@ fn wizard_new_creates_template_files() {
         mode: WizardMode::Default,
         answers: None,
         out: Some(temp.path().to_path_buf()),
+        required_capabilities: Vec::new(),
+        provided_capabilities: Vec::new(),
     };
 
     run(WizardCommand::New(args)).expect("wizard new should succeed");
@@ -52,6 +54,8 @@ fn wizard_new_writes_answers_files_when_provided() {
         mode: WizardMode::Default,
         answers: Some(answers_path),
         out: Some(temp.path().to_path_buf()),
+        required_capabilities: Vec::new(),
+        provided_capabilities: Vec::new(),
     };
 
     run(WizardCommand::New(args)).expect("wizard new should succeed");
@@ -64,4 +68,31 @@ fn wizard_new_writes_answers_files_when_provided() {
     let json = fs::read_to_string(json_path).unwrap();
     assert!(json.contains("\"enabled\""));
     assert!(!root.join("examples/setup.answers.json").exists());
+}
+
+#[test]
+fn wizard_new_embeds_declared_capabilities_in_descriptor() {
+    let temp = tempfile::TempDir::new().unwrap();
+    let args = WizardNewArgs {
+        name: "cap-component".into(),
+        abi_version: "0.6.0".into(),
+        mode: WizardMode::Default,
+        answers: None,
+        out: Some(temp.path().to_path_buf()),
+        required_capabilities: vec![
+            "host.http.client".into(),
+            "host.secrets.required".into(),
+            "host.http.client".into(),
+        ],
+        provided_capabilities: vec!["telemetry.emit".into()],
+    };
+
+    run(WizardCommand::New(args)).expect("wizard new should succeed");
+
+    let root = temp.path().join("cap-component");
+    let descriptor = fs::read_to_string(root.join("src/descriptor.rs")).unwrap();
+    assert!(descriptor.contains(
+        "const REQUIRED_CAPABILITIES: &[&str] = &[\"host.http.client\", \"host.secrets.required\"];"
+    ));
+    assert!(descriptor.contains("const PROVIDED_CAPABILITIES: &[&str] = &[\"telemetry.emit\"];"));
 }
