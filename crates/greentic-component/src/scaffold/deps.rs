@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use pathdiff::diff_paths;
 use serde::Serialize;
 use thiserror::Error;
-use toml::Value as TomlValue;
+use toml::{Table as TomlTable, Value as TomlValue};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -112,7 +112,7 @@ pub fn ensure_cratesio_manifest_clean(root: &Path) -> Result<(), DependencyError
         manifest: manifest.clone(),
         source,
     })?;
-    let parsed: TomlValue = contents.parse().map_err(|source| DependencyError::Io {
+    let parsed: TomlTable = toml::from_str(&contents).map_err(|source| DependencyError::Io {
         manifest: manifest.clone(),
         source: io::Error::new(io::ErrorKind::InvalidData, source),
     })?;
@@ -122,7 +122,7 @@ pub fn ensure_cratesio_manifest_clean(root: &Path) -> Result<(), DependencyError
     Ok(())
 }
 
-fn manifest_has_path_dependency(doc: &TomlValue) -> bool {
+fn manifest_has_path_dependency(doc: &TomlTable) -> bool {
     has_path_dep_table(doc.get("dependencies").and_then(TomlValue::as_table))
         || has_path_dep_table(doc.get("dev-dependencies").and_then(TomlValue::as_table))
         || has_path_dep_table(doc.get("build-dependencies").and_then(TomlValue::as_table))
