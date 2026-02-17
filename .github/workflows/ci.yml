@@ -140,6 +140,7 @@ jobs:
           LOCAL_CHECK_SKIP_TEST=1 \
           LOCAL_CHECK_SKIP_BUILD_ALL=1 \
           LOCAL_CHECK_SKIP_TEST_ALL=1 \
+          LOCAL_CHECK_SKIP_SCHEMA=1 \
           LOCAL_CHECK_PUBLISH_MODE=dry-run \
           bash ci/local_check.sh
 
