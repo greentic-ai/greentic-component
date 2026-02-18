@@ -167,7 +167,7 @@ fn ensure_required_exports(
     let has_exports = world.exports.iter().any(|(_, item)| match item {
         WorldItem::Function(_) => true,
         WorldItem::Interface { id, .. } => !resolve.interfaces[*id].functions.is_empty(),
-        WorldItem::Type(_) => false,
+        WorldItem::Type { .. } => false,
     });
 
     if !has_exports {
@@ -191,7 +191,7 @@ fn ensure_required_exports(
                     mark_export(func, &mut satisfied);
                 }
             }
-            WorldItem::Type(_) => {}
+            WorldItem::Type { .. } => {}
         }
 
         if satisfied.iter().all(|(_, hit)| *hit) {

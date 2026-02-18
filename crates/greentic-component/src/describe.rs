@@ -152,7 +152,7 @@ fn build_payload_from_world(
                     functions.push(Value::Object(entry));
                 }
             }
-            WorldItem::Type(_) => {}
+            WorldItem::Type { .. } => {}
         }
     }
 

@@ -81,8 +81,8 @@ fn readme_quickstart_example_stays_fresh() {
 
     let lib_rs = fs::read_to_string(component_dir.join("src/lib.rs")).expect("lib.rs");
     assert!(
-        lib_rs.contains("impl exports::greentic::component::component_runtime::Guest")
-            && lib_rs.contains("export!(Component)"),
+        lib_rs.contains("impl component_runtime::Guest")
+            && lib_rs.contains("export_component_v060!(Component)"),
         "scaffold should expose 0.6 component runtime exports"
     );
 }

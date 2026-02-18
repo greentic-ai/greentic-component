@@ -6,15 +6,13 @@ use greentic_types::schemas::component::v0_6_0::{
     ComponentDescribe, ComponentInfo, ComponentOperation, ComponentQaSpec, ComponentRunInput,
     ComponentRunOutput, I18nText, QaMode, Question, schema_hash,
 };
+use greentic_interfaces_guest::component_v0_6::{
+    component_descriptor, component_i18n, component_qa, component_runtime, component_schema,
+};
 
 const COMPONENT_NAME: &str = "{{ name }}";
 const COMPONENT_ORG: &str = "{{ org }}";
 const COMPONENT_VERSION: &str = "{{ version }}";
-
-wit_bindgen::generate!({
-    path: "wit",
-    world: "component-v0-v6-v0",
-});
 
 #[cfg(target_arch = "wasm32")]
 #[used]
@@ -23,7 +21,7 @@ static WASI_TARGET_MARKER: [u8; 13] = *b"wasm32-wasip2";
 
 struct Component;
 
-impl exports::greentic::component::component_descriptor::Guest for Component {
+impl component_descriptor::Guest for Component {
     fn get_component_info() -> Vec<u8> {
         component_info_cbor()
     }
@@ -33,7 +31,7 @@ impl exports::greentic::component::component_descriptor::Guest for Component {
     }
 }
 
-impl exports::greentic::component::component_schema::Guest for Component {
+impl component_schema::Guest for Component {
     fn input_schema() -> Vec<u8> {
         input_schema_cbor()
     }
@@ -47,13 +45,13 @@ impl exports::greentic::component::component_schema::Guest for Component {
     }
 }
 
-impl exports::greentic::component::component_qa::Guest for Component {
-    fn qa_spec(mode: exports::greentic::component::component_qa::QaMode) -> Vec<u8> {
+impl component_qa::Guest for Component {
+    fn qa_spec(mode: component_qa::QaMode) -> Vec<u8> {
         qa_spec_cbor(mode)
     }
 
     fn apply_answers(
-        mode: exports::greentic::component::component_qa::QaMode,
+        mode: component_qa::QaMode,
         current_config: Vec<u8>,
         answers: Vec<u8>,
     ) -> Vec<u8> {
@@ -61,24 +59,21 @@ impl exports::greentic::component::component_qa::Guest for Component {
     }
 }
 
-impl exports::greentic::component::component_i18n::Guest for Component {
+impl component_i18n::Guest for Component {
     fn i18n_keys() -> Vec<String> {
         i18n_keys()
     }
 }
 
-impl exports::greentic::component::component_runtime::Guest for Component {
-    fn run(
-        input: Vec<u8>,
-        state: Vec<u8>,
-    ) -> exports::greentic::component::component_runtime::RunResult {
+impl component_runtime::Guest for Component {
+    fn run(input: Vec<u8>, state: Vec<u8>) -> component_runtime::RunResult {
         let (output, new_state) = run_component_cbor(input, state);
-        exports::greentic::component::component_runtime::RunResult { output, new_state }
+        component_runtime::RunResult { output, new_state }
     }
 }
 
 #[cfg(target_arch = "wasm32")]
-export!(Component);
+greentic_interfaces_guest::export_component_v060!(Component);
 
 pub fn describe_payload() -> String {
     serde_json::json!({
@@ -217,12 +212,12 @@ fn config_schema_cbor() -> Vec<u8> {
     encode_cbor(&config_schema())
 }
 
-fn qa_spec_cbor(mode: exports::greentic::component::component_qa::QaMode) -> Vec<u8> {
+fn qa_spec_cbor(mode: component_qa::QaMode) -> Vec<u8> {
     let mode = match mode {
-        exports::greentic::component::component_qa::QaMode::Default => QaMode::Default,
-        exports::greentic::component::component_qa::QaMode::Setup => QaMode::Setup,
-        exports::greentic::component::component_qa::QaMode::Update => QaMode::Update,
-        exports::greentic::component::component_qa::QaMode::Remove => QaMode::Remove,
+        component_qa::QaMode::Default => QaMode::Default,
+        component_qa::QaMode::Setup => QaMode::Setup,
+        component_qa::QaMode::Update => QaMode::Update,
+        component_qa::QaMode::Remove => QaMode::Remove,
     };
 
     let spec = ComponentQaSpec {
@@ -244,7 +239,7 @@ fn qa_spec_cbor(mode: exports::greentic::component::component_qa::QaMode) -> Vec
 }
 
 fn apply_answers_cbor(
-    _mode: exports::greentic::component::component_qa::QaMode,
+    _mode: component_qa::QaMode,
     current_config: Vec<u8>,
     answers: Vec<u8>,
 ) -> Vec<u8> {

@@ -157,16 +157,6 @@ REAL_CARGO="$(command -v cargo)"
         predicates::str::contains("unable to resolve wasm")
             .or(predicates::str::contains("failed to load component")),
     );
-    let wit_dir = component_dir.join("wit");
-    assert!(
-        wit_dir.exists(),
-        "template should emit WIT files for config inference"
-    );
-    assert!(
-        wit_dir.join("world.wit").exists(),
-        "world.wit should be scaffolded"
-    );
-
     assert!(
         component_dir.join(".git").exists(),
         "post-render hook should initialize git"

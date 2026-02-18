@@ -10,8 +10,7 @@ The component wizard generates a ready-to-edit component@0.6.0 scaffold with Gre
 
 **What You Get**
 - `Cargo.toml` with ABI metadata.
-- `wit/package.wit` containing the component@0.6.0 world exports.
-- `src/lib.rs` with WIT bindings and export wiring.
+- `src/lib.rs` with guest trait wiring and `export_component_v060!`.
 - `src/descriptor.rs` for `get-component-info` and `describe`.
 - `src/schema.rs` for SchemaIR and canonical CBOR helpers.
 - `src/runtime.rs` for CBOR run handling.

@@ -27,7 +27,6 @@ fn wizard_new_creates_template_files() {
     assert!(root.join("Makefile").exists());
     assert!(root.join("src/qa.rs").exists());
     assert!(root.join("src/i18n.rs").exists());
-    assert!(root.join("wit/package.wit").exists());
     assert!(root.join("assets/i18n/en.json").exists());
     assert!(!root.join("examples/default.answers.json").exists());
 
@@ -39,8 +38,8 @@ fn wizard_new_creates_template_files() {
     let makefile = fs::read_to_string(root.join("Makefile")).unwrap();
     assert!(makefile.contains("WASM_OUT := $(DIST_DIR)/$(NAME)__$(ABI_VERSION_UNDERSCORE).wasm"));
 
-    let wit = fs::read_to_string(root.join("wit/package.wit")).unwrap();
-    assert!(wit.contains("world component-v0-v6-v0"));
+    let lib_rs = fs::read_to_string(root.join("src/lib.rs")).unwrap();
+    assert!(lib_rs.contains("greentic_interfaces_guest::export_component_v060!(Component);"));
 }
 
 #[test]

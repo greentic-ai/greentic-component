@@ -114,7 +114,7 @@ fn collect_import_capabilities(resolve: &Resolve, world_id: WorldId) -> Vec<Stri
             WorldItem::Function(func) => {
                 caps.insert(format!("func:{}", func.name));
             }
-            WorldItem::Type(_) => {}
+            WorldItem::Type { .. } => {}
         }
     }
 

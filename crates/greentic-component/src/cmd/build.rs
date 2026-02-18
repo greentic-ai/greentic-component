@@ -175,11 +175,13 @@ pub fn run(args: BuildArgs) -> Result<()> {
 }
 
 fn build_wasm(manifest_dir: &Path, cargo_bin: &Path, manifest: &JsonValue) -> Result<()> {
-    let require_component = manifest
-        .get("world")
-        .and_then(|v| v.as_str())
-        .map(|world| world.contains("component@0.6.0"))
-        .unwrap_or(false);
+    let resolved_world = manifest.get("world").and_then(|v| v.as_str()).unwrap_or("");
+    if resolved_world.is_empty() {
+        println!("Resolved manifest world: <missing>");
+    } else {
+        println!("Resolved manifest world: {resolved_world}");
+    }
+    let require_component = resolved_world.contains("component@0.6.0");
 
     if require_component {
         if cargo_component_available(cargo_bin) {

@@ -128,6 +128,86 @@ fn scaffold_makefile_uses_greentic_dev_commands() {
 }
 
 #[test]
+fn build_logs_resolved_component_world_version() {
+    let temp = tempfile::TempDir::new().unwrap();
+    let root = temp.path().join("build-log-world");
+    let engine = ScaffoldEngine::new();
+    let request = ScaffoldRequest {
+        name: "build-log-world".into(),
+        path: root.clone(),
+        template_id: "rust-wasi-p2-min".into(),
+        org: "ai.greentic".into(),
+        version: "0.1.0".into(),
+        license: "MIT".into(),
+        wit_world: DEFAULT_WIT_WORLD.into(),
+        non_interactive: true,
+        year_override: Some(2030),
+        dependency_mode: DependencyMode::Local,
+    };
+    engine.scaffold(request).unwrap();
+
+    let cargo_wrapper = root.join("fake_cargo.sh");
+    std::fs::write(
+        &cargo_wrapper,
+        r#"#!/bin/sh
+set -e
+if [ "${1:-}" = "component" ] && [ "${2:-}" = "--version" ]; then
+  echo "cargo-component-component 0.21.1"
+  exit 0
+fi
+
+wasm_path=$(python3 - <<'PY'
+import json, os
+path=os.path.join(os.getcwd(),"component.manifest.json")
+try:
+    with open(path, "r") as f:
+        data=json.load(f)
+    print(data.get("artifacts", {}).get("component_wasm") or "target/wasm32-wasip2/release/component.wasm")
+except Exception:
+    print("target/wasm32-wasip2/release/component.wasm")
+PY
+)
+mkdir -p "$(dirname "$wasm_path")"
+printf '\0' > "$wasm_path"
+
+if [ "${1:-}" = "component" ] && [ "${2:-}" = "build" ]; then
+  exit 0
+fi
+
+if [ "${1:-}" = "build" ]; then
+  exit 0
+fi
+
+REAL_CARGO="$(command -v cargo)"
+"$REAL_CARGO" "$@"
+"#,
+    )
+    .expect("write cargo wrapper");
+    let mut perms = std::fs::metadata(&cargo_wrapper)
+        .expect("metadata")
+        .permissions();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&cargo_wrapper, perms).expect("chmod");
+    }
+
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("greentic-component");
+    cmd.current_dir(&root)
+        .env("CARGO", &cargo_wrapper)
+        .env("CARGO_NET_OFFLINE", "true")
+        .env("GREENTIC_SKIP_NODE_EXPORT_CHECK", "1")
+        .arg("build")
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("Resolved manifest world: greentic:component/component@0.6.0")
+                .and(predicate::str::contains("component@0.5.0").not()),
+        );
+}
+
+#[test]
 fn new_outputs_template_metadata_in_json() {
     let temp = tempfile::TempDir::new().unwrap();
     let project = temp.path().join("json-demo");

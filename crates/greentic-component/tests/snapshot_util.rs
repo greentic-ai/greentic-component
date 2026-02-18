@@ -16,11 +16,19 @@ fn workspace_replacements() -> &'static [String] {
     static REPLACEMENTS: OnceLock<Vec<String>> = OnceLock::new();
     REPLACEMENTS.get_or_init(|| {
         let root = workspace_root();
-        let raw = root.to_string_lossy().into_owned();
-        let mut variants = vec![raw.clone()];
-        let slash_variant = raw.replace('\\', "/");
-        if slash_variant != raw {
-            variants.push(slash_variant);
+        let mut paths = vec![root];
+        if let Some(parent) = paths[0].parent() {
+            paths.push(parent.join("greentic-interfaces"));
+        }
+
+        let mut variants = Vec::new();
+        for path in paths {
+            let raw = path.to_string_lossy().into_owned();
+            variants.push(raw.clone());
+            let slash_variant = raw.replace('\\', "/");
+            if slash_variant != raw {
+                variants.push(slash_variant);
+            }
         }
         variants
     })

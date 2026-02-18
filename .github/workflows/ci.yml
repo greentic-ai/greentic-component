@@ -45,6 +45,8 @@ jobs:
           targets: |
             wasm32-wasip2
             x86_64-unknown-linux-gnu
+      - name: Check canonical WIT duplication guard
+        run: bash ci/check_no_duplicate_canonical_wit.sh .
       - name: Run lint checks
         run: |
           LOCAL_CHECK_ONLINE=1 \
@@ -87,6 +89,8 @@ jobs:
           targets: |
             wasm32-wasip2
             x86_64-unknown-linux-gnu
+      - name: Check canonical WIT duplication guard
+        run: bash ci/check_no_duplicate_canonical_wit.sh .
       - name: Run workspace tests
         run: |
           LOCAL_CHECK_ONLINE=1 \
@@ -129,6 +133,8 @@ jobs:
           targets: |
             wasm32-wasip2
             x86_64-unknown-linux-gnu
+      - name: Check canonical WIT duplication guard
+        run: bash ci/check_no_duplicate_canonical_wit.sh .
       - name: Run release checks
         run: |
           LOCAL_CHECK_ONLINE=1 \
@@ -177,6 +183,8 @@ jobs:
           targets: |
             wasm32-wasip2
             x86_64-unknown-linux-gnu
+      - name: Check canonical WIT duplication guard
+        run: bash ci/check_no_duplicate_canonical_wit.sh .
       - name: Verify clean worktree
         run: git diff --exit-code
       - name: Publish crates

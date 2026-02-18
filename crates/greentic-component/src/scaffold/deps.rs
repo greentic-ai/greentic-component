@@ -67,18 +67,41 @@ pub fn resolve_dependency_templates(
     target_path: &Path,
 ) -> DependencyTemplates {
     match mode {
-        DependencyMode::Local => DependencyTemplates {
-            greentic_interfaces: format!("version = \"{GREENTIC_INTERFACES_VERSION}\""),
-            greentic_interfaces_guest: format!("version = \"{GREENTIC_INTERFACES_GUEST_VERSION}\""),
-            greentic_types: format!("version = \"{GREENTIC_TYPES_VERSION}\""),
-            relative_patch_path: local_patch_path(target_path),
-        },
+        DependencyMode::Local => resolve_local_templates(target_path),
         DependencyMode::CratesIo => DependencyTemplates {
             greentic_interfaces: format!("version = \"{GREENTIC_INTERFACES_VERSION}\""),
             greentic_interfaces_guest: format!("version = \"{GREENTIC_INTERFACES_GUEST_VERSION}\""),
             greentic_types: format!("version = \"{GREENTIC_TYPES_VERSION}\""),
             relative_patch_path: None,
         },
+    }
+}
+
+fn resolve_local_templates(target_path: &Path) -> DependencyTemplates {
+    let repo_root = workspace_root();
+    let interfaces_root = repo_root
+        .parent()
+        .map(|parent| parent.join("greentic-interfaces"));
+
+    let greentic_interfaces = interfaces_root
+        .as_ref()
+        .map(|root| root.join("crates/greentic-interfaces"))
+        .filter(|path| path.exists())
+        .map(|path| format!(r#"path = "{}""#, absolute_path_string(&path)))
+        .unwrap_or_else(|| format!("version = \"{GREENTIC_INTERFACES_VERSION}\""));
+
+    let greentic_interfaces_guest = interfaces_root
+        .as_ref()
+        .map(|root| root.join("crates/greentic-interfaces-guest"))
+        .filter(|path| path.exists())
+        .map(|path| format!(r#"path = "{}""#, absolute_path_string(&path)))
+        .unwrap_or_else(|| format!("version = \"{GREENTIC_INTERFACES_GUEST_VERSION}\""));
+
+    DependencyTemplates {
+        greentic_interfaces,
+        greentic_interfaces_guest,
+        greentic_types: format!("version = \"{GREENTIC_TYPES_VERSION}\""),
+        relative_patch_path: local_patch_path(target_path),
     }
 }
 
@@ -102,8 +125,21 @@ fn workspace_root() -> PathBuf {
 
 fn greentic_component_patch_path(scaffold_root: &Path, repo_root: &Path) -> String {
     let abs = repo_root.join("crates/greentic-component");
-    let rel = diff_paths(&abs, scaffold_root).unwrap_or(abs);
-    format!(r#"path = "{}""#, rel.display())
+    format!(r#"path = "{}""#, relative_path_string(scaffold_root, &abs))
+}
+
+fn relative_path_string(from: &Path, to: &Path) -> String {
+    diff_paths(to, from)
+        .unwrap_or_else(|| to.to_path_buf())
+        .display()
+        .to_string()
+}
+
+fn absolute_path_string(path: &Path) -> String {
+    path.canonicalize()
+        .unwrap_or_else(|_| path.to_path_buf())
+        .display()
+        .to_string()
 }
 
 pub fn ensure_cratesio_manifest_clean(root: &Path) -> Result<(), DependencyError> {
@@ -199,7 +235,7 @@ mod tests {
     }
 
     #[test]
-    fn cratesio_manifest_allows_component_metadata_path() {
+    fn cratesio_manifest_allows_component_metadata_target() {
         let temp = TempDir::new().unwrap();
         std::fs::write(
             temp.path().join("Cargo.toml"),
@@ -208,8 +244,7 @@ name = "demo"
 version = "0.1.0"
 
 [package.metadata.component.target]
-path = "wit"
-world = "component-v0-v6-v0"
+world = "greentic:component/component-v0-v6-v0@0.6.0"
 "#,
         )
         .unwrap();

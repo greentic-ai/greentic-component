@@ -255,6 +255,10 @@ schema_check() {
     fi
 }
 
+canonical_wit_dup_check() {
+    run_cmd "canonical WIT duplication guard" bash ci/check_no_duplicate_canonical_wit.sh .
+}
+
 build_release_bin() {
     local bin=$1
     local features=$2
@@ -282,6 +286,7 @@ if [ "$LOCAL_CHECK_SKIP_CLIPPY" = "1" ]; then
 else
     run_cmd "cargo clippy" cargo clippy --locked --workspace --all-targets -- -D warnings
 fi
+canonical_wit_dup_check
 if [ "$LOCAL_CHECK_SKIP_BUILD" = "1" ]; then
     skip_flagged "cargo build --workspace --locked" "LOCAL_CHECK_SKIP_BUILD=1"
 else

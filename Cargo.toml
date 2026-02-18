@@ -9,7 +9,7 @@ resolver = "2"
 
 [workspace.package]
 edition = "2024"
-version = "0.4.58"
+version = "0.4.59"
 license = "MIT"
 rust-version = "1.90"
 
@@ -35,6 +35,7 @@ greentic-interfaces = { version = "0.4", default-features = false, features = [
     "bindings-rust",
     "common-types-v0-1",
     "component-v1",
+    "component-v0-6",
     "component-v0-5",
     "component-v0-4",
     "describe-v1",
@@ -78,7 +79,7 @@ hex = "0.4"
 ignore = "0.4"
 include_dir = { version = "0.7" }
 insta = { version = "1", features = ["glob", "json"] }
-jsonschema = "0.41"
+jsonschema = "0.42"
 miette = { version = "7", default-features = false, features = ["derive"] }
 oci-distribution = "0.11"
 once_cell = "1"
@@ -110,5 +111,5 @@ wasm-metadata = "0"
 wasmparser = "0"
 wasmtime = { version = "41", default-features = false, features = ["component-model", "cranelift", "runtime"] }
 wasmtime-wasi = { version = "41" }
-wit-component = "0.244"
-wit-parser = "0.244"
+wit-component = "0.245"
+wit-parser = "0.245"
