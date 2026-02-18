@@ -2,3 +2,4 @@
 /target
 **/*.rs.bk
 /target-fix
+/target-fix2
