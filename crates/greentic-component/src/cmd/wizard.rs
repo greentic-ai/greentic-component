@@ -479,12 +479,10 @@ impl From<greentic_interfaces_guest::component_v0_6::component_qa::QaMode> for M
             greentic_interfaces_guest::component_v0_6::component_qa::QaMode::Setup => {
                 Mode::Setup
             }
-            greentic_interfaces_guest::component_v0_6::component_qa::QaMode::Update => {
-                Mode::Update
-            }
             greentic_interfaces_guest::component_v0_6::component_qa::QaMode::Remove => {
                 Mode::Remove
             }
+            _ => Mode::Default,
         }
     }
 }

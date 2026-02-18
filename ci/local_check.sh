@@ -521,7 +521,8 @@ if [ "${LOCAL_CHECK_SKIP_SMOKE:-0}" = "1" ]; then
 elif [ "$bins_ready" -ne 1 ]; then
     echo "[skip] smoke scaffold (release bins skipped)"
 else
-    for mode in local cratesio; do
+    smoke_modes="${LOCAL_CHECK_SMOKE_MODES:-cratesio}"
+    for mode in $smoke_modes; do
         run_smoke_mode "$mode"
     done
     run_wizard_smoke

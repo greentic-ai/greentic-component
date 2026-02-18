@@ -216,8 +216,8 @@ fn qa_spec_cbor(mode: component_qa::QaMode) -> Vec<u8> {
     let mode = match mode {
         component_qa::QaMode::Default => QaMode::Default,
         component_qa::QaMode::Setup => QaMode::Setup,
-        component_qa::QaMode::Update => QaMode::Update,
         component_qa::QaMode::Remove => QaMode::Remove,
+        _ => QaMode::Default,
     };
 
     let spec = ComponentQaSpec {
