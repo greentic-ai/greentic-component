@@ -1,10 +1,11 @@
 use greentic_types::TenantCtx;
+use greentic_types::cbor::canonical;
 use serde_json::Value;
 use wasmtime::Store;
 
 use crate::binder::binding_key;
 use crate::error::CompError;
-use crate::host_imports::{HostState, make_exec_ctx};
+use crate::host_imports::{HostState, make_invocation_envelope};
 use crate::loader::ComponentHandle;
 
 pub fn invoke(
@@ -43,15 +44,15 @@ pub fn invoke(
     let instance = inner.instance_pre.instantiate(&mut store)?;
     let exports = inner.guest_indices.load(&mut store, &instance)?;
 
-    let exec_ctx = make_exec_ctx(&inner.cref, tenant);
-    let input = serde_json::to_string(input_json)?;
-    let result = exports.call_invoke(&mut store, &exec_ctx, operation, &input)?;
-
-    use greentic_interfaces_host::component::v0_4::exports::greentic::component::node::InvokeResult;
+    let payload_cbor = canonical::to_canonical_cbor_allow_floats(input_json)
+        .map_err(|err| CompError::Runtime(format!("encode invoke payload failed: {err}")))?;
+    let envelope = make_invocation_envelope(&inner.cref, tenant, operation, payload_cbor);
+    let result = exports.call_invoke(&mut store, operation, &envelope)?;
 
     match result {
-        InvokeResult::Ok(output_json) => Ok(serde_json::from_str(&output_json)?),
-        InvokeResult::Err(err) => Err(CompError::Runtime(format!(
+        Ok(output) => canonical::from_cbor(&output.output_cbor)
+            .map_err(|err| CompError::Runtime(format!("decode invoke output failed: {err}"))),
+        Err(err) => Err(CompError::Runtime(format!(
             "component error {}: {}",
             err.code, err.message
         ))),

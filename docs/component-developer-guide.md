@@ -2,6 +2,9 @@
 
 This guide explains what a Greentic component is, how to build one, and how to test it locally. It is written for new users and does not assume prior Greentic knowledge.
 
+Canonical target: `greentic:component/component@0.6.0`.
+Legacy compatibility guidance is tracked in `docs/vision/legacy.md`.
+
 ## 1) What is a Greentic component?
 
 A Greentic component is a WebAssembly (Wasm) module that exposes one or more **operations**. Each operation:

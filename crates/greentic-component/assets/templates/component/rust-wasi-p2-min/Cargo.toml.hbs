@@ -3,7 +3,7 @@ name = "{{ name }}"
 version = "{{ version }}"
 edition = "2024"
 license = "{{ license }}"
-rust-version = "1.90"
+rust-version = "1.91"
 description = "Greentic component {{ name }}"
 repository = "https://github.com/{{ repo }}"
 {{#if author}}
@@ -24,7 +24,7 @@ world = "greentic:component/component-v0-v6-v0@0.6.0"
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-greentic-interfaces-guest = { {{ greentic_interfaces_guest_dep }}, features = ["component-v0-6"] }
+greentic-interfaces-guest = { {{ greentic_interfaces_guest_dep }}, default-features = false, features = ["component-v0-6"] }
 greentic-types = { {{ greentic_types_dep }} }
 
 [dev-dependencies]

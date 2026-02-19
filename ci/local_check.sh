@@ -30,6 +30,7 @@ LOCAL_CHECK_SKIP_BINS=${LOCAL_CHECK_SKIP_BINS:-0}
 LOCAL_CHECK_SKIP_SCHEMA=${LOCAL_CHECK_SKIP_SCHEMA:-0}
 LOCAL_CHECK_SKIP_PACKAGE=${LOCAL_CHECK_SKIP_PACKAGE:-0}
 LOCAL_CHECK_SKIP_PUBLISH=${LOCAL_CHECK_SKIP_PUBLISH:-0}
+RUST_VERSION=${RUST_VERSION:-1.91.0}
 SMOKE_NAME=${SMOKE_NAME:-local-check}
 TREE_DIR=${LOCAL_CHECK_TREE_DIR:-$TARGET_DIR/local-check}
 SMOKE_TARGET_DIR=$TARGET_DIR/smoke
@@ -170,6 +171,12 @@ hard_need rustc
 hard_need cargo
 hard_need rustup
 
+if ! rustup toolchain list | awk '{print $1}' | grep -Fxq "$RUST_VERSION"; then
+    step "Installing Rust toolchain $RUST_VERSION"
+    rustup toolchain install "$RUST_VERSION" --profile minimal
+fi
+export RUSTUP_TOOLCHAIN="$RUST_VERSION"
+
 ensure_rust_target wasm32-wasip2
 ensure_rust_target x86_64-unknown-linux-gnu
 ensure_rust_component() {
@@ -184,6 +191,7 @@ ensure_rust_component rustfmt
 ensure_rust_component clippy
 
 step "Tool versions"
+echo "expected rust toolchain: $RUST_VERSION"
 rustc --version
 cargo --version
 need jq && jq --version || true
@@ -221,18 +229,25 @@ schema_check() {
     fi
     step "Schema drift check"
     local remote=/tmp/local-check-schema.json
+    local schema_url="https://greentic-ai-org.github.io/greentic-component/schemas/v1/component.manifest.schema.json"
+    if [[ "$schema_url" == *"greentic-ai.github.io"* ]]; then
+        echo "[fail] schema drift check (legacy host configured: $schema_url)"
+        record_failure "schema drift check (legacy host configured)"
+        return 0
+    fi
     local attempts=0
     local success=0
     while [ $attempts -lt 3 ]; do
-        if curl -sSf --max-time 5 -o "$remote" https://greentic-ai.github.io/greentic-component/schemas/v1/component.manifest.schema.json; then
+        if curl -sSf --max-time 5 -o "$remote" "$schema_url"; then
             success=1
             break
         fi
         attempts=$((attempts + 1))
-        echo "[warn] schema download attempt $attempts failed"
+        echo "[warn] schema download attempt $attempts failed: $schema_url"
         sleep 1
     done
     if [ $success -ne 1 ]; then
+        echo "[warn] schema URL not reachable: $schema_url"
         if [ "$LOCAL_CHECK_STRICT" = "1" ]; then
             echo "[fail] schema drift check (remote unavailable)"
             record_failure "schema drift check (remote unavailable)"
@@ -257,6 +272,10 @@ schema_check() {
 
 canonical_wit_dup_check() {
     run_cmd "canonical WIT duplication guard" bash ci/check_no_duplicate_canonical_wit.sh .
+}
+
+canonical_bindings_import_guard() {
+    run_cmd "canonical bindings import guard" bash ci/check_no_bindings_imports.sh .
 }
 
 build_release_bin() {
@@ -287,6 +306,7 @@ else
     run_cmd "cargo clippy" cargo clippy --locked --workspace --all-targets -- -D warnings
 fi
 canonical_wit_dup_check
+canonical_bindings_import_guard
 if [ "$LOCAL_CHECK_SKIP_BUILD" = "1" ]; then
     skip_flagged "cargo build --workspace --locked" "LOCAL_CHECK_SKIP_BUILD=1"
 else
@@ -325,7 +345,9 @@ else
 
     run_bin_cmd "component-inspect probe" "$BIN_COMPONENT_INSPECT" --json crates/greentic-component/tests/fixtures/manifests/valid.component.json
     export GREENTIC_SKIP_NODE_EXPORT_CHECK=1
-    run_bin_cmd_expect_fail "component-doctor probe" "$BIN_COMPONENT_DOCTOR" crates/greentic-component/tests/fixtures/manifests/valid.component.json
+    run_bin_cmd_expect_fail "component-doctor probe" "$BIN_COMPONENT_DOCTOR" \
+        crates/greentic-component/tests/contract/fixtures/component_v0_5_0/component.wasm \
+        --manifest crates/greentic-component/tests/contract/fixtures/component_v0_5_0/component.manifest.json
     unset GREENTIC_SKIP_NODE_EXPORT_CHECK
 fi
 
@@ -485,16 +507,34 @@ run_wizard_smoke() {
 
     local wizard_manifest="$wizard_root/component.manifest.json"
     if [ -f "$wizard_manifest" ]; then
-        run_bin_cmd "wizard build" "$BIN_GREENTIC_COMPONENT" build --manifest "$wizard_manifest" --no-flow
-        local wizard_wasm
-        wizard_wasm=$(jq -r '.artifacts.component_wasm' "$wizard_manifest")
-        local wizard_wasm_path="$wizard_root/$wizard_wasm"
-        run_bin_cmd "wizard doctor (built)" "$BIN_COMPONENT_DOCTOR" "$wizard_wasm_path" --manifest "$wizard_manifest"
-        local wizard_describe="$wizard_root/dist/$(jq -r '.name' "$wizard_manifest")__0_6_0.describe.cbor"
-        if [ -f "$wizard_describe" ]; then
-            run_bin_cmd "wizard inspect describe" "$BIN_COMPONENT_INSPECT" --describe "$wizard_describe" --json --verify
+        if grep -q "component_v0_6::node" "$wizard_root/src/lib.rs"; then
+            run_cmd "wizard wasm (make)" env CARGO_NET_OFFLINE=true make -C "$wizard_root" wasm
+            local wizard_wasm_rel
+            wizard_wasm_rel=$(jq -r '.artifacts.component_wasm // empty' "$wizard_manifest")
+            if [ -n "$wizard_wasm_rel" ] && [ "$wizard_wasm_rel" != "null" ]; then
+                local wizard_wasm_path="$wizard_root/$wizard_wasm_rel"
+                if [ -f "$wizard_wasm_path" ]; then
+                    run_bin_cmd "wizard update manifest hash" "$BIN_COMPONENT_HASH" "$wizard_manifest"
+                    run_bin_cmd "wizard inspect (wasm)" "$BIN_COMPONENT_INSPECT" \
+                        "$wizard_wasm_path" --manifest "$wizard_manifest" --json --verify
+                else
+                    record_failure "wizard inspect (wasm missing artifact: $wizard_wasm_path)"
+                fi
+            else
+                record_failure "wizard inspect (manifest missing artifacts.component_wasm)"
+            fi
         else
-            record_failure "wizard inspect describe (missing describe artifact)"
+            run_bin_cmd "wizard build" "$BIN_GREENTIC_COMPONENT" build --manifest "$wizard_manifest" --no-flow
+            local wizard_wasm
+            wizard_wasm=$(jq -r '.artifacts.component_wasm' "$wizard_manifest")
+            local wizard_wasm_path="$wizard_root/$wizard_wasm"
+            run_bin_cmd "wizard doctor (built)" "$BIN_COMPONENT_DOCTOR" "$wizard_wasm_path" --manifest "$wizard_manifest"
+            local wizard_describe="$wizard_root/dist/$(jq -r '.name' "$wizard_manifest")__0_6_0.describe.cbor"
+            if [ -f "$wizard_describe" ]; then
+                run_bin_cmd "wizard inspect describe" "$BIN_COMPONENT_INSPECT" --describe "$wizard_describe" --json --verify
+            else
+                record_failure "wizard inspect describe (missing describe artifact)"
+            fi
         fi
     else
         run_cmd "wizard wasm (make)" make -C "$wizard_root" wasm

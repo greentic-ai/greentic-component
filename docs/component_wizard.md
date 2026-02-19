@@ -2,6 +2,8 @@
 
 The component wizard generates a ready-to-edit component@0.6.0 scaffold with Greentic conventions baked in. It focuses on deterministic templates and leaves runtime integration to follow-up work.
 
+Legacy naming/compatibility details are in `docs/vision/legacy.md`.
+
 **Quickstart**
 1. `greentic-component wizard new hello-component`
 2. `cd hello-component`

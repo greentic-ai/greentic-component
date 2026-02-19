@@ -1,0 +1,115 @@
+{
+  "$schema": "https://greentic-ai-org.github.io/greentic-component/schemas/v1/component.manifest.schema.json",
+  "artifacts": {
+    "component_wasm": "component.wasm"
+  },
+  "capabilities": {
+    "host": {
+      "messaging": {
+        "inbound": true,
+        "outbound": true
+      },
+      "secrets": {
+        "required": []
+      },
+      "telemetry": {
+        "scope": "node"
+      }
+    },
+    "wasi": {
+      "clocks": true,
+      "filesystem": {
+        "mode": "none",
+        "mounts": []
+      },
+      "random": true
+    }
+  },
+  "config_schema": {
+    "additionalProperties": false,
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "default_operation": "handle_message",
+  "describe_export": "describe",
+  "dev_flows": {
+    "default": {
+      "format": "flow-ir-json",
+      "graph": {
+        "edges": [
+          {
+            "from": "start",
+            "to": "end"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "start",
+            "type": "start"
+          },
+          {
+            "id": "end",
+            "type": "end"
+          }
+        ]
+      }
+    }
+  },
+  "hashes": {
+    "component_wasm": "blake3:59995bafb4bc818a3c3a1b8b6c87eb6dd960ee625805b02191ff872e10284ea3"
+  },
+  "id": "com.greentic.contract.fixture.v0_6_0",
+  "limits": {
+    "memory_mb": 128,
+    "wall_time_ms": 1000
+  },
+  "name": "Contract Fixture v0.6.0",
+  "operations": [
+    {
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "input": {
+            "default": "Hello from contract-fixture!",
+            "description": "Opaque payload forwarded to handle",
+            "type": "string"
+          }
+        },
+        "required": [
+          "input"
+        ],
+        "title": "contract-fixture handle input",
+        "type": "object"
+      },
+      "name": "handle_message",
+      "output_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "message": {
+            "default": "Handled by contract-fixture",
+            "description": "Response returned by the handle entry point",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "title": "contract-fixture handle output",
+        "type": "object"
+      }
+    }
+  ],
+  "profiles": {
+    "default": "stateless",
+    "supported": [
+      "stateless"
+    ]
+  },
+  "secret_requirements": [],
+  "supports": [
+    "messaging"
+  ],
+  "version": "0.1.0",
+  "world": "greentic:component/component@0.6.0"
+}

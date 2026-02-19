@@ -10,6 +10,7 @@ cargo binstall greentic-component           # or: cargo install --path crates/gr
 ```
 
 Full CLI reference lives in `docs/cli.md` — skim it when you want every flag and subcommand.
+Docs index lives in `docs/README.md`, including the v0.6 vision and legacy/deprecation map.
 
 ## Why components?
 
@@ -106,6 +107,9 @@ See `docs/cli.md` for deeper switches (offline mode, schema inference knobs, sto
 
 ## Learn more
 
+- Docs index: `docs/README.md`
+- Vision (canonical v0.6): `docs/vision/v0.6.md`
+- Legacy + deprecation map: `docs/vision/legacy.md`
 - CLI details and doctor output: `docs/cli.md`
 - Component developer guide: `docs/component-developer-guide.md`
 - Manifest and flow regeneration tests live under `crates/greentic-component/tests/*` (including the README quickstart).

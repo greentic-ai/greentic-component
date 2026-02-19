@@ -1,14 +1,14 @@
-use std::collections::{BTreeMap, BTreeSet};
+#[cfg(target_arch = "wasm32")]
+use std::collections::BTreeMap;
 
+#[cfg(target_arch = "wasm32")]
+use greentic_interfaces_guest::component_v0_6::node;
+#[cfg(target_arch = "wasm32")]
 use greentic_types::cbor::canonical;
+#[cfg(target_arch = "wasm32")]
 use greentic_types::schemas::common::schema_ir::{AdditionalProperties, SchemaIr};
-use greentic_types::schemas::component::v0_6_0::{
-    ComponentDescribe, ComponentInfo, ComponentOperation, ComponentQaSpec, ComponentRunInput,
-    ComponentRunOutput, I18nText, QaMode, Question, schema_hash,
-};
-use greentic_interfaces_guest::component_v0_6::{
-    component_descriptor, component_i18n, component_qa, component_runtime, component_schema,
-};
+#[cfg(target_arch = "wasm32")]
+use greentic_types::schemas::component::v0_6_0::{ComponentInfo, I18nText};
 
 const COMPONENT_NAME: &str = "{{ name }}";
 const COMPONENT_ORG: &str = "{{ org }}";
@@ -19,56 +19,49 @@ const COMPONENT_VERSION: &str = "{{ version }}";
 #[unsafe(link_section = ".greentic.wasi")]
 static WASI_TARGET_MARKER: [u8; 13] = *b"wasm32-wasip2";
 
+#[cfg(target_arch = "wasm32")]
 struct Component;
 
-impl component_descriptor::Guest for Component {
-    fn get_component_info() -> Vec<u8> {
-        component_info_cbor()
+#[cfg(target_arch = "wasm32")]
+impl node::Guest for Component {
+    fn describe() -> node::ComponentDescriptor {
+        let input_schema_cbor = input_schema_cbor();
+        let output_schema_cbor = output_schema_cbor();
+        node::ComponentDescriptor {
+            name: COMPONENT_NAME.to_string(),
+            version: COMPONENT_VERSION.to_string(),
+            summary: Some(format!("Greentic component {COMPONENT_NAME}")),
+            capabilities: Vec::new(),
+            ops: vec![node::Op {
+                name: "handle_message".to_string(),
+                summary: Some("Handle a single message input".to_string()),
+                input: node::IoSchema {
+                    schema: node::SchemaSource::InlineCbor(input_schema_cbor),
+                    content_type: "application/cbor".to_string(),
+                    schema_version: None,
+                },
+                output: node::IoSchema {
+                    schema: node::SchemaSource::InlineCbor(output_schema_cbor),
+                    content_type: "application/cbor".to_string(),
+                    schema_version: None,
+                },
+                examples: Vec::new(),
+            }],
+            schemas: Vec::new(),
+            setup: None,
+        }
     }
 
-    fn describe() -> Vec<u8> {
-        component_describe_cbor()
-    }
-}
-
-impl component_schema::Guest for Component {
-    fn input_schema() -> Vec<u8> {
-        input_schema_cbor()
-    }
-
-    fn output_schema() -> Vec<u8> {
-        output_schema_cbor()
-    }
-
-    fn config_schema() -> Vec<u8> {
-        config_schema_cbor()
-    }
-}
-
-impl component_qa::Guest for Component {
-    fn qa_spec(mode: component_qa::QaMode) -> Vec<u8> {
-        qa_spec_cbor(mode)
-    }
-
-    fn apply_answers(
-        mode: component_qa::QaMode,
-        current_config: Vec<u8>,
-        answers: Vec<u8>,
-    ) -> Vec<u8> {
-        apply_answers_cbor(mode, current_config, answers)
-    }
-}
-
-impl component_i18n::Guest for Component {
-    fn i18n_keys() -> Vec<String> {
-        i18n_keys()
-    }
-}
-
-impl component_runtime::Guest for Component {
-    fn run(input: Vec<u8>, state: Vec<u8>) -> component_runtime::RunResult {
-        let (output, new_state) = run_component_cbor(input, state);
-        component_runtime::RunResult { output, new_state }
+    fn invoke(
+        operation: String,
+        envelope: node::InvocationEnvelope,
+    ) -> Result<node::InvocationResult, node::NodeError> {
+        let output = run_component_cbor(&operation, envelope.payload_cbor);
+        Ok(node::InvocationResult {
+            ok: true,
+            output_cbor: output,
+            output_metadata_cbor: None,
+        })
     }
 }
 
@@ -96,10 +89,12 @@ pub fn handle_message(operation: &str, input: &str) -> String {
     format!("{COMPONENT_NAME}::{operation} => {}", input.trim())
 }
 
+#[cfg(target_arch = "wasm32")]
 fn encode_cbor<T: serde::Serialize>(value: &T) -> Vec<u8> {
     canonical::to_canonical_cbor_allow_floats(value).expect("encode cbor")
 }
 
+#[cfg(target_arch = "wasm32")]
 fn input_schema() -> SchemaIr {
     SchemaIr::Object {
         properties: BTreeMap::from([(
@@ -116,6 +111,7 @@ fn input_schema() -> SchemaIr {
     }
 }
 
+#[cfg(target_arch = "wasm32")]
 fn output_schema() -> SchemaIr {
     SchemaIr::Object {
         properties: BTreeMap::from([(
@@ -132,6 +128,8 @@ fn output_schema() -> SchemaIr {
     }
 }
 
+#[cfg(target_arch = "wasm32")]
+#[allow(dead_code)]
 fn config_schema() -> SchemaIr {
     SchemaIr::Object {
         properties: BTreeMap::new(),
@@ -140,6 +138,8 @@ fn config_schema() -> SchemaIr {
     }
 }
 
+#[cfg(target_arch = "wasm32")]
+#[allow(dead_code)]
 fn component_info() -> ComponentInfo {
     ComponentInfo {
         id: format!("{COMPONENT_ORG}.{COMPONENT_NAME}"),
@@ -152,130 +152,44 @@ fn component_info() -> ComponentInfo {
     }
 }
 
-fn component_describe() -> ComponentDescribe {
-    let input = input_schema();
-    let output = output_schema();
-    let config = config_schema();
-    let hash = schema_hash(&input, &output, &config).unwrap_or_default();
-    ComponentDescribe {
-        info: component_info(),
-        provided_capabilities: provided_capabilities(),
-        required_capabilities: required_capabilities(),
-        metadata: BTreeMap::new(),
-        operations: vec![ComponentOperation {
-            id: "handle_message".to_string(),
-            display_name: None,
-            input: ComponentRunInput { schema: input },
-            output: ComponentRunOutput { schema: output },
-            defaults: BTreeMap::new(),
-            redactions: Vec::new(),
-            constraints: BTreeMap::new(),
-            schema_hash: hash,
-        }],
-        config_schema: config,
-    }
-}
-
-fn required_capabilities() -> Vec<String> {
-    const REQUIRED_CAPABILITIES: &[&str] = &[];
-    REQUIRED_CAPABILITIES
-        .iter()
-        .map(|capability| (*capability).to_string())
-        .collect()
-}
-
-fn provided_capabilities() -> Vec<String> {
-    const PROVIDED_CAPABILITIES: &[&str] = &[];
-    PROVIDED_CAPABILITIES
-        .iter()
-        .map(|capability| (*capability).to_string())
-        .collect()
-}
-
+#[cfg(target_arch = "wasm32")]
+#[allow(dead_code)]
 fn component_info_cbor() -> Vec<u8> {
     encode_cbor(&component_info())
 }
 
-fn component_describe_cbor() -> Vec<u8> {
-    encode_cbor(&component_describe())
-}
-
+#[cfg(target_arch = "wasm32")]
 fn input_schema_cbor() -> Vec<u8> {
     encode_cbor(&input_schema())
 }
 
+#[cfg(target_arch = "wasm32")]
 fn output_schema_cbor() -> Vec<u8> {
     encode_cbor(&output_schema())
 }
 
+#[cfg(target_arch = "wasm32")]
+#[allow(dead_code)]
 fn config_schema_cbor() -> Vec<u8> {
     encode_cbor(&config_schema())
 }
 
-fn qa_spec_cbor(mode: component_qa::QaMode) -> Vec<u8> {
-    let mode = match mode {
-        component_qa::QaMode::Default => QaMode::Default,
-        component_qa::QaMode::Setup => QaMode::Setup,
-        component_qa::QaMode::Remove => QaMode::Remove,
-        _ => QaMode::Default,
-    };
-
-    let spec = ComponentQaSpec {
-        mode,
-        title: I18nText::new("qa.title", Some("Component settings".to_string())),
-        description: None,
-        questions: vec![Question {
-            id: "enabled".to_string(),
-            label: I18nText::new("qa.enabled.label", Some("Enabled".to_string())),
-            help: None,
-            error: None,
-            kind: greentic_types::schemas::component::v0_6_0::QuestionKind::Bool,
-            required: false,
-            default: None,
-        }],
-        defaults: BTreeMap::new(),
-    };
-    encode_cbor(&spec)
-}
-
-fn apply_answers_cbor(
-    _mode: component_qa::QaMode,
-    current_config: Vec<u8>,
-    answers: Vec<u8>,
-) -> Vec<u8> {
-    let current: Result<serde_json::Value, _> = canonical::from_cbor(&current_config);
-    let incoming: Result<serde_json::Value, _> = canonical::from_cbor(&answers);
-    let merged = match (current.ok(), incoming.ok()) {
-        (_, Some(value @ serde_json::Value::Object(_))) => value,
-        (Some(value @ serde_json::Value::Object(_)), _) => value,
-        _ => serde_json::json!({}),
-    };
-    encode_cbor(&merged)
-}
-
-fn i18n_keys() -> Vec<String> {
-    let mut keys = BTreeSet::new();
-    keys.insert("component.display_name".to_string());
-    keys.insert("qa.title".to_string());
-    keys.insert("qa.enabled.label".to_string());
-    keys.into_iter().collect()
-}
-
-fn run_component_cbor(input: Vec<u8>, _state: Vec<u8>) -> (Vec<u8>, Vec<u8>) {
+#[cfg(target_arch = "wasm32")]
+fn run_component_cbor(operation: &str, input: Vec<u8>) -> Vec<u8> {
     let invocation: Result<serde_json::Value, _> = canonical::from_cbor(&input);
     let output = match invocation {
         Ok(value) => {
-            let operation = value
+            let op_name = value
                 .get("operation")
                 .and_then(|v| v.as_str())
-                .unwrap_or("handle_message");
+                .unwrap_or(operation);
             let input_text = value
                 .get("input")
                 .and_then(|v| v.as_str())
                 .map(ToOwned::to_owned)
                 .unwrap_or_else(|| value.to_string());
             serde_json::json!({
-                "message": handle_message(operation, &input_text)
+                "message": handle_message(op_name, &input_text)
             })
         }
         Err(err) => serde_json::json!({
@@ -286,7 +200,7 @@ fn run_component_cbor(input: Vec<u8>, _state: Vec<u8>) -> (Vec<u8>, Vec<u8>) {
         }),
     };
 
-    (encode_cbor(&output), encode_cbor(&serde_json::json!({})))
+    encode_cbor(&output)
 }
 
 #[cfg(test)]

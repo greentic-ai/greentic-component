@@ -182,7 +182,9 @@ fn write_template(path: &Path, context: &WizardContext) -> Result<()> {
 fn build_files(context: &WizardContext) -> Result<Vec<GeneratedFile>> {
     let mut files = vec![
         text_file("Cargo.toml", render_cargo_toml(context)),
+        text_file("rust-toolchain.toml", render_rust_toolchain_toml()),
         text_file("README.md", render_readme(context)),
+        text_file("component.manifest.json", render_manifest_json(context)),
         text_file("Makefile", render_makefile()),
         text_file("src/lib.rs", render_lib_rs()),
         text_file("src/descriptor.rs", render_descriptor_rs(context)),
@@ -216,6 +218,16 @@ fn build_files(context: &WizardContext) -> Result<Vec<GeneratedFile>> {
     Ok(files)
 }
 
+fn render_rust_toolchain_toml() -> String {
+    r#"[toolchain]
+channel = "1.91.0"
+components = ["clippy", "rustfmt"]
+targets = ["wasm32-wasip2", "x86_64-unknown-linux-gnu"]
+profile = "minimal"
+"#
+    .to_string()
+}
+
 fn text_file(path: &str, contents: String) -> GeneratedFile {
     GeneratedFile {
         path: PathBuf::from(path),
@@ -237,7 +249,7 @@ name = "{name}"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
-rust-version = "1.90"
+rust-version = "1.91"
 description = "Greentic component {name}"
 
 [lib]
@@ -254,7 +266,7 @@ world = "greentic:component/component-v0-v6-v0@0.6.0"
 
 [dependencies]
 greentic-types = "0.4"
-greentic-interfaces-guest = {{ version = "0.4", features = ["component-v0-6"] }}
+greentic-interfaces-guest = {{ version = "0.4", default-features = false, features = ["component-v0-6"] }}
 serde = {{ version = "1", features = ["derive"] }}
 serde_json = "1"
 "#,
@@ -340,16 +352,124 @@ doctor:
     .to_string()
 }
 
-fn render_lib_rs() -> String {
-    r#"use greentic_interfaces_guest::component_v0_6::{
-    component_descriptor, component_i18n, component_qa, component_runtime, component_schema,
-};
+fn render_manifest_json(context: &WizardContext) -> String {
+    let name_snake = context.name.replace('-', "_");
+    format!(
+        r#"{{
+  "$schema": "https://greentic-ai.github.io/greentic-component/schemas/v1/component.manifest.schema.json",
+  "id": "com.example.{name}",
+  "name": "{name}",
+  "version": "0.1.0",
+  "world": "greentic:component/component-v0-v6-v0@0.6.0",
+  "describe_export": "describe",
+  "operations": [
+    {{
+      "name": "run",
+      "input_schema": {{
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "{name} input",
+        "type": "object",
+        "required": ["message"],
+        "properties": {{
+          "message": {{
+            "type": "string",
+            "default": "hello"
+          }}
+        }},
+        "additionalProperties": false
+      }},
+      "output_schema": {{
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "{name} output",
+        "type": "object",
+        "required": ["result"],
+        "properties": {{
+          "result": {{
+            "type": "string"
+          }}
+        }},
+        "additionalProperties": false
+      }}
+    }}
+  ],
+  "default_operation": "run",
+  "config_schema": {{
+    "type": "object",
+    "required": ["enabled"],
+    "properties": {{
+      "enabled": {{
+        "type": "boolean"
+      }}
+    }},
+    "additionalProperties": false
+  }},
+  "supports": ["messaging"],
+  "profiles": {{
+    "default": "stateless",
+    "supported": ["stateless"]
+  }},
+  "secret_requirements": [],
+  "capabilities": {{
+    "wasi": {{
+      "filesystem": {{
+        "mode": "none",
+        "mounts": []
+      }},
+      "random": true,
+      "clocks": true
+    }},
+    "host": {{
+      "messaging": {{
+        "inbound": true,
+        "outbound": true
+      }},
+      "telemetry": {{
+        "scope": "node"
+      }},
+      "secrets": {{
+        "required": []
+      }}
+    }}
+  }},
+  "limits": {{
+    "memory_mb": 128,
+    "wall_time_ms": 1000
+  }},
+  "artifacts": {{
+    "component_wasm": "target/wasm32-wasip2/release/{name_snake}.wasm"
+  }},
+  "hashes": {{
+    "component_wasm": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+  }},
+  "dev_flows": {{
+    "default": {{
+      "format": "flow-ir-json",
+      "graph": {{
+        "nodes": [
+          {{ "id": "start", "type": "start" }},
+          {{ "id": "end", "type": "end" }}
+        ],
+        "edges": [
+          {{ "from": "start", "to": "end" }}
+        ]
+      }}
+    }}
+  }}
+}}
+"#,
+        name = context.name,
+        name_snake = name_snake
+    )
+}
 
-mod descriptor;
-mod schema;
+fn render_lib_rs() -> String {
+    r#"use greentic_interfaces_guest::component_v0_6::node;
+
+pub mod descriptor;
+pub mod schema;
 mod runtime;
-mod qa;
-mod i18n;
+pub mod qa;
+pub mod i18n;
 
 #[cfg(target_arch = "wasm32")]
 #[used]
@@ -358,54 +478,56 @@ static WASI_TARGET_MARKER: [u8; 13] = *b"wasm32-wasip2";
 
 struct Component;
 
-impl component_descriptor::Guest for Component {
-    fn get_component_info() -> Vec<u8> {
-        descriptor::info_cbor()
+impl node::Guest for Component {
+    fn describe() -> node::ComponentDescriptor {
+        let info = descriptor::info();
+        node::ComponentDescriptor {
+            name: info.id,
+            version: info.version,
+            summary: Some("Generated by greentic-component wizard".to_string()),
+            capabilities: Vec::new(),
+            ops: vec![node::Op {
+                name: "run".to_string(),
+                summary: Some("Run the component with CBOR payload".to_string()),
+                input: node::IoSchema {
+                    schema: node::SchemaSource::InlineCbor(schema::input_schema_cbor()),
+                    content_type: "application/cbor".to_string(),
+                    schema_version: None,
+                },
+                output: node::IoSchema {
+                    schema: node::SchemaSource::InlineCbor(schema::output_schema_cbor()),
+                    content_type: "application/cbor".to_string(),
+                    schema_version: None,
+                },
+                examples: Vec::new(),
+            }],
+            schemas: Vec::new(),
+            setup: None,
+        }
     }
 
-    fn describe() -> Vec<u8> {
-        descriptor::describe_cbor()
-    }
-}
-
-impl component_schema::Guest for Component {
-    fn input_schema() -> Vec<u8> {
-        schema::input_schema_cbor()
-    }
-
-    fn output_schema() -> Vec<u8> {
-        schema::output_schema_cbor()
-    }
-
-    fn config_schema() -> Vec<u8> {
-        schema::config_schema_cbor()
-    }
-}
-
-impl component_qa::Guest for Component {
-    fn qa_spec(mode: component_qa::QaMode) -> Vec<u8> {
-        qa::qa_spec_cbor(qa::Mode::from(mode))
-    }
-
-    fn apply_answers(
-        mode: component_qa::QaMode,
-        current_config: Vec<u8>,
-        answers: Vec<u8>,
-    ) -> Vec<u8> {
-        qa::apply_answers(qa::Mode::from(mode), current_config, answers)
-    }
-}
-
-impl component_i18n::Guest for Component {
-    fn i18n_keys() -> Vec<String> {
-        i18n::all_keys()
-    }
-}
-
-impl component_runtime::Guest for Component {
-    fn run(input: Vec<u8>, state: Vec<u8>) -> component_runtime::RunResult {
-        let (output, new_state) = runtime::run(input, state);
-        component_runtime::RunResult { output, new_state }
+    fn invoke(
+        operation: String,
+        envelope: node::InvocationEnvelope,
+    ) -> Result<node::InvocationResult, node::NodeError> {
+        let (output, _new_state) = runtime::run(envelope.payload_cbor, Vec::new());
+        let output = if operation == "run" {
+            output
+        } else {
+            runtime::run(
+                greentic_types::cbor::canonical::to_canonical_cbor_allow_floats(&serde_json::json!({
+                    "message": format!("unsupported operation: {operation}")
+                }))
+                .unwrap_or_default(),
+                Vec::new(),
+            )
+            .0
+        };
+        Ok(node::InvocationResult {
+            ok: true,
+            output_cbor: output,
+            output_metadata_cbor: None,
+        })
     }
 }
 
@@ -468,23 +590,6 @@ pub enum Mode {
     Setup,
     Update,
     Remove,
-}
-
-impl From<greentic_interfaces_guest::component_v0_6::component_qa::QaMode> for Mode {
-    fn from(mode: greentic_interfaces_guest::component_v0_6::component_qa::QaMode) -> Self {
-        match mode {
-            greentic_interfaces_guest::component_v0_6::component_qa::QaMode::Default => {
-                Mode::Default
-            }
-            greentic_interfaces_guest::component_v0_6::component_qa::QaMode::Setup => {
-                Mode::Setup
-            }
-            greentic_interfaces_guest::component_v0_6::component_qa::QaMode::Remove => {
-                Mode::Remove
-            }
-            _ => Mode::Default,
-        }
-    }
 }
 
 pub fn qa_spec_cbor(mode: Mode) -> Vec<u8> {

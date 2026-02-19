@@ -2,7 +2,7 @@
 name = "greentic-component"
 version.workspace=true
 edition = "2024"
-rust-version = "1.90"
+rust-version = "1.91"
 default-run = "greentic-component"
 license = "MIT"
 description = "High-level component loader and store for Greentic components"
@@ -46,9 +46,9 @@ cli = [
     "dep:wasmtime-wasi",
     "dep:uuid",
     "dep:base64",
-    "dep:greentic-distributor-client",
     "dep:reqwest",
 ]
+store = ["dep:greentic-distributor-client"]
 fuzz = ["dep:proptest"]
 
 [dependencies]

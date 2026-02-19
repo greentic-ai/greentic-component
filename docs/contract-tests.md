@@ -2,6 +2,8 @@
 
 These tests exercise the component harness against fixture inputs per WIT world.
 
+Canonical test target is `component@0.6.0`; older fixture worlds are legacy compatibility coverage.
+
 ## Running locally
 
 ```
@@ -25,6 +27,8 @@ component_v0_5_0/
   valid_inputs/
   invalid_inputs/
 ```
+
+Legacy fixture directories should be labeled as compatibility-only in fixture README content.
 
 The test runner skips worlds if the fixture component is missing.
 

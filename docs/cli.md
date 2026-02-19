@@ -1,5 +1,8 @@
 # CLI quick guide
 
+Canonical docs target: `component@0.6.0`.
+Legacy compatibility notes are centralized in `docs/vision/legacy.md`.
+
 Practical notes for the main `greentic-component` subcommands: what they do, key flags, and why you might tweak them. Pair this with `--help` for the full list of options.
 
 Global:
@@ -57,7 +60,7 @@ Global:
 - `--output <path>` writes the JSON result to a file.
 - `--trace-out <path>` writes a trace file (overrides `GREENTIC_TRACE_OUT`).
 - `--pretty` pretty-prints JSON output.
-- `--raw-output` prints the legacy output without the JSON envelope.
+- `--raw-output` prints legacy output without the JSON envelope (deprecated compatibility flag; prefer default JSON envelope for new tooling).
 - `--state <mode>` selects the state backend (only `inmem` supported).
 - `--state-dump` prints the in-memory state after invocation.
 - `--dry-run <bool>` toggles dry-run mode (default: true, disables HTTP and FS writes).

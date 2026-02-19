@@ -21,11 +21,11 @@
 
 - **Path:** `crates/greentic-component-runtime`  
   **Role:** Runtime loader/invoker library built on Wasmtime components for local/test usage.  
-  **Key functionality:** Loads components with policy controls, describes manifests, binds tenant configuration/secrets provided by the caller, and invokes exported operations with JSON inputs/outputs. Secrets-store and other production host bindings belong in greentic-runner/greentic-secrets.
+  **Key functionality:** Loads components with policy controls, describes manifests, binds tenant configuration/secrets provided by the caller, and invokes exported operations with JSON inputs/outputs. Runtime invocation now targets `component@0.6.0` contract shapes (`InvocationEnvelope` / CBOR output decoding) and avoids `component_v0_4` tenant/impersonation paths. Secrets-store and other production host bindings belong in greentic-runner/greentic-secrets.
 
 - **Path:** `ci/local_check.sh`, `.github/workflows/*`  
   **Role:** CI/local verification scripts and workflows (lint, tests, publish, release assets, auto-tag).  
-  **Key functionality:** Mirrors CI locally; any push to `master` (or manual dispatch) runs build/tests, cargo publish (already-exists errors tolerated), binstall artifact builds, and creates/updates GitHub Releases using the plain version tag (e.g., `v0.4.10`). Auto-tag still bumps versions.
+  **Key functionality:** Mirrors CI locally; includes canonical WIT duplication guard and canonical bindings import guard (fails on `greentic_interfaces::bindings::*` and `bindings::greentic::*` usage), then build/tests, cargo publish (already-exists errors tolerated), binstall artifact builds, and creates/updates GitHub Releases using the plain version tag (e.g., `v0.4.10`). Auto-tag still bumps versions.
 
 ## 3. Work In Progress, TODOs, and Stubs
 - Component manifests now allow optional `secret_requirements` (validated via `greentic-types` rules: SecretKey pattern, env/tenant scope, schema must be object). Keep downstream consumers/schema docs aligned if fields evolve.
@@ -35,7 +35,11 @@
 - Downstream consumers (packc/runner/deployer) must read `secret_requirements` from component manifests/metadata; this repo only validates and emits it.
 
 ## 4. Broken, Failing, or Conflicting Areas
-- None currently; `ci/local_check.sh` passes aside from skipped network-dependent steps when crates.io is unreachable.
+- `ci/local_check.sh` currently reports failures unrelated to this PR surface:
+  - lockfile drift with `--locked` steps (local branch has dependency/version churn),
+  - `cargo fmt --check` diffs in pre-existing files (including `crates/greentic-component/src/test_harness/mod.rs`),
+  - upstream `greentic-interfaces-guest` resolution error in local/crates.io contexts (`greentic_component_0_6_0_component` missing in generated `bindings`).
 
 ## 5. Notes for Future Work
 - If crates.io remains unreachable, publishing/packaging steps will continue to skip/fail; rerun when network is available.
+- `.codex/PR-01-interfaces.md` defines a downstream policy: consumers should import WIT types from `greentic_interfaces::canonical` and avoid `greentic_interfaces::bindings::*` in app/library/tests/docs code.

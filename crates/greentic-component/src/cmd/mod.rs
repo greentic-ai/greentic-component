@@ -7,7 +7,7 @@ pub mod inspect;
 pub mod new;
 pub mod path;
 pub mod post;
-#[cfg(feature = "cli")]
+#[cfg(feature = "store")]
 pub mod store;
 pub mod templates;
 pub mod test;

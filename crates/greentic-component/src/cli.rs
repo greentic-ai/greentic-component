@@ -1,10 +1,12 @@
 use anyhow::{Error, Result, bail};
 use clap::{Parser, Subcommand};
 
+#[cfg(feature = "store")]
+use crate::cmd::store::StoreCommand;
 use crate::cmd::{
     self, build::BuildArgs, doctor::DoctorArgs, flow::FlowCommand, hash::HashArgs,
-    inspect::InspectArgs, new::NewArgs, store::StoreCommand, templates::TemplatesArgs,
-    test::TestArgs, wizard::WizardCommand,
+    inspect::InspectArgs, new::NewArgs, templates::TemplatesArgs, test::TestArgs,
+    wizard::WizardCommand,
 };
 use crate::scaffold::engine::ScaffoldEngine;
 
@@ -47,6 +49,7 @@ See docs/component-developer-guide.md for a walkthrough."
     #[command(subcommand)]
     Flow(FlowCommand),
     /// Interact with the component store
+    #[cfg(feature = "store")]
     #[command(subcommand)]
     Store(StoreCommand),
 }
@@ -74,6 +77,7 @@ pub fn main() -> Result<()> {
         Commands::Build(args) => cmd::build::run(args),
         Commands::Test(args) => cmd::test::run(*args),
         Commands::Flow(flow_cmd) => cmd::flow::run(flow_cmd),
+        #[cfg(feature = "store")]
         Commands::Store(store_cmd) => cmd::store::run(store_cmd),
     }
 }

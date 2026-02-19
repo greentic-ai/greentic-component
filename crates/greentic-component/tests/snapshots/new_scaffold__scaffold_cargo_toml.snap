@@ -8,7 +8,7 @@ name = "demo-component"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
-rust-version = "1.90"
+rust-version = "1.91"
 description = "Greentic component demo-component"
 repository = "https://github.com/demo-component"
 authors = ["Greentic Labs"]
@@ -25,7 +25,7 @@ world = "greentic:component/component-v0-v6-v0@0.6.0"
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-greentic-interfaces-guest = { version = "0.4.93", features = ["component-v0-6"] }
+greentic-interfaces-guest = { version = "0.4.93", default-features = false, features = ["component-v0-6"] }
 greentic-types = { version = "0.4.49" }
 
 [dev-dependencies]

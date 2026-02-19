@@ -9,9 +9,9 @@ resolver = "2"
 
 [workspace.package]
 edition = "2024"
-version = "0.4.59"
+version = "0.4.60"
 license = "MIT"
-rust-version = "1.90"
+rust-version = "1.91"
 
 [workspace.dependencies]
 anyhow = "1"
@@ -29,7 +29,7 @@ dashmap = "6"
 directories = "6"
 displaydoc = "0.2"
 futures = "0.3"
-greentic-interfaces-guest = { version = "0.4", features = ["component-v0-6"] }
+greentic-interfaces-guest = { version = "0.4", default-features = false, features = ["component-v0-6"] }
 greentic-interfaces-host = "0.4"
 greentic-interfaces = { version = "0.4", default-features = false, features = [
     "bindings-rust",
@@ -73,7 +73,6 @@ greentic-interfaces = { version = "0.4", default-features = false, features = [
 greentic-interfaces-wasmtime = "0.4"
 greentic-distributor-client = { version = "0.4", default-features = false, features = ["dist-client"] }
 greentic-types = "0.4"
-packc = "0.4"
 handlebars = "6"
 hex = "0.4"
 ignore = "0.4"
@@ -113,3 +112,4 @@ wasmtime = { version = "41", default-features = false, features = ["component-mo
 wasmtime-wasi = { version = "41" }
 wit-component = "0.245"
 wit-parser = "0.245"
+

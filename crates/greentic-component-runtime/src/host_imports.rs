@@ -3,9 +3,8 @@ use std::convert::TryFrom;
 use std::sync::{Arc, Mutex};
 
 use greentic_interfaces::runner_host_v1::{self, RunnerHost};
-use greentic_interfaces_host::component::v0_4::{
-    self, ControlHost, exports::greentic::component::node,
-};
+use greentic_interfaces_host::component::v0_6::exports::greentic::component::node;
+use greentic_interfaces_host::component_v0_6::greentic::component::control::Host as ControlHost;
 use greentic_interfaces_wasmtime::host_helpers::v1::state_store::{
     OpAck, StateStoreError, StateStoreHost, TenantCtx as WitTenantCtx, add_state_store_to_linker,
 };
@@ -14,6 +13,7 @@ use greentic_types::cbor::canonical;
 use reqwest::blocking::Client as HttpClient;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde_json::Value;
+use wasmtime::StoreContextMut;
 use wasmtime::component::{Linker, ResourceTable};
 use wasmtime::{Engine, Result as WasmtimeResult};
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView, p2};
@@ -192,10 +192,44 @@ impl ControlHost for ControlHostImpl {
 pub fn build_linker(engine: &Engine, _policy: &HostPolicy) -> Result<Linker<HostState>, CompError> {
     let mut linker = Linker::<HostState>::new(engine);
     runner_host_v1::add_to_linker(&mut linker, |state: &mut HostState| &mut state.runner)?;
-    v0_4::add_control_to_linker(&mut linker, |state: &mut HostState| &mut state.control)?;
+    add_control_to_linker_v0_6(&mut linker, |state: &mut HostState| &mut state.control)?;
     add_state_store_to_linker(&mut linker, |state: &mut HostState| state)?;
     p2::add_to_linker_sync(&mut linker)?;
     Ok(linker)
+}
+
+fn add_control_to_linker_v0_6<T>(
+    linker: &mut Linker<T>,
+    get_host: impl Fn(&mut T) -> &mut (dyn ControlHost + Send + Sync + 'static)
+    + Send
+    + Sync
+    + Copy
+    + 'static,
+) -> wasmtime::Result<()>
+where
+    T: Send + 'static,
+{
+    let mut inst = linker.instance("greentic:component/control@0.6.0")?;
+
+    inst.func_wrap(
+        "should-cancel",
+        move |mut caller: StoreContextMut<'_, T>, (): ()| {
+            let host = get_host(caller.data_mut());
+            let result = host.should_cancel();
+            Ok((result,))
+        },
+    )?;
+
+    inst.func_wrap(
+        "yield-now",
+        move |mut caller: StoreContextMut<'_, T>, (): ()| {
+            let host = get_host(caller.data_mut());
+            host.yield_now();
+            Ok(())
+        },
+    )?;
+
+    Ok(())
 }
 
 impl WasiView for HostState {
@@ -270,47 +304,50 @@ fn canonicalize_cbor_or_passthrough(bytes: &[u8]) -> Vec<u8> {
     }
 }
 
-pub fn make_exec_ctx(cref: &ComponentRef, tenant: &TenantCtx) -> node::ExecCtx {
-    node::ExecCtx {
-        tenant: make_component_tenant_ctx(tenant),
-        i18n_id: tenant.i18n_id.clone(),
+pub fn make_invocation_envelope(
+    cref: &ComponentRef,
+    tenant: &TenantCtx,
+    operation: &str,
+    payload_cbor: Vec<u8>,
+) -> node::InvocationEnvelope {
+    node::InvocationEnvelope {
+        ctx: make_component_tenant_ctx(tenant),
         flow_id: cref.name.clone(),
-        node_id: None,
+        step_id: tenant
+            .node_id
+            .clone()
+            .unwrap_or_else(|| operation.to_string()),
+        component_id: tenant
+            .node_id
+            .clone()
+            .unwrap_or_else(|| "component".to_string()),
+        attempt: tenant.attempt,
+        payload_cbor,
+        metadata_cbor: None,
     }
 }
 
 pub fn make_component_tenant_ctx(tenant: &TenantCtx) -> node::TenantCtx {
     node::TenantCtx {
-        env: tenant.env.as_str().to_string(),
-        tenant: tenant.tenant.as_str().to_string(),
         tenant_id: tenant.tenant_id.as_str().to_string(),
-        team: tenant.team.as_ref().map(|t| t.as_str().to_string()),
         team_id: tenant.team_id.as_ref().map(|t| t.as_str().to_string()),
-        user: tenant.user.as_ref().map(|u| u.as_str().to_string()),
         user_id: tenant.user_id.as_ref().map(|u| u.as_str().to_string()),
-        session_id: tenant.session_id.clone(),
-        flow_id: tenant.flow_id.clone(),
-        node_id: tenant.node_id.clone(),
-        provider_id: tenant.provider_id.clone(),
-        trace_id: tenant.trace_id.clone(),
-        i18n_id: tenant.i18n_id.clone(),
-        correlation_id: tenant.correlation_id.clone(),
-        attributes: tenant
-            .attributes
-            .iter()
-            .map(|(key, value)| (key.clone(), value.clone()))
-            .collect(),
+        env_id: tenant.env.as_str().to_string(),
+        trace_id: tenant
+            .trace_id
+            .clone()
+            .unwrap_or_else(|| "trace-local".to_string()),
+        correlation_id: tenant
+            .correlation_id
+            .clone()
+            .unwrap_or_else(|| "corr-local".to_string()),
+        i18n_id: tenant.i18n_id.clone().unwrap_or_else(|| "en".to_string()),
         deadline_ms: tenant
             .deadline
-            .and_then(|deadline| i64::try_from(deadline.unix_millis()).ok()),
+            .and_then(|deadline| u64::try_from(deadline.unix_millis()).ok())
+            .unwrap_or(0),
         attempt: tenant.attempt,
         idempotency_key: tenant.idempotency_key.clone(),
-        impersonation: tenant.impersonation.as_ref().map(|impersonation| {
-            v0_4::greentic::interfaces_types::types::Impersonation {
-                actor_id: impersonation.actor_id.as_str().to_string(),
-                reason: impersonation.reason.clone(),
-            }
-        }),
     }
 }
 

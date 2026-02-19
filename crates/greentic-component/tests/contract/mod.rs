@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use assert_cmd::Command;
+use greentic_component::cmd::component_world::canonical_component_world;
 use serde_json::Value;
 
 const ARTIFACT_ROOT: &str = "target/contract-artifacts";
@@ -15,8 +16,8 @@ pub struct WorldContract {
 
 pub fn registry() -> Vec<WorldContract> {
     vec![WorldContract {
-        id: "greentic:component/component@0.5.0",
-        fixture_dir: PathBuf::from("tests/contract/fixtures/component_v0_5_0"),
+        id: canonical_component_world(),
+        fixture_dir: PathBuf::from("tests/contract/fixtures/component_v0_6_0"),
         operation: "handle_message",
     }]
 }
@@ -25,18 +26,18 @@ pub fn run_contract_suite(world: &WorldContract) {
     let valid_inputs = load_inputs(&world.fixture_dir.join("valid_inputs"));
     let invalid_inputs = load_inputs(&world.fixture_dir.join("invalid_inputs"));
     for (name, input) in valid_inputs.iter() {
-        run_case(world, name, input, "ok");
+        run_case(world, name, input, false);
         for (idx, mutated) in mutate_inputs(input).into_iter().enumerate() {
             let case_name = format!("{name}-mutated-{idx}");
-            run_case(world, &case_name, &mutated, "error");
+            run_case(world, &case_name, &mutated, true);
         }
     }
     for (name, input) in invalid_inputs.iter() {
-        run_case(world, name, input, "error");
+        run_case(world, name, input, true);
     }
 }
 
-fn run_case(world: &WorldContract, name: &str, input: &Value, expected_status: &str) {
+fn run_case(world: &WorldContract, name: &str, input: &Value, expects_invalid: bool) {
     let output = run_harness_once(world, input);
     let status = output
         .get("status")
@@ -48,16 +49,35 @@ fn run_case(world: &WorldContract, name: &str, input: &Value, expected_status: &
         .cloned()
         .unwrap_or_default();
 
-    if status != expected_status {
+    if !expects_invalid && status != "ok" {
         write_artifacts(world, name, input, &output);
-        panic!(
-            "expected status {expected_status} for {}, got {status}",
-            world.id
-        );
+        panic!("expected status ok for {}, got {status}", world.id);
     }
-    if expected_status == "error" && diagnostics.is_empty() {
-        write_artifacts(world, name, input, &output);
-        panic!("expected diagnostics for error case {} {}", world.id, name);
+    if expects_invalid {
+        match status {
+            "error" => {
+                if diagnostics.is_empty() {
+                    write_artifacts(world, name, input, &output);
+                    panic!("expected diagnostics for error case {} {}", world.id, name);
+                }
+            }
+            "ok" => {
+                if output.get("result").is_none() {
+                    write_artifacts(world, name, input, &output);
+                    panic!(
+                        "expected result payload for non-failing invalid case {} {}",
+                        world.id, name
+                    );
+                }
+            }
+            _ => {
+                write_artifacts(world, name, input, &output);
+                panic!(
+                    "unexpected status '{status}' for invalid case {} {}",
+                    world.id, name
+                );
+            }
+        }
     }
     let diag_size = serde_json::to_string(&diagnostics)
         .map(|s| s.len())

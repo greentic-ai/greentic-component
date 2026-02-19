@@ -1,12 +1,14 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use component_manifest::{ComponentInfo, ManifestValidator};
-use greentic_interfaces_host::component::v0_4::exports::greentic::component::node::GuestIndices;
+use component_manifest::{CapabilityRef, CompiledExportSchema, ComponentInfo, WitCompat};
+use greentic_interfaces_host::component::v0_6::exports::greentic::component::node::{
+    ComponentDescriptor, GuestIndices,
+};
 use greentic_types::cbor::canonical;
 use greentic_types::schemas::component::v0_6_0::ComponentDescribe;
 use jsonschema::{Validator, validator_for};
-use serde_json::Value;
+use serde_json::{Map, Value, json};
 use wasmtime::component::{Component as WasmComponent, Func, InstancePre, Val};
 use wasmtime::{Config, Engine};
 
@@ -51,20 +53,10 @@ impl Loader {
 
         let instance = instance_pre.instantiate(&mut store)?;
         let guest = guest_indices.load(&mut store, &instance)?;
-        let manifest_json = guest.call_get_manifest(&mut store)?;
-        let manifest_value: Value = serde_json::from_str(&manifest_json)?;
-        let validator = ManifestValidator::new();
-        let info = validator.validate_value(manifest_value.clone())?;
-
-        let config_schema_value = if expects_component_v0_6(&info) {
-            load_config_schema_from_describe(&instance, &mut store)?
-                .ok_or(CompError::InvalidManifest("component-descriptor.describe"))?
-        } else {
-            manifest_value
-                .get("config_schema")
-                .cloned()
-                .ok_or(CompError::InvalidManifest("config_schema"))?
-        };
+        let descriptor = guest.call_describe(&mut store)?;
+        let config_schema_value =
+            load_config_schema_from_describe(&instance, &mut store)?.unwrap_or_else(|| json!({}));
+        let info = component_info_from_descriptor(&descriptor, config_schema_value.clone());
         let config_schema = validator_for(&config_schema_value)
             .map_err(|err| CompError::SchemaValidation(err.to_string()))?;
 
@@ -87,8 +79,55 @@ impl Loader {
     }
 }
 
-fn expects_component_v0_6(info: &ComponentInfo) -> bool {
-    info.wit_compat.package == "greentic:component" && info.wit_compat.min.starts_with("0.6")
+fn component_info_from_descriptor(
+    descriptor: &ComponentDescriptor,
+    config_schema: Value,
+) -> ComponentInfo {
+    let capabilities = descriptor
+        .capabilities
+        .iter()
+        .cloned()
+        .map(CapabilityRef)
+        .collect();
+    let exports = descriptor
+        .ops
+        .iter()
+        .map(|op| CompiledExportSchema {
+            operation: op.name.clone(),
+            description: op.summary.clone(),
+            input_schema: None,
+            output_schema: None,
+        })
+        .collect();
+
+    let raw = json!({
+        "name": descriptor.name,
+        "description": descriptor.summary,
+        "capabilities": descriptor.capabilities,
+        "exports": descriptor.ops.iter().map(|op| json!({ "operation": op.name, "description": op.summary })).collect::<Vec<_>>(),
+        "config_schema": config_schema,
+        "secret_requirements": [],
+        "wit_compat": {
+            "package": "greentic:component",
+            "min": "0.6.0"
+        }
+    });
+
+    ComponentInfo {
+        name: Some(descriptor.name.clone()),
+        description: descriptor.summary.clone(),
+        capabilities,
+        exports,
+        config_schema,
+        secret_requirements: Vec::new(),
+        wit_compat: WitCompat {
+            package: "greentic:component".to_string(),
+            min: "0.6.0".to_string(),
+            max: None,
+        },
+        metadata: Map::new(),
+        raw,
+    }
 }
 
 fn load_config_schema_from_describe(
@@ -235,56 +274,28 @@ impl Clone for ComponentHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use component_manifest::{CapabilityRef, CompiledExportSchema, WitCompat};
-    use serde_json::{Map, json};
+    use serde_json::json;
 
-    fn info_with_wit(min: &str, package: &str) -> ComponentInfo {
-        ComponentInfo {
-            name: Some("fixture".into()),
-            description: None,
-            capabilities: vec![CapabilityRef("telemetry".into())],
-            exports: vec![CompiledExportSchema {
-                operation: "noop".into(),
-                description: None,
-                input_schema: None,
-                output_schema: None,
-            }],
-            config_schema: json!({
-                "type": "object",
-                "properties": { "enabled": { "type": "boolean" } },
-                "required": ["enabled"],
-                "additionalProperties": false
-            }),
-            secret_requirements: Vec::new(),
-            wit_compat: WitCompat {
-                package: package.to_string(),
-                min: min.to_string(),
-                max: None,
-            },
-            metadata: Map::new(),
-            raw: json!({}),
+    fn descriptor_fixture() -> ComponentDescriptor {
+        ComponentDescriptor {
+            name: "fixture".to_string(),
+            version: "0.1.0".to_string(),
+            summary: Some("summary".to_string()),
+            capabilities: vec!["telemetry".to_string()],
+            ops: vec![],
+            schemas: vec![],
+            setup: None,
         }
     }
 
     #[test]
-    fn detects_0_6_component_for_describe_schema_path() {
-        let info = info_with_wit("0.6.0", "greentic:component");
-        assert!(expects_component_v0_6(&info));
-    }
-
-    #[test]
-    fn legacy_component_uses_manifest_schema_fallback_path() {
-        let info = info_with_wit("0.4.0", "greentic:component");
-        assert!(
-            !expects_component_v0_6(&info),
-            "legacy versions should keep manifest schema fallback"
-        );
-    }
-
-    #[test]
-    fn non_component_package_does_not_use_0_6_path() {
-        let info = info_with_wit("0.6.0", "example:other");
-        assert!(!expects_component_v0_6(&info));
+    fn descriptor_maps_to_component_info() {
+        let config_schema = json!({"type":"object"});
+        let info = component_info_from_descriptor(&descriptor_fixture(), config_schema.clone());
+        assert_eq!(info.wit_compat.package, "greentic:component");
+        assert_eq!(info.wit_compat.min, "0.6.0");
+        assert_eq!(info.config_schema, config_schema);
+        assert_eq!(info.capabilities.len(), 1);
     }
 
     #[test]

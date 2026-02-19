@@ -5,16 +5,11 @@ use crate::error::ComponentError;
 use crate::manifest::ComponentManifest;
 
 /// Mode used when validating operation schemas.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum SchemaQualityMode {
+    #[default]
     Strict,
     Permissive,
-}
-
-impl Default for SchemaQualityMode {
-    fn default() -> Self {
-        Self::Strict
-    }
 }
 
 /// Details for a schema-quality warning emitted in permissive mode.

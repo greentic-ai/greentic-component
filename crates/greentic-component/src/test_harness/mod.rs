@@ -8,7 +8,7 @@ use anyhow::{Context, Result};
 use blake3::Hasher;
 use greentic_interfaces_host::component::v0_5::exports::greentic::component::node;
 use greentic_interfaces_host::component::v0_5::exports::greentic::component::node::GuestIndices;
-use greentic_interfaces_host::component::v0_6 as component_v0_6;
+use greentic_interfaces_host::component_v0_6;
 use greentic_types::TenantCtx;
 use greentic_types::cbor::canonical;
 use serde_json::Value;
@@ -125,6 +125,7 @@ pub struct TestHarness {
     allow_state_read: bool,
     allow_state_write: bool,
     allow_state_delete: bool,
+    tenant_ctx: TenantCtx,
     exec_ctx: node::ExecCtx,
     wasi_preopens: Vec<WasiPreopen>,
     config_json: Option<String>,
@@ -226,6 +227,7 @@ impl TestHarness {
             allow_state_read: config.allow_state_read,
             allow_state_write: config.allow_state_write,
             allow_state_delete: config.allow_state_delete,
+            tenant_ctx: config.tenant_ctx,
             exec_ctx,
             wasi_preopens: config.wasi_preopens,
             config_json,
@@ -379,13 +381,29 @@ impl TestHarness {
 
                 let input = canonical::to_canonical_cbor_allow_floats(&payload)
                     .context("encode invoke payload to cbor")?;
-                let state = canonical::to_canonical_cbor_allow_floats(&serde_json::json!({}))
-                    .context("encode state payload to cbor")?;
+                let invoke_envelope =
+                    component_v0_6::exports::greentic::component::node::InvocationEnvelope {
+                        ctx: make_component_tenant_ctx_v0_6(&self.tenant_ctx),
+                        flow_id: self.exec_ctx.flow_id.clone(),
+                        step_id: self
+                            .exec_ctx
+                            .node_id
+                            .clone()
+                            .unwrap_or_else(|| operation.to_string()),
+                        component_id: self
+                            .exec_ctx
+                            .node_id
+                            .clone()
+                            .unwrap_or_else(|| "component".to_string()),
+                        attempt: self.tenant_ctx.attempt,
+                        payload_cbor: input,
+                        metadata_cbor: None,
+                    };
 
                 let run_start = Instant::now();
                 let result = exports
-                    .greentic_component_component_runtime()
-                    .call_run(&mut store, &input, &state)
+                    .greentic_component_node()
+                    .call_invoke(&mut store, operation, &invoke_envelope)
                     .context("invoke component");
                 let result = match result {
                     Ok(value) => value,
@@ -399,15 +417,29 @@ impl TestHarness {
                     }
                 };
                 let run_ms = duration_ms(run_start.elapsed());
-                let output_value: Value =
-                    canonical::from_cbor(&result.output).context("decode run output cbor")?;
-                let output_json =
-                    serde_json::to_string(&output_value).context("serialize run output json")?;
-                Ok(InvokeOutcome {
-                    output_json,
-                    instantiate_ms,
-                    run_ms,
-                })
+                match result {
+                    Ok(result) => {
+                        let output_value: Value = canonical::from_cbor(&result.output_cbor)
+                            .context("decode invoke output cbor")?;
+                        let output_json = serde_json::to_string(&output_value)
+                            .context("serialize invoke output json")?;
+                        Ok(InvokeOutcome {
+                            output_json,
+                            instantiate_ms,
+                            run_ms,
+                        })
+                    }
+                    Err(err) => Err(anyhow::Error::new(ComponentInvokeError {
+                        code: err.code,
+                        message: err.message,
+                        retryable: err.retryable,
+                        backoff_ms: err.backoff_ms,
+                        details: err
+                            .details
+                            .and_then(|bytes| canonical::from_cbor::<Value>(&bytes).ok())
+                            .and_then(|value| serde_json::to_string(&value).ok()),
+                    })),
+                }
             }
         }
     }
@@ -419,36 +451,43 @@ impl TestHarness {
 
 fn make_component_tenant_ctx(tenant: &TenantCtx) -> node::TenantCtx {
     node::TenantCtx {
-        env: tenant.env.as_str().to_string(),
         tenant: tenant.tenant.as_str().to_string(),
-        tenant_id: tenant.tenant_id.as_str().to_string(),
         team: tenant.team.as_ref().map(|t| t.as_str().to_string()),
-        team_id: tenant.team_id.as_ref().map(|t| t.as_str().to_string()),
         user: tenant.user.as_ref().map(|u| u.as_str().to_string()),
-        user_id: tenant.user_id.as_ref().map(|u| u.as_str().to_string()),
-        session_id: tenant.session_id.clone(),
-        flow_id: tenant.flow_id.clone(),
-        node_id: tenant.node_id.clone(),
-        provider_id: tenant.provider_id.clone(),
         trace_id: tenant.trace_id.clone(),
         i18n_id: tenant.i18n_id.clone(),
         correlation_id: tenant.correlation_id.clone(),
-        attributes: tenant
-            .attributes
-            .iter()
-            .map(|(key, value)| (key.clone(), value.clone()))
-            .collect(),
-        deadline_ms: tenant
+        deadline_unix_ms: tenant
             .deadline
-            .and_then(|deadline| i64::try_from(deadline.unix_millis()).ok()),
+            .and_then(|deadline| u64::try_from(deadline.unix_millis()).ok()),
         attempt: tenant.attempt,
         idempotency_key: tenant.idempotency_key.clone(),
-        impersonation: tenant.impersonation.as_ref().map(|impersonation| {
-            greentic_interfaces_host::component::v0_5::greentic::interfaces_types::types::Impersonation {
-                actor_id: impersonation.actor_id.as_str().to_string(),
-                reason: impersonation.reason.clone(),
-            }
-        }),
+    }
+}
+
+fn make_component_tenant_ctx_v0_6(
+    tenant: &TenantCtx,
+) -> component_v0_6::exports::greentic::component::node::TenantCtx {
+    component_v0_6::exports::greentic::component::node::TenantCtx {
+        tenant_id: tenant.tenant_id.as_str().to_string(),
+        team_id: tenant.team_id.as_ref().map(|t| t.as_str().to_string()),
+        user_id: tenant.user_id.as_ref().map(|u| u.as_str().to_string()),
+        env_id: tenant.env.as_str().to_string(),
+        trace_id: tenant
+            .trace_id
+            .clone()
+            .unwrap_or_else(|| "trace-local".to_string()),
+        correlation_id: tenant
+            .correlation_id
+            .clone()
+            .unwrap_or_else(|| "corr-local".to_string()),
+        deadline_ms: tenant
+            .deadline
+            .and_then(|deadline| u64::try_from(deadline.unix_millis()).ok())
+            .unwrap_or(0),
+        attempt: tenant.attempt,
+        idempotency_key: tenant.idempotency_key.clone(),
+        i18n_id: tenant.i18n_id.clone().unwrap_or_else(|| "en".to_string()),
     }
 }
 
@@ -498,11 +537,11 @@ fn map_invoke_error(
 fn detect_component_abi(bytes: &[u8]) -> ComponentAbi {
     if let Ok(decoded) = crate::wasm::decode_world(bytes) {
         let world = &decoded.resolve.worlds[decoded.world];
-        if world.name == "component-v0-v6-v0" {
-            return ComponentAbi::V0_6;
+        if world.name == "component-v0-v5-v0" {
+            return ComponentAbi::V0_5;
         }
     }
-    ComponentAbi::V0_5
+    ComponentAbi::V0_6
 }
 
 fn describe_wasm_metadata(bytes: &[u8]) -> String {

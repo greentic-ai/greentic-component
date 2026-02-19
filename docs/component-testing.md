@@ -3,6 +3,8 @@
 Short, example-driven notes for running component tests with `greentic-component test`. This is
 meant to be copy-pasted into a component repo and extended as your matrix grows.
 
+Canonical target: `component@0.6.0`. For legacy compatibility surfaces, see `docs/vision/legacy.md`.
+
 ## Quick start
 
 Run a single operation with JSON input:
@@ -29,6 +31,8 @@ greentic-component test \
 By default the command emits a stable JSON envelope with status, diagnostics, and timing. Use
 `--raw-output` to emit legacy output only (component result JSON on success or a
 `{code,message,details}` object on failure).
+
+`--raw-output` should be treated as deprecated compatibility output for older consumers.
 
 ## Config + sandbox flags
 
