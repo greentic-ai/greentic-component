@@ -513,6 +513,33 @@ run_wizard_smoke() {
             wizard_wasm_rel=$(jq -r '.artifacts.component_wasm // empty' "$wizard_manifest")
             if [ -n "$wizard_wasm_rel" ] && [ "$wizard_wasm_rel" != "null" ]; then
                 local wizard_wasm_path="$wizard_root/$wizard_wasm_rel"
+                if [ ! -f "$wizard_wasm_path" ]; then
+                    local wizard_wasm_base
+                    local wizard_wasm_stem
+                    local wizard_wasm_dash
+                    local wizard_wasm_underscore
+                    wizard_wasm_base=$(basename "$wizard_wasm_rel")
+                    wizard_wasm_stem=${wizard_wasm_base%.wasm}
+                    wizard_wasm_dash=${wizard_wasm_stem//_/-}
+                    wizard_wasm_underscore=${wizard_wasm_stem//-/_}
+                    local wizard_wasm_candidate=""
+                    for cand in \
+                        "$wizard_root/target/wasm32-wasip2/release/${wizard_wasm_underscore}.wasm" \
+                        "$wizard_root/target/wasm32-wasip2/release/${wizard_wasm_dash}.wasm" \
+                        "$wizard_root/target/wasm32-wasip1/release/${wizard_wasm_underscore}.wasm" \
+                        "$wizard_root/target/wasm32-wasip1/release/${wizard_wasm_dash}.wasm" \
+                        "$wizard_root/dist/${wizard_wasm_underscore}__"*.wasm \
+                        "$wizard_root/dist/${wizard_wasm_dash}__"*.wasm; do
+                        if [ -f "$cand" ]; then
+                            wizard_wasm_candidate="$cand"
+                            break
+                        fi
+                    done
+                    if [ -n "$wizard_wasm_candidate" ]; then
+                        mkdir -p "$(dirname "$wizard_wasm_path")"
+                        cp "$wizard_wasm_candidate" "$wizard_wasm_path"
+                    fi
+                fi
                 if [ -f "$wizard_wasm_path" ]; then
                     run_bin_cmd "wizard update manifest hash" "$BIN_COMPONENT_HASH" "$wizard_manifest"
                     run_bin_cmd "wizard inspect (wasm)" "$BIN_COMPONENT_INSPECT" \
